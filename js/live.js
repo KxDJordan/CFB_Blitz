@@ -11,6 +11,10 @@ const Live = (() => {
   let script = null, speed = 1, paused = false;
   let cam = { x: CX, y: 30 };
   let pops = [], parts = [], shake = 0, flash = null;
+  // Persistent on-field bodies (one per player) that physically chase the
+  // scripted targets — this is what makes movement continuous and watchable.
+  let bodies = {}, stamp = 0, frameO = null, cut = null, readyCb = null, readyAge = 0, ballDisp = null;
+  const TS = 1.25, PRE = 0.6; // play time stretch & pre-snap shift
 
   // ── geometry helpers ──
   const OFF_F = { QB: [0, -4.5], RB: [-1.8, -5.2], WR1: [-16, -1], WR2: [16, -1], WR3: [-10, -1.4], TE: [6.4, -1.2], LT: [-4.2, -1], LG: [-2.1, -1], C: [0, -1], RG: [2.1, -1], RT: [4.2, -1] };
@@ -21,7 +25,6 @@ const Live = (() => {
     runstop: { DE1: [-5.2, 1.2], DT1: [-1.4, 1.2], DT2: [1.6, 1.2], DE2: [5.6, 1.2], LB1: [-4.5, 4], MLB: [0, 4], LB2: [4.5, 4], CB1: [-16, 5], CB2: [16, 5], S1: [-3, 7], S2: [3, 14] },
   };
   const lerp = (a, b, u) => a + (b - a) * u;
-  const ease = u => (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
   function posAt(a, t) {
@@ -30,7 +33,7 @@ const Live = (() => {
     for (let i = 1; i < k.length; i++) {
       if (t <= k[i][0]) {
         const [t0, x0, y0] = k[i - 1], [t1, x1, y1] = k[i];
-        const u = t1 === t0 ? 1 : ease((t - t0) / (t1 - t0));
+        const u = t1 === t0 ? 1 : (t - t0) / (t1 - t0);
         return [lerp(x0, x1, u), lerp(y0, y1, u)];
       }
     }
@@ -61,12 +64,12 @@ const Live = (() => {
     logoImg = new Image();
     logoImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(Logo.svg(L.team(gs.t[0]).logo, 200).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '));
     resize();
-    pops = []; parts = []; script = null;
+    pops = []; parts = []; script = null; bodies = {}; frameO = null; cut = null; readyCb = null; ballDisp = null;
     cancelAnimationFrame(raf);
     last = performance.now();
     raf = requestAnimationFrame(frame);
   }
-  function unmount() { cancelAnimationFrame(raf); raf = 0; cv = null; script = null; }
+  function unmount() { cancelAnimationFrame(raf); raf = 0; cv = null; script = null; bodies = {}; readyCb = null; cut = null; }
   function resize() {
     if (!cv) return;
     const r = cv.getBoundingClientRect();
@@ -80,9 +83,15 @@ const Live = (() => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     if (!cv) return;
-    if (script && !paused) {
+    const gdt = paused ? 0 : dt * speed;
+    if (cut) {
+      cut.age += dt;
+      if (!cut.mid && cut.age >= 0.24) applyCut();
+      if (cut.age >= 0.62) cut = null;
+    }
+    if (script && !paused && !(cut && !cut.mid)) {
       const prev = script.t;
-      script.t = Math.min(script.dur, script.t + dt * speed);
+      script.t = Math.min(script.dur, script.t + gdt);
       for (const e of script.events) if (!e.done && e.t <= script.t && e.t >= prev - 1e-6) { e.done = true; e.fn(); }
       if (script.t >= script.dur && !script.finished) {
         script.finished = true;
@@ -90,14 +99,21 @@ const Live = (() => {
         if (cb) setTimeout(cb, 0);
       }
     }
-    const vdt = paused ? 0 : dt * Math.min(speed, 2);
-    // camera
+    stepBodies(gdt);
+    if (readyCb && !paused && !cut) {
+      readyAge += gdt;
+      if (settled() || readyAge > 7) { const cb = readyCb; readyCb = null; setTimeout(cb, 0); }
+    }
+    // ball (smoothed while carried so hand-offs and catches never pop)
     if (script) {
-      const b = ballPos(script.t);
-      const ty = b[1] + (script.camLead ?? 7), tx = U.clamp(b[0], VIEW_W / 2 - 2, FW - VIEW_W / 2 + 2);
-      const k = 1 - Math.exp(-dt * 3.5);
+      const b = ballPos(script.t), seg = script.ball.length ? ballSeg(script.t) : null;
+      if (!ballDisp || !seg || seg.type === 'air') ballDisp = b.slice();
+      else { const k = 1 - Math.exp(-dt * Math.max(1, speed) * 22); ballDisp[0] += (b[0] - ballDisp[0]) * k; ballDisp[1] += (b[1] - ballDisp[1]) * k; }
+      const ty = ballDisp[1] + (script.camLead ?? 7), tx = U.clamp(ballDisp[0], VIEW_W / 2 - 2, FW - VIEW_W / 2 + 2);
+      const k = 1 - Math.exp(-dt * 3);
       cam.y += (ty - cam.y) * k; cam.x += (tx - cam.x) * k;
     }
+    const vdt = paused ? 0 : dt * Math.min(speed, 2);
     for (const p of pops) p.age += vdt;
     pops = pops.filter(p => p.age < p.life);
     for (const p of parts) { p.x += p.vx * vdt; p.y += p.vy * vdt; p.vy -= p.g * vdt; p.age += vdt; }
@@ -105,6 +121,111 @@ const Live = (() => {
     shake *= Math.pow(0.02, dt);
     draw();
   }
+
+  // ── bodies: steering physics ──
+  // Each body steers toward its scripted mark with the mark's own velocity as
+  // feed-forward, capped by a top speed (from the player's SPD) and an
+  // acceleration limit — so cuts are rounded, starts and stops are natural,
+  // and nothing can ever teleport.
+  function bodyFor(a, near) {
+    let b = bodies[a.bid];
+    if (!b) {
+      const p0 = posAt(a, script ? script.t : 0);
+      const pl = a.pid != null ? G.players[a.pid] : null;
+      const big = pl && (pl.pos === 'OL' || pl.pos === 'DL');
+      const spd = pl ? pl.attrs.spd : 60;
+      b = bodies[a.bid] = {
+        x: near ? p0[0] + U.rand(-2, 2) : (p0[0] < CX ? -3.5 : FW + 3.5), y: near ? p0[1] + U.rand(-2, 2) : p0[1],
+        vx: 0, vy: 0, alpha: near ? 1 : 0, hist: [],
+        vmax: (big ? 6.4 : 7.6) + spd * (big ? 0.035 : 0.05) + 1, amax: big ? 17 : 26,
+      };
+    }
+    b.team = a.team; b.num = a.num;
+    return b;
+  }
+  function stepBodies(gdt) {
+    if (!script) return;
+    stamp++;
+    const t = script.t, jogging = !!script.lineup, list = [];
+    for (const a of Object.values(script.actors)) {
+      const b = bodyFor(a);
+      b.stamp = stamp; b.leaving = false; b.down = !!(a.down && t >= a.down);
+      const p = posAt(a, t);
+      let fx = 0, fy = 0;
+      if (!jogging && t < script.dur) { const q = posAt(a, t + 0.06); fx = (q[0] - p[0]) / 0.06; fy = (q[1] - p[1]) / 0.06; }
+      list.push([b, p[0], p[1], fx, fy, jogging]);
+    }
+    for (const [id, b] of Object.entries(bodies)) {
+      if (b.stamp === stamp) continue;
+      b.leaving = true;
+      list.push([b, b.x < CX ? -6 : FW + 6, b.y, 0, 0, true]);
+      if (b.alpha <= 0) delete bodies[id];
+    }
+    if (gdt <= 0) return;
+    const n = Math.min(40, Math.max(1, Math.ceil(gdt * 120))), h = gdt / n;
+    for (const [b, tx, ty, fx, fy, jog] of list) {
+      const vmax = jog ? Math.min(b.vmax, 7.5) : b.vmax, kp = jog ? 2.8 : 6.5;
+      for (let i = 0; i < n; i++) {
+        let wx = fx + (tx - b.x) * kp, wy = fy + (ty - b.y) * kp;
+        const ws = Math.hypot(wx, wy);
+        if (ws > vmax) { wx *= vmax / ws; wy *= vmax / ws; }
+        let ax = wx - b.vx, ay = wy - b.vy;
+        const as = Math.hypot(ax, ay), am = b.amax * h;
+        if (as > am) { ax *= am / as; ay *= am / as; }
+        b.vx += ax; b.vy += ay;
+        b.x += b.vx * h; b.y += b.vy * h;
+      }
+      b.alpha = b.leaving ? Math.max(0, b.alpha - gdt * 1.4) : Math.min(1, b.alpha + gdt * 3);
+      if (Math.hypot(b.vx, b.vy) > 3) { b.hist.push([b.x, b.y]); if (b.hist.length > 14) b.hist.shift(); }
+      else if (b.hist.length) b.hist.shift();
+    }
+  }
+  function settled() {
+    if (!script || !script.lineup) return true;
+    for (const a of Object.values(script.actors)) {
+      const b = bodies[a.bid];
+      if (!b) return false;
+      const p = posAt(a, script.t);
+      if (Math.hypot(p[0] - b.x, p[1] - b.y) > 1.0 || Math.hypot(b.vx, b.vy) > 1.8) return false;
+    }
+    return true;
+  }
+  // Swap in a new script; changes of possession or long resets get a quick broadcast cut.
+  function setScript(S) {
+    const flip = frameO !== null && S.o !== frameO;
+    let far = false;
+    if (!flip && S.lineup) {
+      for (const a of Object.values(S.actors)) { const b = bodies[a.bid]; if (b && Math.hypot(b.x - a.kf[0][1], b.y - a.kf[0][2]) > 30) { far = true; break; } }
+    }
+    if (frameO === null && !Object.keys(bodies).length) { script = S; frameO = S.o; snapTo(S, true); return; }
+    if (flip || far) { cut = { age: 0, mid: false, pending: S, flip }; return; }
+    frameO = S.o; script = S;
+  }
+  function applyCut() {
+    cut.mid = true;
+    const S = cut.pending;
+    if (cut.flip) {
+      for (const b of Object.values(bodies)) { b.x = FW - b.x; b.y = 100 - b.y; b.vx = -b.vx; b.vy = -b.vy; b.hist = []; }
+      cam.x = FW - cam.x; cam.y = 100 - cam.y;
+    }
+    script = S; frameO = S.o;
+    snapTo(S, false);
+  }
+  // Place bodies near their marks (used behind a cut, or on first load).
+  function snapTo(S, all) {
+    const inS = new Set(Object.values(S.actors).map(a => a.bid));
+    for (const a of Object.values(S.actors)) {
+      const tx = a.kf[0][1], ty = a.kf[0][2];
+      const b = bodies[a.bid];
+      if (!b) { bodyFor(a, true); continue; }
+      if (all || Math.hypot(b.x - tx, b.y - ty) > 9) { b.x = tx + U.rand(-3, 3); b.y = ty + U.rand(-4, 4); b.vx = b.vy = 0; b.hist = []; }
+    }
+    for (const id of Object.keys(bodies)) if (!inS.has(id)) delete bodies[id];
+    if (S.los != null) cam.y = S.los + (S.camLead ?? 7);
+    else if (S.ball.length) { const k = S.actors[S.ball[0].key]; if (k) cam.y = k.kf[0][2] + (S.camLead ?? 7); }
+    ballDisp = null;
+  }
+  function ready(fn) { readyCb = fn; readyAge = 0; }
 
   // ── screen transform ──
   const SX = x => (x - cam.x) * sc + W / 2;
@@ -119,20 +240,18 @@ const Live = (() => {
     drawField();
     if (script) {
       const t = script.t;
-      // trails
-      for (const tr of script.trails || []) {
-        if (t < tr.t0) continue;
-        const a = script.actors[tr.key];
-        ctx.fillStyle = 'rgba(255,255,255,.18)';
-        for (let s = Math.max(tr.t0, t - 0.6); s < Math.min(t, tr.t1); s += 0.06) {
-          const p = posAt(a, s);
-          ctx.beginPath(); ctx.arc(SX(p[0]), SY(p[1]), Math.max(0.1, sc * 0.28 * (1 - (t - s) / 0.6)), 0, Math.PI * 2); ctx.fill();
+      const ck = carrierAt(t), carrier = ck && script.actors[ck] ? bodies[script.actors[ck].bid] : null;
+      if (carrier && carrier.hist.length > 2) {
+        const hs = carrier.hist;
+        for (let i = 0; i < hs.length - 1; i++) {
+          const u = i / hs.length;
+          ctx.fillStyle = 'rgba(255,255,255,' + (0.05 + u * 0.18) + ')';
+          ctx.beginPath(); ctx.arc(SX(hs[i][0]), SY(hs[i][1]), Math.max(0.5, sc * 0.3 * u), 0, Math.PI * 2); ctx.fill();
         }
       }
-      const carrier = carrierAt(t);
-      const list = Object.entries(script.actors).map(([k, a]) => ({ k, a, p: posAt(a, t) })).sort((u, v) => v.p[1] - u.p[1]);
-      for (const { a, p } of list) drawShadow(p);
-      for (const { k, a, p } of list) drawToken(a, p, k === carrier, t);
+      const list = Object.values(bodies).filter(b => b.alpha > 0.01).sort((u, v) => v.y - u.y);
+      for (const b of list) drawShadow(b);
+      for (const b of list) drawToken(b, b === carrier);
       drawBall(t);
     }
     for (const p of parts) {
@@ -144,6 +263,11 @@ const Live = (() => {
     for (const p of pops) drawPop(p);
     ctx.restore();
     if (flash) drawFlash();
+    if (cut) {
+      const a = cut.age < 0.24 ? cut.age / 0.24 : Math.max(0, 1 - (cut.age - 0.24) / 0.38);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = 'rgba(6,10,18,' + a + ')'; ctx.fillRect(0, 0, W, H);
+    }
   }
   function drawField() {
     const yTop = cam.y + (H * 0.64) / sc + 2, yBot = cam.y - (H * 0.36) / sc - 2;
@@ -224,14 +348,16 @@ const Live = (() => {
       }
     }
   }
-  function drawShadow(p) {
+  function drawShadow(b) {
+    ctx.globalAlpha = b.alpha;
     ctx.fillStyle = 'rgba(0,0,0,.28)';
-    ctx.beginPath(); ctx.ellipse(SX(p[0]) + 2, SY(p[1]) + 3, sc * R, sc * R * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(SX(b.x) + 2, SY(b.y) + 3, sc * R, sc * R * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
   }
-  function drawToken(a, p, isCarrier, t) {
+  function drawToken(a, isCarrier) {
     const c = colors[a.team];
-    const x = SX(p[0]), y = SY(p[1]), r = sc * R;
-    if (a.down && t >= a.down) { ctx.globalAlpha = 0.75; }
+    const x = SX(a.x), y = SY(a.y), r = sc * R;
+    ctx.globalAlpha = a.alpha * (a.down ? 0.75 : 1);
     if (isCarrier) {
       ctx.fillStyle = 'rgba(250,204,21,.28)';
       ctx.beginPath(); ctx.arc(x, y, r * 1.9, 0, Math.PI * 2); ctx.fill();
@@ -256,7 +382,7 @@ const Live = (() => {
   function ballPos(t) {
     if (!script || !script.ball.length) return [CX, cam.y - 7];
     const s = ballSeg(t);
-    if (s.type === 'hold') { const p = posAt(script.actors[s.key], t); return [p[0] + 0.35, p[1] + 0.2]; }
+    if (s.type === 'hold') { const a = script.actors[s.key]; const b = a && bodies[a.bid]; const p = b ? [b.x, b.y] : posAt(a, t); return [p[0] + 0.35, p[1] + 0.2]; }
     const u = U.clamp((t - s.t0) / (s.t1 - s.t0 || 1), 0, 1);
     return [lerp(s.from[0], s.to[0], u), lerp(s.from[1], s.to[1], u)];
   }
@@ -267,7 +393,7 @@ const Live = (() => {
   }
   function drawBall(t) {
     if (!script.ball.length) return;
-    const s = ballSeg(t), p = ballPos(t);
+    const s = ballSeg(t), p = ballDisp || ballPos(t);
     let h = 0;
     if (s.type === 'air') { const u = U.clamp((t - s.t0) / (s.t1 - s.t0 || 1), 0, 1); h = Math.sin(Math.PI * u) * (s.h || 3); }
     const x = SX(p[0]), y = SY(p[1]);
@@ -327,7 +453,8 @@ const Live = (() => {
     return { o, los, ltg, actors: {}, ball: [], events: [], trails: [], t: 0, dur: 1, camLead: 7 };
   }
   function addActor(S, key, team, p, x, y) {
-    S.actors[key] = { team, num: p && p.id >= 0 ? p.num : (p ? '' : null), kf: [[0, x, y]] };
+    const pid = p && p.id >= 0 ? p.id : null;
+    S.actors[key] = { team, pid, bid: pid != null ? 'p' + pid : 'g' + team + key, num: pid != null ? p.num : (p ? '' : null), kf: [[0, x, y]] };
     return S.actors[key];
   }
   function at(S, t, fn) { S.events.push({ t, fn }); }
@@ -766,8 +893,22 @@ const Live = (() => {
       S = det.type === 'run' ? buildRun(det) : det.type === 'pass' ? buildPass(det) : det.type === 'kickoff' ? buildKickoff(det) : det.type === 'punt' ? buildPunt(det) : det.type === 'fg' ? buildFG(det) : det.type === 'kneel' ? buildKneel(det) : null;
     } catch (e) { console.error('Live build failed', e); S = null; }
     if (!S) { onDone && onDone(); return; }
+    retime(S);
     S.onDone = onDone;
-    script = S;
+    setScript(S);
+  }
+  // Stretch play time to realistic speeds and add a pre-snap beat where
+  // the defense shifts into its called look.
+  function retime(S) {
+    const f = t => (t <= 0 ? 0 : PRE + t * TS);
+    for (const a of Object.values(S.actors)) {
+      const k = a.kf;
+      a.kf = [[0, k[0][1], k[0][2]], [PRE, k[0][1], k[0][2]], ...k.slice(1).map(([t, x, y]) => [f(t), x, y])];
+      if (a.down) a.down = f(a.down);
+    }
+    for (const b of S.ball) { b.t0 = f(b.t0); b.t1 = b.t1 >= 50 ? 999 : f(b.t1); }
+    for (const e of S.events) e.t = f(e.t);
+    S.dur = f(S.dur);
   }
   // Static pre-snap look for the next play.
   function lineup() {
@@ -777,8 +918,8 @@ const Live = (() => {
       squad(gs.kicker).forEach((p, i) => addActor(S, 'k' + i, gs.kicker, p, 5 + i * 4.3, 65.5));
       squad(1 - gs.kicker).forEach((p, i) => addActor(S, 'r' + i, 1 - gs.kicker, p, i ? 6 + ((i - 1) % 5) * 10.5 : CX, i ? 22 + Math.floor((i - 1) / 5) * 12 : 2));
       S.ball.push({ type: 'hold', key: 'k5', t0: 0, t1: 99 });
-      S.dur = 0.01; S.camLead = 14;
-      script = S;
+      S.dur = 0.01; S.camLead = 14; S.lineup = true;
+      setScript(S);
       return;
     }
     const o = gs.poss, O = Engine.slots(gs, o, true), D = Engine.slots(gs, 1 - o, false);
@@ -787,15 +928,13 @@ const Live = (() => {
     for (const k in D) det.D[k] = D[k].id;
     const S = newScript(o, gs.ball, gs.ball + gs.togo);
     formation(S, det, 'base');
-    // jog in from a few yards away
-    for (const a of Object.values(S.actors)) { const k = a.kf[0]; a.kf = [[0, k[1] + U.rand(-3, 3), k[2] + (k[2] > gs.ball ? 4 : -4)], [0.7, k[1], k[2]]]; }
     S.ball.push({ type: 'hold', key: 'oC', t0: 0, t1: 99 });
-    S.dur = 0.75;
-    script = S;
+    S.dur = 0.01; S.lineup = true;
+    setScript(S);
   }
   function setSpeed(s) { speed = s; }
   function setPaused(p) { paused = p; }
   function skip() { if (script) { script.t = script.dur - 0.001; } }
 
-  return { mount, unmount, resize, play, lineup, setSpeed, setPaused, skip, bigText };
+  return { debug: () => ({ bodies, cut, t: script && script.t, lineup: script && script.lineup }), mount, unmount, resize, play, lineup, ready, setSpeed, setPaused, skip, bigText };
 })();

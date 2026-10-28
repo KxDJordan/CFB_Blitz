@@ -731,6 +731,11 @@ const UI = (() => {
     stopClock();
     st.need = null; st.mode = 'feed';
     renderPanel();
+    // Wait until everyone has jogged back and set before the ball is snapped.
+    Live.ready(() => { if (S.game === st && !st.done && S.screen === 'game') runSnap(input); });
+  }
+  function runSnap(input) {
+    const st = S.game, gs = st.gs;
     gs._togoAtSnap = gs.togo;
     const before = gs.log.length;
     Engine.step(gs, input);
@@ -751,7 +756,7 @@ const UI = (() => {
     if (fresh.some(e => e.kind === 'half') && !st.halfShown) st.halfPending = true;
     if (gs.over) return later(endLiveGame, 600);
     Live.lineup();
-    later(gNext, st.auto ? 900 : 700);
+    later(gNext, st.auto ? 500 : 350);
   }
 
   // ── play calling ──
