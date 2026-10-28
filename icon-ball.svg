@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+  <defs>
+    <radialGradient id="lea" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#c8743e"/><stop offset=".55" stop-color="#8a421b"/><stop offset="1" stop-color="#4a1f09"/></radialGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <path d="M8 70 C40 8 200 8 232 70 C200 132 40 132 8 70 Z" fill="url(#lea)" stroke="#2a1105" stroke-width="3"/>
+  <path d="M40 28 C30 50 30 90 40 112" stroke="#f5f0e6" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M200 28 C210 50 210 90 200 112" stroke="#f5f0e6" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M80 62 H160" stroke="#f5f0e6" stroke-width="6" stroke-linecap="round"/>
+  <g stroke="#f5f0e6" stroke-width="5" stroke-linecap="round"><path d="M92 54v16M106 54v16M120 54v16M134 54v16M148 54v16"/></g>
+  <path d="M30 52 C70 20 170 20 210 52 C170 40 70 40 30 52 Z" fill="url(#shine)"/>
+</svg>
