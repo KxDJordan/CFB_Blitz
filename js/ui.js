@@ -73,6 +73,17 @@ const UI = (() => {
   const tfull = t => esc(`${t.name} ${t.mascot}`);
   const planLabel = (k, id) => DATA.PLANS[k].find(p => p.id === id).short;
 
+  // ── helmet stickers ──
+  const stkChip = (s, big) => { const d = DATA.STICKERS[s.id], t = DATA.STICKER_TIERS[s.tier]; return `<span class="stk stk-${t.id}${big ? ' big' : ''}" title="${d.name} — ${t.label}">${d.glyph}</span>`; };
+  const stkRow = p => (p.stk && p.stk.length ? `<span class="stk-row">${p.stk.slice().sort((a, b) => b.tier - a.tier).map(s => stkChip(s)).join('')}</span>` : '');
+  function stkList(p, empty) {
+    if (!p.stk || !p.stk.length) return `<div class="small muted mb12">${empty || 'No helmet stickers yet — big seasons and hard camps earn them.'}</div>`;
+    return '<div class="stk-list">' + p.stk.slice().sort((a, b) => b.tier - a.tier).map(s => {
+      const d = DATA.STICKERS[s.id], t = DATA.STICKER_TIERS[s.tier];
+      const ladder = DATA.STICKER_TIERS.map((x, i) => `<i class="${i <= s.tier ? 'on ' + x.id : ''}${i === s.tier ? ' cur' : ''}">${d.kind === 'proc' ? Math.round(x.proc * 100) + '%' : x.mult + '×'}</i>`).join('');
+      return `<div class="stk-item">${stkChip(s, true)}<div class="grow"><div class="stk-name">${d.name} <span class="stk-tier stk-t-${t.id}">${t.label}</span><span class="stk-kind">${d.kind === 'proc' ? 'Trigger' : 'Boost'}</span></div><div class="small muted">${d.desc}</div><div class="stk-ladder">${ladder}</div></div></div>`;
+    }).join('') + '</div>';
+  }
   function ring(val, label, color) {
     const r = 36, c = 2 * Math.PI * r, pct = U.clamp((val - 40) / 59, 0.02, 1);
     return `<div class="ring"><svg viewBox="0 0 84 84"><circle cx="42" cy="42" r="${r}" fill="none" stroke="var(--surface-3)" stroke-width="7"/><circle cx="42" cy="42" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - pct)).toFixed(1)}"/></svg><div class="rv"><div><b>${val}</b><span>${label}</span></div></div></div>`;
@@ -365,7 +376,7 @@ const UI = (() => {
       const header = `<div class="flex between" style="padding:12px 14px 6px"><span class="kicker">${DATA.POS_NAME[pos]}s · ${ids.length}</span><span class="tiny ${u.manual[pos] ? 'accent' : 'dim'}">${u.manual[pos] ? 'Manual depth' : 'Auto depth'}</span></div>`;
       return `<div class="card flush">${header}<div class="list">${ids.map((id, i) => {
         const p = G.players[id], st = healthy.includes(p);
-        return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 40)}<div class="grow"><div class="r1">${pname(p)} ${st ? '<span class="tag t-accent">ST</span>' : ''}${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${p.walkOn ? '<span class="tag">Walk-on</span>' : ''}</div><div class="r2">${pos}${i + 1} · ${DATA.CLASS[p.cls]} · ${stars(p.stars)} · POT ${U.potGrade(p.pot)}</div></div>${ovr(p.ovr)}</button>`;
+        return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 40)}<div class="grow"><div class="r1">${pname(p)} ${st ? '<span class="tag t-accent">ST</span>' : ''}${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${p.walkOn ? '<span class="tag">Walk-on</span>' : ''}${stkRow(p)}</div><div class="r2">${pos}${i + 1} · ${DATA.CLASS[p.cls]} · ${stars(p.stars)} · POT ${U.potGrade(p.pot)}</div></div>${ovr(p.ovr)}</button>`;
       }).join('')}</div></div>`;
     }).join('');
     return `<div class="card"><div class="rings">${ring(rt.off, 'OFF', '#60a5fa')}${ring(rt.ovr, 'OVR', 'var(--accent)')}${ring(rt.def, 'DEF', '#f87171')}</div>
@@ -399,6 +410,7 @@ const UI = (() => {
     sheet(`<div class="pc-head" style="${t ? teamVars(t) : '--team-1:#334155;--team-2:#64748b'}">${jersey(p, 64)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]} · #${p.num} · ${DATA.CLASS_LONG[p.cls]}</div><div class="tiny" style="opacity:.7;margin-top:2px">${esc(p.home)}${t ? ` · ${tname(t)}` : ''}</div></div><div class="pc-ovr"><b>${p.ovr}</b><span>OVR</span></div></div>
       <div class="kv mb12"><div><b>${U.potGrade(p.pot)}</b><span>Potential</span></div><div><b style="font-size:13px;line-height:18px">${stars(p.stars)}</b><span>Recruit</span></div><div><b>${DATA.CLASS[p.cls]}</b><span>Class</span></div><div><b style="font-size:14px;line-height:18px">${status}</b><span>Status</span></div></div>
       <div class="card" style="padding:12px 14px">${DATA.ATTRS.map(a => { const lbl = DATA.attrLabel(p.pos, a); const v = p.attrs[a]; return `<div class="attr"><span class="muted">${DATA.ATTR_LONG[a === 'skl' ? lbl : a]}</span><div class="bar"><i style="width:${v}%"></i></div><b class="${U.ovrClass(v)}">${v}</b></div>`; }).join('')}</div>
+      <div class="kicker mb8">Helmet Stickers</div>${stkList(p)}
       <div class="kicker mb8">${G.year} season</div>${statGrid(s)}
       ${hasCar ? `<div class="kicker mb8 mt16">Career (prior seasons)</div>${statGrid(c)}` : ''}
       ${p.draft ? `<div class="small muted mt12">Drafted ${p.draft.year} · Round ${p.draft.round}, pick #${p.draft.pick}</div>` : p.walkOn ? '<div class="small muted mt12">Walk-on</div>' : ''}
@@ -601,7 +613,7 @@ const UI = (() => {
     if (S.draft.view === 'board') {
       const pool = d.pool.map(id => G.players[id]).filter(p => S.draft.pos === 'ALL' || p.pos === S.draft.pos).slice(0, 70);
       body = `<div class="chips">${['ALL', ...DATA.POSITIONS].map(p => `<button class="chip ${S.draft.pos === p ? 'on' : ''}" data-a="draftPos" data-v="${p}">${p}</button>`).join('')}</div>
-        <div class="card flush"><div class="list">${pool.map(p => `<div class="row prospect tap" data-a="prospect" data-v="${p.id}"><span class="tiny dim num" style="width:20px;font-weight:700">${d.pool.indexOf(p.id) + 1}</span>${posBadge(p.pos)}<div class="grow"><div class="r1">${pname(p)}</div><div class="r2">${stars(p.stars)} · POT ${U.potGrade(p.pot)} · ${esc(p.home)}</div></div>${ovr(p.ovr)}${mine ? `<button class="btn btn-primary pick-btn" data-a="draftPick" data-v="${p.id}">Draft</button>` : ''}</div>`).join('') || '<div class="empty">No prospects left at this position.</div>'}</div></div>`;
+        <div class="card flush"><div class="list">${pool.map(p => `<div class="row prospect tap" data-a="prospect" data-v="${p.id}"><span class="tiny dim num" style="width:20px;font-weight:700">${d.pool.indexOf(p.id) + 1}</span>${posBadge(p.pos)}<div class="grow"><div class="r1">${pname(p)} ${stkRow(p)}</div><div class="r2">${stars(p.stars)} · POT ${U.potGrade(p.pot)} · ${esc(p.home)}</div></div>${ovr(p.ovr)}${mine ? `<button class="btn btn-primary pick-btn" data-a="draftPick" data-v="${p.id}">Draft</button>` : ''}</div>`).join('') || '<div class="empty">No prospects left at this position.</div>'}</div></div>`;
     } else if (S.draft.view === 'mine') {
       body = myPicks.length ? `<div class="card flush"><div class="list">${myPicks.map(e => { const p = G.players[e.pid]; return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 38)}<div class="grow"><div class="r1">${pname(p)}</div><div class="r2">Rd ${e.round} · #${e.overall} · ${stars(p.stars)} · POT ${U.potGrade(p.pot)}</div></div>${posBadge(p.pos)}${ovr(p.ovr)}</button>`; }).join('')}</div></div>` : `<div class="empty">${I.roster}You haven't made a pick yet.</div>`;
     } else {
@@ -625,6 +637,7 @@ const UI = (() => {
     sheet(`<div class="pc-head" style="--team-1:#1e293b;--team-2:var(--accent)">${jersey(p, 60)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]} · ${esc(p.home)}</div><div style="margin-top:4px">${stars(p.stars)}</div></div><div class="pc-ovr"><b>${p.ovr}</b><span>OVR</span></div></div>
       <div class="kv mb12"><div><b>${U.potGrade(p.pot)}</b><span>Potential</span></div><div><b>${p.stars}★</b><span>Recruit</span></div><div><b>FR</b><span>Class</span></div><div><b>#${G.draft.pool.indexOf(p.id) + 1}</b><span>Board</span></div></div>
       <div class="card" style="padding:12px 14px">${DATA.ATTRS.map(a => { const lbl = DATA.attrLabel(p.pos, a); const v = p.attrs[a]; return `<div class="attr"><span class="muted">${DATA.ATTR_LONG[a === 'skl' ? lbl : a]}</span><div class="bar"><i style="width:${v}%"></i></div><b class="${U.ovrClass(v)}">${v}</b></div>`; }).join('')}</div>
+      <div class="kicker mb8">Helmet Stickers</div>${stkList(p, 'No stickers coming out of high school.')}
       <div class="small muted mb12">Would start at ${p.pos}? ${p.ovr > (L.depthHealthy(L.user(), p.pos)[DATA.STARTERS[p.pos] - 1] || { ovr: 0 }).ovr ? '<b class="good">Yes — instant starter</b>' : '<b>Depth piece for now</b>'}</div>
       ${mine ? `<button class="btn btn-primary btn-lg btn-block" data-a="draftPick" data-v="${p.id}">Draft ${pname(p)}</button>` : '<div class="small muted center">Wait for your pick to select a player.</div>'}`);
   }
@@ -652,7 +665,7 @@ const UI = (() => {
       const best = r.res[0];
       body = `<div class="card result-hero"><div class="kicker">${DATA.CAMP_SESSIONS[r.session].name} · ${g.label}</div><div class="big">+${(tot / Math.max(1, r.res.length)).toFixed(1)}</div><div class="small muted">avg OVR gain</div>
         <div class="stat-trio"><div><b>${r.res.length}</b><span>Trained</span></div><div><b class="good">+${best ? best.after - best.before : 0}</b><span>Best gain</span></div><div><b class="${r.res.some(x => x.injured) ? 'bad' : ''}">${r.res.filter(x => x.injured).length}</b><span>Injuries</span></div></div></div>
-        <div class="card flush"><div class="list">${r.res.map(x => { const p = G.players[x.pid]; return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 38)}<div class="grow"><div class="r1">${pname(p)} ${x.injured ? `<span class="tag t-bad">Hurt ${x.injured}w</span>` : ''}</div><div class="attr-deltas">${Object.entries(x.deltas).map(([a, d]) => `<span>+${d} ${DATA.attrLabel(p.pos, a)}</span>`).join('') || '<span style="background:var(--surface-3);color:var(--muted)">No change</span>'}</div></div><div style="text-align:right"><div class="tiny muted">${x.before} →</div>${ovr(x.after)}</div></button>`; }).join('')}</div></div>`;
+        <div class="card flush"><div class="list">${r.res.map(x => { const p = G.players[x.pid]; return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 38)}<div class="grow"><div class="r1">${pname(p)} ${x.injured ? `<span class="tag t-bad">Hurt ${x.injured}w</span>` : ''}${x.stkUp ? `<span class="tag t-gold">${x.stkUp.kind === 'new' ? 'New sticker' : 'Sticker ↑'} · ${DATA.STICKERS[x.stkUp.id].name}</span>` : ''}</div><div class="attr-deltas">${Object.entries(x.deltas).map(([a, d]) => `<span>+${d} ${DATA.attrLabel(p.pos, a)}</span>`).join('') || '<span style="background:var(--surface-3);color:var(--muted)">No change</span>'}</div></div><div style="text-align:right"><div class="tiny muted">${x.before} →</div>${ovr(x.after)}</div></button>`; }).join('')}</div></div>`;
       cta = `<button class="btn btn-primary btn-lg" data-a="campNext">${done ? 'Finish Camp' : `Next: ${DATA.CAMP_SESSIONS[c.session].name}`} ${I.chev}</button>`;
     } else if (done) {
       body = `<div class="card result-hero">${TROPHY.replace('trophy-svg', 'trophy-svg" style="color:var(--accent)')}<div class="h-lg">Camp is in the books</div><div class="small muted mt8">Your program is ready for the ${G.year} season.</div></div>
@@ -892,12 +905,19 @@ const UI = (() => {
       <div class="gpanel-body pbp-body">${body}</div>`);
     if (tab === 'feed') fillFeed();
   }
+  function stkFired() {
+    const gs = S.game.gs, rows = Object.entries(gs.stkLog || {}).map(([k, n]) => { const [pid, id] = k.split(':'); const p = G.players[pid]; return p ? { p, id, n, tier: (p.stk.find(x => x.id === id) || { tier: 0 }).tier } : null; })
+      .filter(Boolean).filter(x => DATA.STICKERS[x.id].kind === 'proc' || x.tier >= 1).sort((a, b) => (b.tier - a.tier) || (b.n - a.n)).slice(0, 8);
+    if (!rows.length) return '';
+    return `<div class="kicker" style="margin:10px 4px 4px">Helmet Stickers fired</div>${rows.map(x => `<div class="flex small" style="padding:4px 2px">${stkChip({ id: x.id, tier: x.tier })}<span class="grow">${pname(x.p)} <span class="muted">${esc(L.team(x.p.teamId).abbr)} · ${DATA.STICKERS[x.id].name}</span></span><b class="num">×${x.n}</b></div>`).join('')}`;
+  }
   function liveStats() {
     const gs = S.game.gs, ts = gs.ts;
     const row = (l, a, b) => `<div class="cmp-row"><b>${a}</b><span class="cl">${l}</span><b>${b}</b></div>`;
     const top = Object.entries(gs.ps).map(([id, s]) => ({ p: G.players[id], s })).filter(x => x.p);
     const lead = (k, f) => { const x = top.filter(y => y.s[k] > 0).sort((a, b) => b.s[k] - a.s[k])[0]; return x ? `<div class="flex small" style="padding:4px 2px"><span class="pos-badge ${posCls(x.p.pos)}">${x.p.pos}</span><span class="grow">${pname(x.p)} <span class="muted">${esc(gs.abbr[x.s.side])}</span></span><span class="muted">${f(x.s)}</span></div>` : ''; };
     return `<div style="padding:4px 4px 0">${row('Total yards', ts[0].yds, ts[1].yds)}${row('Passing', ts[0].py, ts[1].py)}${row('Rushing', ts[0].ry, ts[1].ry)}${row('First downs', ts[0].fd, ts[1].fd)}${row('Turnovers', ts[0].to, ts[1].to)}${row('Sacks', ts[0].sk, ts[1].sk)}</div>
+      ${stkFired()}
       <div class="kicker" style="margin:10px 4px 4px">Leaders</div>${lead('py', s => `${s.pc}/${s.pa} · ${s.py} yds · ${s.ptd} TD`)}${lead('ry', s => `${s.ra} car · ${s.ry} yds`)}${lead('rcy', s => `${s.rc} rec · ${s.rcy} yds`)}${lead('tk', s => `${s.tk} tkl · ${s.sk} sk`)}`;
   }
   function playEl(gs, e) {
@@ -1028,6 +1048,7 @@ const UI = (() => {
         <div class="card"><div class="stat-trio" style="margin:0"><div><b>${o.departed.length}</b><span>Graduated</span></div><div><b>${o.declared.length}</b><span>Declared</span></div><div><b>${L.roster(u).length}</b><span>Returning</span></div></div></div>
         <div class="section-title"><h3>Biggest risers</h3><span class="tiny muted">Offseason development</span></div>
         ${o.risers.length ? `<div class="card flush"><div class="list">${o.risers.map(r => { const p = G.players[r.pid]; return p ? `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 36)}<div class="grow"><div class="r1">${pname(p)}</div><div class="r2">${p.pos} · now a ${DATA.CLASS_LONG[p.cls]}</div></div><span class="delta">+${r.d}</span>${ovr(p.ovr)}</button>` : ''; }).join('')}</div></div>` : '<div class="card"><div class="small muted">No major jumps this year.</div></div>'}
+        ${(() => { const mine = (o.stickers || []).filter(x => x.teamId === u.id); return mine.length ? `<div class="section-title"><h3>Helmet Stickers earned</h3><span class="tiny muted">from last season</span></div><div class="card flush"><div class="list">${mine.map(x => `<div class="row">${stkChip(x, true)}<div class="grow"><div class="r1">${esc(x.name)} <span class="tiny muted">${x.pos}</span></div><div class="r2">${x.kind === 'new' ? 'Earned' : 'Upgraded to'} ${DATA.STICKER_TIERS[x.tier].label} ${DATA.STICKERS[x.id].name}</div></div></div>`).join('')}</div></div>` : ''; })()}
         <div class="section-title"><h3>Graduating seniors</h3></div>${list(o.departed.sort((a, b) => b.ovr - a.ovr), 'No seniors graduated.')}
         ${o.declared.length ? `<div class="section-title"><h3>Declared for the pros</h3></div>${list(o.declared, '')}` : ''}
         <div class="card"><div class="kicker mb8">Draft priorities</div><div class="needs">${nd.slice(0, 5).map(n => `<span class="tag t-bad">${n.pos} · ${n.avg}${n.short ? ' · thin' : ''}</span>`).join('')}</div></div>

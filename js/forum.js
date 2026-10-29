@@ -406,6 +406,15 @@ const Forum = (() => {
   function offseason() {
     const is = issue(`off-${G.year}`, `Offseason ${G.year}`, 'offseason');
     const o = G.off, u = L.user();
+    const big = (o.stickers || []).filter(x => x.tier >= 2 || x.teamId === u.id).sort((a, b) => b.tier - a.tier).slice(0, 12);
+    if (big.length) {
+      thread(is, {
+        tag: 'NEWS', heat: 74, a: insider(),
+        title: `Sticker Report: ${big.filter(x => x.tier === 3).length} players earn Elite helmet stickers this offseason`,
+        body: 'Helmet stickers earned on the field last season:\n\n' + big.map(x => `• ${DATA.STICKER_TIERS[x.tier].label} ${DATA.STICKERS[x.id].name} — ${x.pos} ${x.name} (${L.team(x.teamId).abbr})`).join('\n'),
+        replies: replies(4, [{ w: 1, lines: R.draft }], { M: u.mascot }),
+      });
+    }
     if (o.leagueDeclared.length) {
       thread(is, {
         tag: 'NEWS', heat: 80, a: insider(),

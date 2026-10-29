@@ -140,13 +140,77 @@ const DATA = (() => {
   };
   const WEATHER_TIME = { day: 'Day game', dusk: 'Twilight kickoff', night: 'Night game' };
 
+  // ── HELMET STICKERS ──
+  // Situational badges. 'mag' stickers always apply in their situation (tier scales
+  // the bonus); 'proc' stickers have a tier-scaled chance to fire.
+  const STICKER_TIERS = [
+    { id: 'bronze', label: 'Bronze', mult: 1.0, proc: 0.25, color: '#d6905a' },
+    { id: 'silver', label: 'Silver', mult: 1.6, proc: 0.40, color: '#d8dee6' },
+    { id: 'gold', label: 'Gold', mult: 2.3, proc: 0.55, color: '#fbbf24' },
+    { id: 'elite', label: 'Elite', mult: 3.2, proc: 0.75, color: '#c084fc' },
+  ];
+  const STICKERS = {
+    // QB
+    pocket: { name: 'Pocket Presence', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'PP', desc: 'Stays calm under pressure: smaller accuracy penalty and fewer sacks when the rush gets home.' },
+    dime: { name: 'Dime Dropper', pos: ['QB'], kind: 'mag', base: 0.1, glyph: 'DD', desc: 'Pinpoint accuracy on throws of 15+ yards.' },
+    general: { name: 'Field General', pos: ['QB'], kind: 'mag', base: 0.05, glyph: 'FG', desc: 'Reads the field faster: fewer misreads, finds the open man.' },
+    escape: { name: 'Escape Artist', pos: ['QB'], kind: 'proc', base: 1, glyph: 'EA', desc: 'Chance to slip a would-be sack and scramble.' },
+    iceveins: { name: 'Ice in the Veins', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'IV', desc: 'Accuracy boost in the 4th quarter and OT of one-score games.' },
+    trigger: { name: 'Quick Trigger', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'QT', desc: 'Lightning release on quick game, screens and against the blitz.' },
+    // RB
+    wrecking: { name: 'Wrecking Ball', pos: ['RB'], kind: 'mag', base: 1.5, glyph: 'WB', desc: 'Runs through linebackers and safeties instead of around them.' },
+    jukebox: { name: 'Juke Box', pos: ['RB'], kind: 'proc', base: 1, glyph: 'JB', desc: 'Chance to make the first second-level defender miss.' },
+    homerun: { name: 'Home Run Hitter', pos: ['RB'], kind: 'mag', base: 2, glyph: 'HR', desc: 'Turns breakaways into long gains and touchdowns.' },
+    irongrip: { name: 'Iron Grip', pos: ['RB'], kind: 'mag', base: 0.18, glyph: 'IG', desc: 'Protects the football — fumbles way down, even in the rain.' },
+    hammer: { name: 'Goal-Line Hammer', pos: ['RB'], kind: 'mag', base: 0.9, glyph: 'GH', desc: 'Extra push inside the 5 and on 3rd/4th & short.' },
+    bellcow: { name: 'Bell Cow', pos: ['RB'], kind: 'mag', base: 0.08, glyph: 'BC', desc: 'Handles a heavy workload — tires much more slowly.' },
+    // WR / TE
+    routetech: { name: 'Route Technician', pos: ['WR', 'TE'], kind: 'mag', base: 0.4, glyph: 'RT', desc: 'Crisp breaks create separation on short and intermediate routes.' },
+    burner: { name: 'Burner', pos: ['WR'], kind: 'mag', base: 0.45, glyph: 'BU', desc: 'Pure speed on the deep ball (15+ yards).' },
+    gluehands: { name: 'Glue Hands', pos: ['WR', 'TE', 'RB'], kind: 'mag', base: 0.15, glyph: 'GL', desc: 'Catches it in traffic — completion boost in tight windows.' },
+    mossd: { name: "Moss'd", pos: ['WR', 'TE'], kind: 'proc', base: 1, glyph: 'MO', desc: 'Chance to win a contested deep ball over the defender.' },
+    yac: { name: 'YAC Monster', pos: ['WR', 'TE', 'RB'], kind: 'mag', base: 1.6, glyph: 'YM', desc: 'Breaks tackles and piles up yards after the catch.' },
+    redzone: { name: 'Red Zone Target', pos: ['TE', 'WR'], kind: 'mag', base: 0.5, glyph: 'RZ', desc: 'Body-control and separation boost inside the 20.' },
+    // OL
+    brickwall: { name: 'Brick Wall', pos: ['OL'], kind: 'mag', base: 1.8, glyph: 'BW', desc: 'Pass protection anchor — rushers rarely win clean.' },
+    grader: { name: 'Road Grader', pos: ['OL', 'TE'], kind: 'mag', base: 1.5, glyph: 'RG', desc: 'Drives defenders off the ball on running plays.' },
+    anchor: { name: 'Anchor', pos: ['OL'], kind: 'mag', base: 1.8, glyph: 'AN', desc: 'Sits down against power — neutralizes bull rushes.' },
+    puller: { name: 'Pulling Guard', pos: ['OL'], kind: 'mag', base: 1.5, glyph: 'PG', desc: 'Leads the way on outside runs.' },
+    ironman: { name: 'Iron Man', pos: ['OL', 'DL'], kind: 'mag', base: 0.15, glyph: 'IM', desc: 'Never comes off the field — stamina drains slower.' },
+    // DL
+    bender: { name: 'Edge Bender', pos: ['DL'], kind: 'mag', base: 2.5, glyph: 'EB', desc: 'Dips and bends around the edge (defensive ends).' },
+    bullrush: { name: 'Bull Rusher', pos: ['DL', 'LB'], kind: 'mag', base: 2.0, glyph: 'BR', desc: 'Walks blockers back into the quarterback.' },
+    stuffer: { name: 'Run Stuffer', pos: ['DL'], kind: 'mag', base: 2.5, glyph: 'RS', desc: 'Sheds blocks and blows up runs in the backfield.' },
+    strip: { name: 'Strip Sack', pos: ['DL', 'LB'], kind: 'proc', base: 0.4, glyph: 'SS', desc: 'Chance a sack knocks the ball loose.' },
+    closer: { name: 'Closer', pos: ['DL'], kind: 'mag', base: 2.5, glyph: 'CL', desc: 'Extra juice rushing in the 4th quarter with a lead.' },
+    // LB
+    thumper: { name: 'Run Thumper', pos: ['LB'], kind: 'mag', base: 2.5, glyph: 'TH', desc: 'Fills the hole and stops runners cold at the second level.' },
+    sideline: { name: 'Sideline to Sideline', pos: ['LB', 'S'], kind: 'mag', base: 2.5, glyph: 'SL', desc: 'Range to chase down outside runs and screens.' },
+    blitzer: { name: 'Blitz Specialist', pos: ['LB', 'S'], kind: 'mag', base: 3, glyph: 'BS', desc: 'Times the snap perfectly on blitzes.' },
+    covlb: { name: 'Coverage Linebacker', pos: ['LB'], kind: 'mag', base: 0.8, glyph: 'CV', desc: 'Blankets tight ends and backs in coverage.' },
+    enforcer: { name: 'Enforcer', pos: ['LB', 'S'], kind: 'proc', base: 0.25, glyph: 'EN', desc: 'Chance a big hit jars the ball loose.' },
+    // CB / S
+    lockdown: { name: 'Lockdown', pos: ['CB'], kind: 'mag', base: 0.6, glyph: 'LD', desc: 'Smothers receivers in man coverage.' },
+    ballhawk: { name: 'Ballhawk', pos: ['CB', 'S'], kind: 'proc', base: 0.6, glyph: 'BH', desc: 'Chance to jump contested throws for interceptions.' },
+    zonehawk: { name: 'Zone Hawk', pos: ['CB', 'S', 'LB'], kind: 'mag', base: 0.6, glyph: 'ZH', desc: 'Reads the QB and closes windows in Cover 3.' },
+    centerfield: { name: 'Center Fielder', pos: ['S', 'CB'], kind: 'mag', base: 0.7, glyph: 'CF', desc: 'Takes away the deep ball over the top.' },
+    suretackle: { name: 'Sure Tackler', pos: ['CB', 'S', 'LB'], kind: 'mag', base: 2.5, glyph: 'ST', desc: 'Wraps up — receivers rarely break his tackles.' },
+    pick6: { name: 'Pick-Six Artist', pos: ['CB', 'S'], kind: 'mag', base: 0.03, glyph: 'P6', desc: 'Interceptions turn into long returns and touchdowns.' },
+    // K
+    bigleg: { name: 'Big Leg', pos: ['K'], kind: 'mag', base: 0.03, glyph: 'BL', desc: 'Range on 45+ yard field goals and longer punts.' },
+    icecold: { name: 'Ice Cold', pos: ['K'], kind: 'mag', base: 0.04, glyph: 'IC', desc: 'Money in the 4th quarter and overtime.' },
+    allweather: { name: 'All-Weather', pos: ['K'], kind: 'mag', base: 0.3, glyph: 'AW', desc: 'Wind, rain and snow barely affect his kicks.' },
+    coffin: { name: 'Coffin Corner', pos: ['K'], kind: 'proc', base: 1, glyph: 'CC', desc: 'Chance to pin punts inside the 10 instead of a touchback.' },
+  };
+  const stickersFor = pos => Object.keys(STICKERS).filter(id => STICKERS[id].pos.includes(pos));
+
   const WEEK_LABEL = w => (w <= 11 ? `Week ${w}` : w === 12 ? 'Conference Championships' : w === 13 ? 'Playoff Semifinals' : 'National Championship');
   const WEEK_SHORT = w => (w <= 11 ? `Wk ${w}` : w === 12 ? 'CCG' : w === 13 ? 'CFP Semi' : 'Title');
 
   return {
     FIRST, LAST, TOWNS, POSITIONS, POS_NAME, OFFENSE, ROSTER_QUOTA, STARTERS, ROSTER_MAX, CLASS, CLASS_LONG,
     ATTRS, SKILL_LABEL, ATTR_LABEL, ATTR_LONG, OVR_W, NUMBERS, SCHOOLS, COLORS, CONFS, DIFFICULTY,
-    WEATHER, WEATHER_TIME, TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
+    STICKER_TIERS, STICKERS, stickersFor, WEATHER, WEATHER_TIME, TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
     attrLabel: (pos, a) => (a === 'skl' ? SKILL_LABEL[pos] : ATTR_LABEL[a]),
   };
 })();

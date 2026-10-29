@@ -687,3 +687,26 @@ body[data-theme="night"] .bb, body[data-theme="turf"] .bb { --bb-bg: #0f1115; --
 .wx-row.wx-storm { border-color: rgba(96, 165, 250, .35); } .wx-row.wx-snow { border-color: rgba(224, 242, 254, .35); }
 .wx-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: rgba(255, 255, 255, .08); font-size: 11px; font-weight: 700; color: #e2e8f0; }
 .wx-chip .wx-w { display: inline-flex; align-items: center; gap: 2px; color: #94a3b8; margin-left: 2px; }
+
+/* ── helmet stickers ── */
+.stk { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50% 50% 46% 46%; font: 700 7.5px/1 var(--f-display); letter-spacing: .02em; color: #1a1205; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 1px 2px rgba(0, 0, 0, .45); border: 1px solid rgba(0, 0, 0, .35); vertical-align: middle; }
+.stk.big { width: 38px; height: 38px; font-size: 13px; border-width: 2px; }
+.stk-bronze { background: linear-gradient(145deg, #f0b483, #b06a36 55%, #7a4420); }
+.stk-silver { background: linear-gradient(145deg, #ffffff, #c3cad4 50%, #8a94a3); }
+.stk-gold { background: linear-gradient(145deg, #fff3b0, #f5c542 50%, #b7860b); }
+.stk-elite { background: conic-gradient(from 210deg, #f0abfc, #a78bfa, #67e8f9, #86efac, #fde68a, #f0abfc); color: #1e0b2e; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 0 10px rgba(192, 132, 252, .65); animation: stkGlow 2.6s ease-in-out infinite; }
+@keyframes stkGlow { 50% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 0 16px rgba(103, 232, 249, .75); } }
+.stk-row { display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle; }
+.stk-list { display: grid; gap: 8px; margin-bottom: 14px; }
+.stk-item { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.stk-name { font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
+.stk-tier { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; }
+.stk-t-bronze { background: rgba(214, 144, 90, .2); color: #e7a774; } .stk-t-silver { background: rgba(216, 222, 230, .16); color: #e2e8f0; }
+.stk-t-gold { background: rgba(251, 191, 36, .18); color: #fbbf24; } .stk-t-elite { background: linear-gradient(90deg, rgba(240, 171, 252, .25), rgba(103, 232, 249, .25)); color: #f0abfc; }
+body[data-theme="day"] .stk-t-silver { color: #475569; } body[data-theme="day"] .stk-t-bronze { color: #9a5a2b; } body[data-theme="day"] .stk-t-gold { color: #a16207; } body[data-theme="day"] .stk-t-elite { color: #9333ea; }
+.stk-kind { font-size: 10px; color: var(--dim); font-weight: 600; }
+.stk-ladder { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 8px; }
+.stk-ladder i { font-style: normal; text-align: center; font-size: 10.5px; font-weight: 700; padding: 3px 0; border-radius: 6px; background: var(--surface-3); color: var(--dim); }
+.stk-ladder i.on.bronze { background: rgba(214, 144, 90, .25); color: #e7a774; } .stk-ladder i.on.silver { background: rgba(216, 222, 230, .2); color: #e2e8f0; }
+.stk-ladder i.on.gold { background: rgba(251, 191, 36, .22); color: #fbbf24; } .stk-ladder i.on.elite { background: rgba(192, 132, 252, .25); color: #f0abfc; }
+.stk-ladder i.cur { outline: 1.5px solid currentColor; }

@@ -287,6 +287,10 @@ const Live = (() => {
     }
     const cr = S.carrier;
     if (cr && S.ball.mode === 'held' && hyp(cr.vx, cr.vy) > 3) { (cr.trail = cr.trail || []).push([cr.x, cr.y]); if (cr.trail.length > 18) cr.trail.shift(); }
+    if (S.stkShow && S.snapT != null && S.t - S.snapT > 0.9) {
+      for (const x of S.stkShow) { const a = S.list.find(q => q.pid === x.pid); if (a) pop(a.x, a.y + 0.6, '★ ' + DATA.STICKERS[x.id].name.toUpperCase(), DATA.STICKER_TIERS[x.tier].color, { life: 1.8 }); }
+      S.stkShow = null;
+    }
     collide();
     checkContacts();
     stepBall();
@@ -314,9 +318,12 @@ const Live = (() => {
           // the runner squeezes past teammates and through the edges of blocks
           if (o.side === c.side || o.eng) continue;
           // a defender who isn't the one the engine picked dives and misses
+          const head = S.tk.queue[0];
+          // at the spot, whoever gets there first makes the stop
+          const atSpot = S.tk.endY != null && !S.tk.td && (c.y - S.tk.endY) * (S.tk.dir || 1) >= -0.35;
+          if (!scripted.has(o) && atSpot && (!head || head.final)) { if (o.eng) release(o.eng); tackle(c, o); continue; }
           if (!scripted.has(o)) { whiff(c, o); continue; }
           // the engine's tackler can't end the run early — he rides along until the contact point
-          const head = S.tk.queue[0];
           if (!head || head.a !== o || !S.tk.gate(head)) continue;
         }
         const ma = a.mass * (a.eng ? 1.6 : 1), mb = b.mass * (b.eng ? 1.6 : 1);
@@ -408,7 +415,12 @@ const Live = (() => {
     }
   }
   function tackle(c, d) {
-    c.down = 9; c.stayDown = true; c.vx = d.vx * 0.5 + c.vx * 0.4; c.vy = d.vy * 0.5 + c.vy * 0.4; c.face = ang(c.vx || 0.01, c.vy || 0.01);
+    if (S.dead) return;
+    c.down = 9; c.stayDown = true; c.vx = d.vx * 0.5 + c.vx * 0.4; c.vy = d.vy * 0.5 + c.vy * 0.4;
+    // the fall lands the ball on the engine's spot (bodies slide ~6 frames' worth of velocity)
+    const tk = S.tk;
+    if (tk && tk.endY != null && !tk.td) c.vy = U.clamp(tk.endY - c.y, -1.8, 1.8) / (DT * 0.86 / 0.14);
+    c.face = ang(c.vx || 0.01, c.vy || 0.01);
     d.down = 9; d.stayDown = true; d.vx = c.vx; d.vy = c.vy; d.face = c.face;
     shake = Math.max(shake, 0.5);
     burst(c.x, c.y, 'rgba(226,232,240,.9)', 14);
@@ -428,10 +440,13 @@ const Live = (() => {
     const dir = plan.dir || 1;
     plan.queue = (plan.attempts || []).filter(x => x.a).map(x => ({ a: x.a, at: x.at, win: x.win }));
     if (plan.tackler && !plan.td) plan.queue.push({ a: plan.tackler, at: plan.endY, win: false, final: true });
-    plan.gate = q => (S.carrier.y - q.at) * dir >= -0.9;
+    // the final tackle can only land right at the engine's spot
+    plan.gate = q => (S.carrier.y - q.at) * dir >= (q.final ? -0.35 : -0.9);
     S.tk = plan;
     const scripted = new Set(plan.queue.map(q => q.a));
     carrier.brain = a => {
+      // a broken-tackle attempt that never reached him counts as beaten
+      while (plan.queue[0] && !plan.queue[0].final && (a.y - plan.queue[0].at) * dir > 1.2) plan.queue.shift();
       const q = plan.queue[0];
       const aheadY = plan.td ? plan.endY : a.y + dir * 9;
       const tx = clampX(a.x + (plan.endX - a.x) * 0.3);
@@ -439,12 +454,25 @@ const Live = (() => {
       // weave around defenders who aren't the one making this play
       avoid(a, 1.7, 2.0, b => b.side !== a.side && !b.eng && (!q || b !== q.a));
       if (plan.td && (a.y - plan.goal) * dir > 0.5 && !S.dead) return touchdownFx(a);
+      if (plan.td || S.dead || (q && !q.final)) return;
+      // closing on the spot: shorten the stride and lower the shoulder so contact happens there
+      const left = (plan.endY - a.y) * dir;
+      if (left < 2.4) {
+        const f = U.clamp(left / 2.4, 0, 1);
+        a.wx *= 0.4 + 0.6 * f;
+        a.wy = dir > 0 ? Math.min(a.wy, a.vmax * (0.08 + 0.9 * f)) : Math.max(a.wy, -a.vmax * (0.08 + 0.9 * f));
+        if (left <= 0) {
+          a.wy = (plan.endY - a.y) * 2;
+          if (q && (q.a.y - a.y) * dir > -0.5) a.wx = U.clamp(q.a.x - a.x, -1, 1) * 2.5;
+          plan.stall = (plan.stall || 0) + DT * (q ? 1 : 2);
+        }
+      }
       // safety net: if the tackler can't physically get there, the nearest defender drags him down
-      if (!plan.td && (a.y - plan.endY) * dir > 3.5 && !S.dead) {
-        let best = null, bd = 6;
+      if ((plan.stall || 0) > 0.9) {
+        let best = null, bd = 7;
         for (const d of S.list) if (d.side !== a.side && d.down <= 0) { const dd = d2(a, d); if (dd < bd) { bd = dd; best = d; } }
         if (best) { if (best.eng) release(best.eng); tackle(a, best); }
-        else if ((a.y - plan.endY) * dir > 6) { a.down = 9; a.stayDown = true; dead(() => pop(a.x, a.y, 'DOWN', '#cbd5e1')); }
+        else if (plan.stall > 1.6) { a.down = 9; a.stayDown = true; dead(() => pop(a.x, a.y, 'DOWN', '#cbd5e1')); }
       }
     };
     for (const q of plan.queue) {
@@ -602,13 +630,23 @@ const Live = (() => {
         const tacklerA = det.tackler ? A('d' + det.tackler) : null;
         const tfl = lv.length && !lv[0].win && lv[0].y < 0;
         S.fumble = !!det.fumble;
-        if (tfl && tacklerA) {
-          if (tacklerA.eng) release(tacklerA.eng, [0, -1]);
-          return runPlan(car, { attempts: [], tackler: tacklerA, endY: L0 + det.yards, endX: car.x, td: false, goal: 100, dir: 1 });
+        const wide = det.side !== 'M', sgn = det.side === 'L' ? -1 : 1;
+        if (tfl && tacklerA && tacklerA.eng) release(tacklerA.eng, [0, -1]);
+        if (tfl && tacklerA && !wide) return runPlan(car, { attempts: [], tackler: tacklerA, endY: L0 + det.yards, endX: car.x, td: false, goal: 100, dir: 1 });
+        const attempts = tfl ? [] : lv.filter(l => l.win).map(l => ({ a: A('d' + l.d), at: L0 + l.y, win: true }));
+        const plan = { attempts, tackler: tacklerA, endY, endX: tfl ? clampX(gapX + sgn) : endX, td: det.td, goal: 100, dir: 1 };
+        if (!wide) {
+          car.brain = a => seek(a, gapX, L0 - 0.3, 1, 0.5);
+          at(S.t + 0.45, () => runPlan(car, plan));
+        } else {
+          // stretch: string it out laterally behind the line, turn upfield only once he's outside the tackle
+          // (a stuffed stretch gets run down near the edge, still behind the line)
+          const t0 = pt(), sy = Math.min(L0 - 1.8, endY + 0.3);
+          car.brain = a => {
+            seek(a, clampX(gapX + sgn * 2.5), sy, 1, 0.25);
+            if ((a.x - gapX) * sgn > (tfl ? -3 : -0.8) || pt() - t0 > 1.8) runPlan(car, plan);
+          };
         }
-        const attempts = lv.filter(l => l.win).map(l => ({ a: A('d' + l.d), at: L0 + l.y, win: true }));
-        car.brain = a => seek(a, gapX, L0 - 0.3, 1, 0.5);
-        at(S.t + (det.side === 'M' ? 0.45 : 0.85), () => runPlan(car, { attempts, tackler: tacklerA, endY, endX, td: det.td, goal: 100, dir: 1 }));
       }
       // blocking at the point of attack
       const used = new Set();
@@ -988,6 +1026,7 @@ const Live = (() => {
     const attach = () => {
       if (!S) return onDone && onDone();
       S.onDone = onDone;
+      S.stkShow = (det.stkShow || []).slice();
       const sc = S;
       S.watchdog = setTimeout(() => { if (S === sc && S.onDone) { const cb = S.onDone; S.onDone = null; cb(); } }, 40000 / Math.max(1, speed));
     };
@@ -1359,6 +1398,7 @@ const Live = (() => {
     if (wxp.bolt > 0) { ctx.fillStyle = `rgba(235,240,255,${Math.min(0.75, wxp.bolt * 0.75)})`; ctx.fillRect(0, 0, W, H); }
   }
 
+  const topTier = pid => { const p = pid != null ? G.players[pid] : null; return p && p.stk && p.stk.length ? Math.max(...p.stk.map(s => s.tier)) : -1; };
   function drawPlayer(a) {
     const x = SX(a.x), y = SY(a.y);
     if (x < -20 || x > W + 20 || y < -20 || y > H + 20) return;
@@ -1400,6 +1440,8 @@ const Live = (() => {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(a.num, x, y + 0.5);
     }
+    const tt = topTier(a.pid);
+    if (tt >= 2) { ctx.fillStyle = DATA.STICKER_TIERS[tt].color; ctx.beginPath(); ctx.arc(x + r * 0.78, y - r * 0.78, Math.max(2.4, r * 0.3), 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1; ctx.stroke(); }
     if (a.pose === 'kneel') { ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke(); }
   }
   function drawBall(p) {
@@ -1423,11 +1465,12 @@ const Live = (() => {
     const fs = p.big ? 17 : 12;
     ctx.font = `700 ${fs}px Oswald, Impact, sans-serif`;
     const w = ctx.measureText(p.text).width + fs * 0.9, h = fs * 1.55;
+    const xc = U.clamp(x, w / 2 + 4, W - w / 2 - 4);
     ctx.fillStyle = 'rgba(8,12,20,.85)';
-    roundRect(x - w / 2, y - h / 2, w, h, h / 2.4); ctx.fill();
+    roundRect(xc - w / 2, y - h / 2, w, h, h / 2.4); ctx.fill();
     ctx.fillStyle = p.color || '#fff';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(p.text, x, y + 0.5);
+    ctx.fillText(p.text, xc, y + 0.5);
     ctx.globalAlpha = 1;
   }
   function drawFlash() {

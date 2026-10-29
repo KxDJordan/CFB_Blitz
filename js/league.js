@@ -53,6 +53,7 @@ const L = (() => {
     p.pot = extra.pot ? Math.max(p.ovr + 2, extra.pot) : U.clamp(Math.round(p.ovr + U.rand(3, 20) - cls * 4), p.ovr, 99);
     if (!p.stars) p.stars = starsFor(p.ovr - cls * 3);
     if (extra.walkOn) p.walkOn = true;
+    rollStickers(p);
     G.players[id] = p;
     if (t) t.roster.push(id);
     return p;
@@ -68,6 +69,55 @@ const L = (() => {
     if (t) t.roster = t.roster.filter(id => id !== p.id);
     delete G.players[p.id];
   }
+  // ── HELMET STICKERS ──
+  // Talent score blends potential, current rating and recruiting stars.
+  const talent = p => 0.6 * (p.pot - 60) / 40 + 0.4 * (p.ovr - 50) / 45 + (p.cls === 0 && p.stars ? (p.stars - 3) * 0.06 : 0);
+  function tierRoll(sc) {
+    const r = sc + U.gauss(0, 0.17);
+    if (r > 0.9 && sc > 0.68) return 3;
+    if (r > 0.72) return 2;
+    if (r > 0.45) return 1;
+    return 0;
+  }
+  function rollStickers(p) {
+    const pool = DATA.stickersFor(p.pos);
+    const sc = U.clamp(talent(p) + U.gauss(0, 0.08), 0, 1.15);
+    let n = Math.round(U.clamp(sc * 4.4 + U.gauss(0, 0.6) - 0.9, 0, 4));
+    if (p.walkOn) n = Math.min(n, U.chance(0.35) ? 1 : 0);
+    p.stk = U.shuffle(pool.slice()).slice(0, n).map(id => ({ id, tier: p.walkOn ? 0 : tierRoll(sc) }));
+  }
+  // Upgrade an existing sticker or earn a new one. Returns the change, or null.
+  function growSticker(p, maxTier = 3) {
+    p.stk = p.stk || [];
+    const pool = DATA.stickersFor(p.pos).filter(id => !p.stk.some(x => x.id === id));
+    const upg = p.stk.filter(x => x.tier < Math.min(maxTier, p.pot >= 88 ? 3 : 2)).sort((a, b) => a.tier - b.tier);
+    if (pool.length && (p.stk.length < 2 || (p.stk.length < 4 && U.chance(0.4)) || !upg.length)) {
+      if (p.stk.length >= 4) return null;
+      const id = U.pick(pool);
+      p.stk.push({ id, tier: 0 });
+      return { id, tier: 0, kind: 'new' };
+    }
+    if (!upg.length) return null;
+    const x = U.chance(0.6) ? upg[0] : U.pick(upg);
+    x.tier++;
+    return { id: x.id, tier: x.tier, kind: 'up' };
+  }
+  // A big season earns stickers, college-helmet style.
+  const MILESTONES = {
+    QB: s => s.py >= 3000 || s.ptd >= 25, RB: s => s.ry >= 1000 || s.rtd >= 12,
+    WR: s => s.rcy >= 900 || s.rctd >= 8, TE: s => s.rcy >= 600 || s.rctd >= 6,
+    OL: (s, p, t) => p.starts >= 10 && t.rec.w >= 8, DL: s => s.sk >= 7 || s.tk >= 55,
+    LB: s => s.tk >= 80 || s.sk >= 5, CB: s => s.int >= 4 || s.tk >= 55, S: s => s.int >= 4 || s.tk >= 70,
+    K: s => s.fga >= 10 && s.fgm / s.fga >= 0.85,
+  };
+  function earnStickers(p, t, ovrJump) {
+    const out = [];
+    const hit = MILESTONES[p.pos] && MILESTONES[p.pos](p.st, p, t);
+    if (hit && U.chance(U.clamp(0.55 + (p.pot - 70) * 0.012, 0.3, 0.9))) { const c = growSticker(p); if (c) out.push(c); }
+    if (ovrJump >= 6 && U.chance(0.3)) { const c = growSticker(p, 2); if (c) out.push(c); }
+    return out;
+  }
+
   function posCounts(t) {
     const c = {};
     for (const p of roster(t)) c[p.pos] = (c[p.pos] || 0) + 1;
@@ -191,6 +241,7 @@ const L = (() => {
       const cap = STAR_OVR[stars][1] + 1;
       while (p.ovr > cap) { for (const a of DATA.ATTRS) p.attrs[a]--; p.ovr = calcOvr(p); }
       p.pot = Math.max(p.pot, p.ovr + 2);
+      rollStickers(p);
       ids.push(p.id);
     }
     return ids.sort((a, b) => prospectValue(G.players[b]) - prospectValue(G.players[a]));
@@ -301,9 +352,10 @@ const L = (() => {
         if (d) { p.attrs[a] = Math.min(99, p.attrs[a] + d); deltas[a] = d; }
       });
       p.ovr = calcOvr(p);
-      let injured = 0;
+      let injured = 0, stkUp = null;
+      if (isCamp && U.chance(0.07 * I.mult * U.clamp((p.pot - 60) / 25, 0.4, 1.4))) stkUp = growSticker(p, 2);
       if (isCamp && U.chance(I.inj)) { injured = U.ri(1, 3); p.inj = Math.max(p.inj, injured); }
-      res.push({ pid: p.id, before, after: p.ovr, deltas, injured });
+      res.push({ pid: p.id, before, after: p.ovr, deltas, injured, stkUp });
     }
     return res.sort((a, b) => (b.after - b.before) - (a.after - a.before) || b.after - a.after);
   }
@@ -539,7 +591,7 @@ const L = (() => {
     return addOvr(p, g);
   }
   function startOffseason() {
-    const departed = [], declared = [], risers = [], leagueDeclared = [];
+    const departed = [], declared = [], risers = [], leagueDeclared = [], stickers = [];
     for (const t of G.teams) {
       for (const p of roster(t)) {
         const sum = { name: `${p.first} ${p.last}`, pos: p.pos, ovr: p.ovr, cls: p.cls, teamId: t.id, line: seasonLine(p), num: p.num };
@@ -551,6 +603,7 @@ const L = (() => {
         }
         for (const k of STAT_KEYS.concat('gp')) p.car[k] += p.st[k];
         const d = progress(p);
+        for (const c of earnStickers(p, t, d)) stickers.push({ ...c, pid: p.id, name: `${p.first} ${p.last}`, pos: p.pos, teamId: t.id });
         p.cls++; p.st = blankStats(); p.starts = 0; p.inj = 0;
         if (t.user && d > 0) risers.push({ pid: p.id, d });
       }
@@ -558,7 +611,7 @@ const L = (() => {
       if (h) t.prestige = U.clamp(t.prestige * 0.7 + ((G.teams.length + 1 - h.rank) / G.teams.length) * 5 * 0.3 + (h.champ ? 0.4 : 0), 1, 5);
     }
     G.year++; G.season++;
-    G.off = { departed, declared, risers: risers.sort((a, b) => b.d - a.d).slice(0, 8), leagueDeclared: leagueDeclared.sort((a, b) => b.ovr - a.ovr) };
+    G.off = { stickers, departed, declared, risers: risers.sort((a, b) => b.d - a.d).slice(0, 8), leagueDeclared: leagueDeclared.sort((a, b) => b.ovr - a.ovr) };
     G.teams.forEach(rebuildDepth);
     Forum.offseason();
     G.phase = 'graduation';
@@ -599,6 +652,7 @@ const L = (() => {
       const s = localStorage.getItem(SAVE_KEY);
       if (!s) return false;
       G = JSON.parse(s);
+      for (const p of Object.values(G.players)) if (!p.stk) rollStickers(p);
       return true;
     } catch (e) { return false; }
   }
@@ -606,7 +660,7 @@ const L = (() => {
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } G = null; }
 
   return {
-    weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr,
+    rollStickers, growSticker, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr,
     calcOvr, posCounts, rebuildDepth, depthHealthy, moveDepth, setAutoDepth, isStarter,
     units, power, powerFromUnits, offRating, defRating, ratings, groupAvg, needs,
     newCareer, draftCur, draftPick, draftAI, bestPickFor, finishDraft, prospectValue,
