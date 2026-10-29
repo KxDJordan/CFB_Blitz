@@ -72,8 +72,10 @@ svg { display: block; }
   body { overflow: hidden; background: var(--bg); }
   #stage { min-height: 0; }
   #app { height: 100%; max-width: none; }
-  /* home-screen app: no toolbars, and it starts below the opaque status bar, so the viewport is exactly the space to fill */
-  html.standalone body, html.standalone #stage { height: 100%; }
+  /* home-screen app: iOS reports a viewport short of the screen by the status bar and clips fixed elements to it,
+     but still paints normal page content all the way down, so here the app sits in normal flow at the full
+     screen height (--app-h) instead of being pinned */
+  html.standalone, html.standalone body, html.standalone #stage { position: relative; height: var(--app-h, 100lvh); }
 }
 @media (min-width: 620px) {
   #stage { align-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 14%, var(--stage)), var(--stage) 70%); }
