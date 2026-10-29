@@ -230,7 +230,7 @@ const Live = (() => {
         const age = S.t - e.t0, F = S.fp, c = S.carrier;
         let lam = e.mode === 'pass' ? 0.1 * Math.exp(-e.m / 13) * (1 + age * 1.2) : 0.2 * Math.exp(-e.m / 18) * (1 + age * 0.35);
         if (e.mode !== 'pass' && c && F && c.side === A.side && (c.y - D.y) * F.cdir > 1.5) lam *= 2.5; // he's past — fight off to chase
-        if (e.mode === 'pass' && F && F.mode !== 'pass') lam *= 4;
+        if (e.mode === 'pass' && F && F.mode !== 'pass' && !(F.draw && F.mode === 'mesh')) lam *= 4;
         if (Math.random() < lam * DT) {
           const side = Math.sign(D.x - A.x) || (Math.random() < 0.5 ? -1 : 1);
           release(e, [side, 0.4 * (S.dirUp || 1) * -1]);
@@ -343,7 +343,7 @@ const Live = (() => {
           // the runner squeezes past his own men
           if (o.side === c.side) continue;
           // anyone who gets a hand on him tries to bring him down
-          if (S.free && tryTackle(c, o, o.eng ? -1.2 : 0)) return;
+          if (S.free && tryTackle(c, o, o.eng ? -2.4 : 0)) return;
           if (o.eng) continue;
         }
         const ma = a.mass * (a.eng ? 1.6 : 1), mb = b.mass * (b.eng ? 1.6 : 1);
@@ -548,7 +548,7 @@ const Live = (() => {
         }
       }
       let s = uy * dir * a.vmax * tC + (tC >= 2.2 ? 2.5 : 0) - Math.abs(th - prev) * 1.5;
-      if (aim != null) { let da = th - aim; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; s -= Math.abs(da) * 3.2; }
+      if (aim != null) { let da = th - aim; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; s -= Math.abs(da) * (F.aimW ?? 3.2); }
       if (s > bs) { bs = s; best = th; }
     }
     return best;
@@ -614,7 +614,7 @@ const Live = (() => {
       const F = S.fp, c = S.carrier;
       if ((a.blockCD || 0) > S.t) { if (c && mode !== 'pass') seek(a, a.x, a.y + F.cdir * 0.5, 0.4); return; }
       let t = a.blockT;
-      if (!t || t.down > 0 || (t.eng && t.eng.a !== a) || d2(a, t) > (F.kind === 'ret' ? 30 : 8) || (mode === 'pass' && !t.rushing)) a.blockT = t = pickBlock(a, mode);
+      if (!t || t.down > 0 || (t.eng && t.eng.a !== a) || d2(a, t) > (F.kind === 'ret' ? 30 : F.draw ? 12 : 8) || (mode === 'pass' && !t.rushing)) a.blockT = t = pickBlock(a, mode);
       if (!t) {
         if (mode === 'pass' && home) { seek(a, home[0], home[1], 0.7, 0.5); a.faceT = Math.PI / 2; }
         else if (c && c.side === a.side) seek(a, clampX(c.x + (a.x - c.x) * 0.4), c.y + F.cdir * 3.5, 0.85, 0.6);
@@ -877,12 +877,17 @@ const Live = (() => {
         return;
       }
     }
+    // a run to the perimeter: the playside end keeps contain — he sets the edge outside the ball instead of chasing the quarterback
+    if (F.kind === 'run' && a.pos === 'DL' && j.type === 'rush' && F.hole != null && Math.abs(F.hole - CX) > 5 && S.t - S.snapT < 1.1 && (!c || c === F.qb)) {
+      const sd = Math.sign(F.hole - CX) || 1;
+      if ((a.x - CX) * sd > 1.5) { a.rushing = false; seek(a, clampX(F.hole + sd * 0.8), F.L0 - 0.6, 0.9, 0.3); return; }
+    }
     // the play is a run (or the QB took off): pursue once he's read it
-    if (c && (c !== F.qb || F.mode === 'scramble') && S.t >= a.readT) return pursue(a);
+    if (c && (c !== F.qb || F.mode === 'scramble' || F.mode === 'run') && S.t >= a.readT) return pursue(a);
     // read step: hold and shuffle downhill until he's read it (on a run, until he's keyed run)
     if (a.readStep) {
       const t = S.t - S.snapT;
-      if (t < a.readStep || (F.kind === 'run' && S.t < a.readT && t < 1.0)) { seek(a, a.stepPt[0], a.stepPt[1], 0.3, 0.5); a.faceT = -Math.PI / 2; return; }
+      if (t < a.readStep || (F.kind === 'run' && !F.draw && S.t < a.readT && t < 1.0)) { seek(a, a.stepPt[0], a.stepPt[1], 0.3, 0.5); a.faceT = -Math.PI / 2; return; }
     }
     // read run before the handoff: flow downhill to the hole, deep men come up under control
     if (F.kind === 'run' && S.t >= a.readT && j.type !== 'rush' && j.type !== 'blitz') {
@@ -891,7 +896,7 @@ const Live = (() => {
       // a run to the perimeter is obvious early: the playside underneath zone player sets the edge,
       // and the rest of the second level scrapes hard to beat it there
       const sd = Math.sign(hx - CX) || 1;
-      if (wide && j.type === 'zone' && j.kd !== 'deep' && (a.x - CX) * sd > 2) return seek(a, clampX(hx + sd * 1.2), F.L0 + 2.2, 1, 0.4);
+      if (wide && ((j.type === 'zone' && j.kd !== 'deep') || j.type === 'box') && (a.x - CX) * sd > 2) return seek(a, clampX(hx + sd * 1.2), F.L0 + 2.2, 1, 0.4);
       return seek(a, clampX(hx + (a.x - hx) * (deep ? 0.6 : wide ? 0.4 : 0.55)), Math.max(F.L0 + (deep ? 6 : 3.6), Math.min(a.y, F.L0 + 4.8)), wide ? 0.85 : 0.55, 0.6);
     }
     // play-action: the second level steps up to the fake
@@ -934,21 +939,29 @@ const Live = (() => {
     a.faceT = ang(r.x - a.x, r.y - a.y);
   }
   function zoneBrain(a, j) {
-    const F = S.fp, L = j.L;
+    const F = S.fp, L = j.L, t = S.t - S.snapT;
+    // underneath defenders drop to their landmark before they play routes, and never jump a back still in the backfield
+    const dropping = j.kd !== 'deep' && t < (j.kd === 'hook' ? 0.75 : 0.6) - (a.R.awr - 70) * 0.004;
     let thr = null, ts = -1e9, deepY = -99;
     for (const r of F.routers) {
       if (r.blocking) continue;
       const ry = r.y - F.L0, dx = Math.abs(r.x - L[0]);
       let s;
       if (j.kd === 'deep') { if (dx > j.w + 2) continue; const [, hy0] = hist(r, j.tau); deepY = Math.max(deepY, hy0 + r.vy * 0.4); if (ry < 7 || dx > j.w) continue; s = ry - dx * 0.2; }
-      else { const dd = hyp(r.x - L[0], r.y - L[1]); if (dd > 8.5 || ry > 16 || ry < -1) continue; s = -dd; }
+      else {
+        const dd = hyp(r.x - L[0], r.y - L[1]);
+        if (dd > 8.5 || ry > 16 || ry < (t < 1.2 ? 0.5 : -1)) continue;
+        if (r.y > Math.max(a.y + 2.5, L[1] + 5)) continue; // he's run through the zone: the deep defenders have him
+        s = -dd;
+      }
       if (s > ts) { ts = s; thr = r; }
     }
     let tx = L[0], ty = L[1];
     if (thr) {
       const [hx, hy] = hist(thr, j.tau);
       if (j.kd === 'deep') { tx = hx * 0.75 + L[0] * 0.25; ty = Math.max(hy + 2.2, deepY + 2.5, F.L0 + 8); }
-      else { tx = hx * 0.7 + L[0] * 0.3; ty = U.clamp(hy - 0.4, F.L0 + 1.5, L[1] + 3.5); }
+      else if (dropping) tx = hx * 0.3 + L[0] * 0.7;
+      else { tx = hx * 0.7 + L[0] * 0.3; ty = U.clamp(hy - 0.4, F.L0 + 1.5, L[1] + 3); }
     }
     if (j.kd === 'deep' && !thr) ty = Math.max(ty, deepY + 2.5);
     seek(a, clampX(tx), Math.min(ty, 109.3), S.t - S.snapT < 0.5 ? 0.85 : 1, 0.4);
@@ -1251,7 +1264,8 @@ const Live = (() => {
     const F = newFP(det, play, dplay), L0 = det.los, A = k => S.ag[k];
     const qb = A('oQB'), c = A('oC'), run = play.run, sc = run.scheme;
     const holeX = CX + Playbook.hole(play, det.flip), side = Math.sign(holeX - CX) || 1;
-    F.hole = holeX; F.scheme = sc;
+    F.hole = holeX; F.scheme = sc; F.draw = sc === 'draw';
+    F.aimW = sc === 'draw' ? 1.0 : sc === 'zone' ? 2.0 : sc === 'toss' || sc === 'stretch' || sc === 'sneak' ? 3.2 : 2.5; // read plays let the back find the crease; gap plays hit the called hole
     const under = qb.y > L0 - 2;
     const car = run.carrier === 'QB' ? qb : A('oRB');
     if (under) holdBall(qb); else throwBall(c, [qb.x, qb.y], 0.25, 0.25, () => holdBall(qb), 0.4, 1.1);
@@ -1268,6 +1282,31 @@ const Live = (() => {
       if (runner !== qb) holdBall(runner);
       F.aim = [holeX, aimY]; F.aimUntil = S.t + 0.5;
       runner.brain = runnerBrain; runner.lane = null;
+      if (sc === 'draw') {
+        // the back reads the rush: he hits the widest crease the inside rushers have left
+        const xs = S.list.filter(d => d.side !== S.o && d.pos === 'DL' && Math.abs(d.x - CX) < 6).map(d => d.x).concat([CX - 5, CX + 5]).sort((p, q) => p - q);
+        let gx = holeX, gw = 0;
+        for (let i = 1; i < xs.length; i++) if (xs[i] - xs[i - 1] > gw) { gw = xs[i] - xs[i - 1]; gx = (xs[i] + xs[i - 1]) / 2; }
+        F.aim = [gx, aimY]; F.hole = gx;
+        // the pass sets become run blocks: ride each rusher past the hole, away from where the back is going
+        for (const ol of order) {
+          const e = ol.eng;
+          if (e && e.a === ol && e.mode === 'pass') {
+            // he's already up the field: the blocker uses that momentum to turn him and wash him wide
+            e.mode = 'run'; e.t0 = S.t;
+            e.m = e.sd = ol.R.rblk - e.d.R.rdef + 4 + U.gauss(0, 5);
+            e.dir = [(Math.sign(e.d.x - gx) || 1) * 1.0, -0.2]; e.rate = 1.1;
+          }
+          setBlocker(ol, 'run');
+        }
+        // whoever is uncovered climbs to the linebackers, who dropped into coverage and now come downhill
+        for (const ol of order) {
+          if (ol.eng || S.list.some(d => d.side !== S.o && d.pos === 'DL' && !d.eng && d2(ol, d) < 3)) continue;
+          let best = null, bd = 12;
+          for (const d of S.list) if (d.side !== S.o && d.pos === 'LB' && !d.eng && !order.some(o => o.blockT === d)) { const dd = d2(ol, d); if (dd < bd) { bd = dd; best = d; } }
+          ol.blockT = best;
+        }
+      }
       setReads(0.05);
       if (runner !== qb) qb.brain = b => seek(b, clampX(CX - side * 5), L0 - 6.5, 0.55); // carry out the fake
     };
@@ -1286,7 +1325,7 @@ const Live = (() => {
         const [tx, ty] = track[Math.min(ti, track.length - 1)];
         if (ti < track.length - 1 && hyp(tx - b.x, ty - b.y) < 0.8) ti++;
         // the back takes the ball moving: in the last beat before the exchange he runs through the mesh, downhill
-        if (sc !== 'toss' && sc !== 'draw' && ti === track.length - 1 && S.t - S.snapT >= handT - 0.25 && S.carrier === qb) seek(b, tx + (holeX - tx) * 0.3, ty + 1.6, 0.95, 0.05);
+        if (sc !== 'toss' && ti === track.length - 1 && S.t - S.snapT >= handT - (sc === 'draw' ? 0.1 : 0.25) && S.carrier === qb) seek(b, tx + (holeX - tx) * 0.3, ty + 1.6, 0.95, 0.05);
         else seek(b, tx, ty, 0.95, 0.3);
         if (sc !== 'toss' && S.carrier === qb && d2(b, qb) < 1.25 && S.t - S.snapT >= handT) startRun(b);
       };
@@ -1313,6 +1352,12 @@ const Live = (() => {
       }
       if (best && bs >= 5.5) best = null;
       if (best) taken.add(best);
+      if (sc === 'draw') {
+        // draw: the line shows pass, inviting the rush upfield; the blocks turn into run blocks at the handoff
+        setBlocker(ol, 'pass', [ol.mark[0] + (ol.mark[0] - CX) * 0.12, L0 - 0.8]);
+        ol.blocking = true;
+        continue;
+      }
       setBlocker(ol, 'run');
       ol.blockT = best;
     }
@@ -1352,7 +1397,7 @@ const Live = (() => {
       };
     });
     assignDefense(dplay, F);
-    setReads(0.3);
+    setReads(sc === 'draw' ? 0.7 : 0.3); // a draw sells pass: the defense reads it late
     S.focus = () => { const p = ballPos(); return [p.x, p.y + 4]; };
     S.onTackle = () => finalePop();
   }
@@ -1881,10 +1926,11 @@ const Live = (() => {
     ctx.strokeStyle = `rgba(255,255,255,${la * 0.8})`; ctx.lineWidth = 1.2;
     for (let y = Math.max(1, Math.ceil(yBot)); y < Math.min(100, yTop); y++) {
       if (y % 5 === 0) continue;
-      for (const hx of [20, FW - 20]) { ctx.beginPath(); ctx.moveTo(SX(hx - 0.5), SY(y)); ctx.lineTo(SX(hx + 0.5), SY(y)); ctx.stroke(); }
+      // NFL hashes: 18 ft 6 in apart, in line with the goalposts
+      for (const hx of [CX - 3.08, CX + 3.08]) { ctx.beginPath(); ctx.moveTo(SX(hx - 0.5), SY(y)); ctx.lineTo(SX(hx + 0.5), SY(y)); ctx.stroke(); }
       for (const hx of [0.5, FW - 0.5]) { ctx.beginPath(); ctx.moveTo(SX(hx - 0.4), SY(y)); ctx.lineTo(SX(hx + 0.4), SY(y)); ctx.stroke(); }
     }
-    for (const py of [3, 97]) if (py > yBot && py < yTop) { ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(SX(CX - 0.5), SY(py)); ctx.lineTo(SX(CX + 0.5), SY(py)); ctx.stroke(); }
+    for (const py of [2, 98]) if (py > yBot && py < yTop) { ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(SX(CX - 0.5), SY(py)); ctx.lineTo(SX(CX + 0.5), SY(py)); ctx.stroke(); }
     // numbers with direction arrows
     ctx.fillStyle = `rgba(255,255,255,${la * 0.9})`;
     ctx.font = `700 ${Math.round(sc * 2.2)}px Oswald, Impact, sans-serif`;

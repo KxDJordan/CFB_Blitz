@@ -3,16 +3,17 @@
 // Every week the biggest stories become threads with fan replies.
 
 const Forum = (() => {
-  const ADJ = ['Gridiron', 'Tailgate', 'Redzone', 'Blitz', 'Endzone', 'Hashmark', 'Sideline', 'Saturday', 'Pigskin', 'Audible', 'Shotgun', 'Pistol', 'Option', 'Spread', 'Wildcat', 'HurryUp', 'TwoMinute', 'Goalline', 'Playaction', 'Nickel'];
-  const NOUN = ['Guru', 'King', 'Prophet', 'Junkie', 'Nerd', 'Dad', 'Legend', 'Truther', 'Scout', 'Hawk', 'Wizard', 'Baron', 'Fanatic', 'Oracle', 'Grinder', 'Enjoyer', 'Analyst', 'Historian'];
+  const SEA = DATA.SEASON;
+  const ADJ = ['Gridiron', 'Tailgate', 'Redzone', 'Blitz', 'Endzone', 'Hashmark', 'Sideline', 'Sunday', 'Pigskin', 'Audible', 'Shotgun', 'Pistol', 'Primetime', 'Spread', 'Wildcat', 'HurryUp', 'TwoMinute', 'Goalline', 'Playaction', 'Nickel'];
+  const NOUN = ['Guru', 'King', 'Prophet', 'Junkie', 'Nerd', 'Dad', 'Legend', 'Truther', 'Scout', 'Hawk', 'Wizard', 'Baron', 'Fanatic', 'Oracle', 'Grinder', 'Enjoyer', 'Analyst', 'Historian', 'CapGuy', 'GM'];
   const MOD = { n: 'BlitzBoard_Mod', f: null, role: 'mod' };
-  const INSIDERS = ['CFBInsiderPete', 'TheFilmRoomFred', 'SidelineSource', 'RecruitingRay'];
+  const INSIDERS = ['ProInsiderPete', 'TheFilmRoomFred', 'SidelineSource', 'DraftDayRay', 'FrontOfficeFiles'];
   const insider = () => ({ n: U.pick(INSIDERS), f: null, role: 'insider' });
 
   function handle(t) {
     if (t && Math.random() < 0.55) {
-      const m = t.mascot.replace(/\s/g, ''), n = t.name.replace(/\s/g, '');
-      return U.pick([`${m}Til${U.pick(['IDie', 'TheEnd', 'Death'])}`, `${t.abbr}_${U.pick(['Faithful', 'Diehard', 'Alum', 'Nation', 'Truther', 'Dad'])}${U.ri(1, 99)}`, `${n}${U.pick(['Fan', 'Hive', 'Ultra', 'Mom', 'Grad'])}${U.ri(1, 999)}`, `Real${m}Fan`, `${U.pick(['Old', 'Big', 'Lil', 'Proud', 'Salty'])}${m.replace(/s$/, '')}`]);
+      const m = t.mascot.replace(/\s/g, ''), n = t.name.replace(/[\s.]/g, '');
+      return U.pick([`${m}Til${U.pick(['IDie', 'TheEnd', 'Death'])}`, `${t.abbr}_${U.pick(['Faithful', 'Diehard', 'SeasonTix', 'Nation', 'Truther', 'Dad'])}${U.ri(1, 99)}`, `${n}${U.pick(['Fan', 'Hive', 'Ultra', 'Mom', 'Tailgater'])}${U.ri(1, 999)}`, `Real${m}Fan`, `${U.pick(['Old', 'Big', 'Lil', 'Proud', 'Salty'])}${m.replace(/s$/, '')}`]);
     }
     return `${U.pick(ADJ)}${U.pick(NOUN)}${U.chance(0.6) ? U.ri(1, 99) : ''}`;
   }
@@ -27,26 +28,29 @@ const Forum = (() => {
     for (let i = 0; i < n; i++) { out.push(m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`); m += U.ri(5, 90); }
     return out.reverse();
   };
-  const tn = t => t.name;
   const rk = (id, r) => (r ? `#${r} ` : '');
 
   // ── reply banks ──
   const R = {
-    winFan: ['WE ARE SO BACK. {WM} football is a lifestyle.', 'Told y\'all all week. {S}. Never in doubt.', 'That second half was a clinic. Coaching staff deserves a raise.', 'Somebody check on the {LM} fans, they\'ve gone quiet', 'Defense was flying around today. This team is different.', 'Not our cleanest game but a W is a W.', 'Book the tickets. We are going places this year.', '{P} is HIM. Put some respect on that name.', 'My voice is gone. Worth it.', 'Can we play every week like that please'],
-    loseFan: ['I need a week off from this team.', 'Same old {LM}. Every. Single. Year.', 'That play-calling in the 4th was criminal.', 'Offensive line got bullied all game. Fix it.', 'Don\'t panic. Long season. ...okay maybe panic a little.', 'Refs didn\'t lose us that game but they sure didn\'t help.', 'Turnovers killed us. You can\'t give a good team extra possessions.', 'I\'m turning off the TV and going outside. Goodbye.', 'Recruiting has to get better. We were outmanned.', 'We\'ll be back. This one stings though.'],
-    neutral: ['Watched this one from the couch and it did not disappoint.', 'Neither team looked complete honestly.', 'The talent gap was obvious from the first drive.', 'People are going to overreact to this result. It\'s one game.', 'This conference is wide open this year.', 'Good game, but both secondaries need work.', 'Has anyone noticed the {WM} quietly getting better every week?', 'Big win for {W}. That\'s a résumé builder.', 'Hot take: {L} are still the better team.', 'I had {L} in my pick\'em. Pain.'],
-    upsetW: ['HAHAHA WHO WAS RANKED AGAIN??', 'Respect the {WM}. Respect us.', 'Storm the field, we earned it.', 'They doubted us all week. Look at the scoreboard.', 'Tell the pollsters to wake up.'],
+    winFan: ['WE ARE SO BACK. {WM} football is a lifestyle.', 'Told y\'all all week. {S}. Never in doubt.', 'That second half was a clinic. Coaching staff deserves an extension.', 'Somebody check on the {LM} fans, they\'ve gone quiet', 'Defense was flying around today. This team is different.', 'Not our cleanest game but a W is a W.', 'Clear your January calendar. We are going places.', '{P} is HIM. Put some respect on that name.', 'My voice is gone. Worth it.', 'Can we play every week like that please'],
+    loseFan: ['I need a week off from this team.', 'Same old {LM}. Every. Single. Year.', 'That play-calling in the 4th was criminal.', 'Offensive line got bullied all game. Fix it.', 'Don\'t panic. Long season. ...okay maybe panic a little.', 'Refs didn\'t lose us that game but they sure didn\'t help.', 'Turnovers killed us. You can\'t give a good team extra possessions.', 'I\'m turning off the TV and going outside. Goodbye.', 'Front office needs to make a trade. We were outmanned.', 'We\'ll be back. This one stings though.'],
+    neutral: ['Watched this one from the couch and it did not disappoint.', 'Neither team looked complete honestly.', 'The talent gap was obvious from the first drive.', 'People are going to overreact to this result. It\'s one game.', 'This conference is wide open this year.', 'Good game, but both secondaries need work.', 'Has anyone noticed the {WM} quietly getting better every week?', 'Big win for {W}. That\'s a playoff-caliber win.', 'Hot take: {L} are still the better team.', 'I had {L} in my pick\'em. Pain.'],
+    upsetW: ['HAHAHA WHO WAS IN THE TOP 10 AGAIN??', 'Respect the {WM}. Respect us.', 'Any given Sunday, baby.', 'They doubted us all week. Look at the scoreboard.', 'Tell the power rankings guys to wake up.'],
     upsetL: ['Unacceptable. Losing to {W} is unacceptable.', 'We were looking ahead and it cost us. Classic trap game.', 'Fire everyone. (I\'ll calm down tomorrow.)', 'Overrated and now everybody knows it.', 'That ranking was a lie and we all knew it.'],
-    upsetN: ['This is why you play the games.', 'Called it. Nobody listened. Never do.', 'Saturday chaos, my favorite.', 'Ranked teams on the road in this league just aren\'t safe.', 'Somebody\'s bracket just went up in flames.'],
-    perf: ['That stat line is video game numbers.', 'Somebody get this kid an agent. Oh wait.', '{P} is the best player in the league and it isn\'t close.', 'Defenses gonna have nightmares about #{N}.', 'Put him on the Heisman list right now.', 'I watched every snap. It was even better than the numbers.', 'He\'s been doing this all season and nobody talks about it.', 'Respect from a rival fan. That was special.'],
-    poll: ['{T1} at #1 is correct, fight me.', 'How is {T2} not higher?? Who votes on this?', 'This poll is pure vibes.', 'Top 4 looks right to me.', 'Way too high on the {M3}. They haven\'t played anyone.', 'Ranking committee needs to watch the games.', 'Love seeing new faces in the top 10.'],
-    injury: ['Huge loss. Prayers up for a quick recovery.', 'That changes the whole outlook for the {M}.', 'Next man up. Depth is going to be tested.', 'Season might hinge on how fast he gets back.', 'Brutal timing with the schedule coming up.'],
-    hotseat: ['The administration has to make a move.', 'Give the man one more year. Recruiting is improving.', 'Fans voting with their feet. Stadium was half empty.', 'Coaching isn\'t the problem, the roster is.', 'We\'ve heard "next year" for too long.'],
-    heisman: ['{P} has my vote, not even close.', 'QB bias is real in this race.', 'Don\'t sleep on the defensive guys.', 'Still a lot of football left to play.', 'If {P} keeps this pace it\'s over.'],
+    upsetN: ['This is why you play the games.', 'Called it. Nobody listened. Never do.', 'Sunday chaos, my favorite.', 'Nobody is safe on the road in this league.', 'Somebody\'s survivor pool just went up in flames.'],
+    perf: ['That stat line is video game numbers.', 'Pay the man. Whatever he wants.', '{P} is the best player in the league and it isn\'t close.', 'Defenses gonna have nightmares about #{N}.', 'Put him in the MVP conversation right now.', 'I watched every snap. It was even better than the numbers.', 'He\'s been doing this all season and nobody talks about it.', 'Respect from a rival fan. That was special.'],
+    poll: ['{T1} at #1 is correct, fight me.', 'How is {T2} not higher?? Who makes these?', 'Power rankings are pure vibes.', 'Top 4 looks right to me.', 'Way too high on the {M3}. They haven\'t played anyone.', 'Whoever writes these needs to watch the games.', 'Love seeing new faces in the top 10.'],
+    injury: ['Huge loss. Prayers up for a quick recovery.', 'That changes the whole outlook for the {M}.', 'Next man up. Depth is going to be tested.', 'Season might hinge on how fast he gets back.', 'Brutal timing with the schedule coming up. Make a trade.'],
+    hotseat: ['The owner has to make a move.', 'Give the man one more year. The draft classes are getting better.', 'Fans voting with their feet. Stadium was half empty.', 'Coaching isn\'t the problem, the roster is.', 'We\'ve heard "next year" for too long.'],
+    mvp: ['{P} has my vote, not even close.', 'QB bias is real in this race.', 'Don\'t sleep on the defensive guys.', 'Still a lot of football left to play.', 'If {P} keeps this pace it\'s over.'],
     draft: ['Love this class. Front office cooked.', 'Reaching for need in round 1 is always a mistake.', 'Grades don\'t mean anything until they play.', 'The {M} got a steal and nobody\'s talking about it.', 'Ask me in three years.', 'That run on linemen in round 2 was wild.'],
-    camp: ['Camp reports are always glowing. Show me on Saturday.', 'Love the commitment to the trenches.', 'Intense camp = injuries. Be careful.', 'This is the kind of offseason that wins conferences.', 'Heard the scrimmages were chippy. Good.'],
+    camp: ['Camp reports are always glowing. Show me on Sunday.', 'Love the commitment to the trenches.', 'Intense camp = injuries. Be careful.', 'This is the kind of offseason that wins divisions.', 'Heard the joint practices were chippy. Good.'],
     champ: ['DYNASTY TALK STARTS NOW.', 'What a run. Congrats to the champs.', 'Best team won. No arguments.', 'I\'ll never forget this season.', 'Already counting down to next year.'],
-    welcome: ['Welcome to the league! Can\'t wait to see what the {UM} bring.', 'New program, new rivalries. Let\'s go.', 'Give them two years and they\'ll be a problem.', 'Love the logo, not gonna lie.', 'Expansion teams usually struggle. Prove me wrong.'],
+    welcome: ['Welcome to the league! Can\'t wait to see what the {UM} bring.', 'New franchise, new rivalries. Let\'s go.', 'Give them two years and they\'ll be a problem.', 'Love the logo, not gonna lie.', 'Expansion teams usually struggle. Prove me wrong.'],
+    tradeWin: ['Front office just won the offseason. LETS GO.', 'Finally a GM who goes and gets guys.', 'That\'s a fleecing. Somebody check on the other side.', 'Instant upgrade. This changes our ceiling.', 'Love it. Win-now move.'],
+    tradeLose: ['Hated that guy leaving, but I get it.', 'We better have a plan for those picks.', 'What did we just do?', 'Selling at the deadline... rebuild confirmed.', 'This trade will age badly. Mark my words.'],
+    tradeN: ['Both sides can talk themselves into this one.', 'Picks are lottery tickets. Proven talent wins.', 'Winner of this trade gets decided in three years.', 'Interesting price. Didn\'t think he\'d go that cheap.', 'Contender move. I respect it.'],
+    retire: ['Hall of Fame career. Thank you for everything.', 'One of the best to ever do it here.', 'Enjoy retirement, legend.', 'Feels like he played forever. End of an era.', 'Never got the ring he deserved.'],
   };
 
   function replies(n, pools, vars) {
@@ -69,6 +73,12 @@ const Forum = (() => {
     }
     return is;
   }
+  // the issue covering "right now": this week's during the season, otherwise the current offseason phase
+  function currentIssue() {
+    if (G.phase === 'season') return issue(`wk-${G.year}-${G.week}`, DATA.WEEK_LABEL(G.week), 'week');
+    if (G.phase === 'camp') return issue(`camp-${G.year}`, `Training Camp ${G.year}`, 'camp');
+    return issue(`off-${G.year}`, `Offseason ${G.year}`, 'offseason');
+  }
   function thread(is, t) {
     const heat = t.heat || 50;
     const th = {
@@ -86,6 +96,7 @@ const Forum = (() => {
   }
   const pname = p => `${p.first} ${p.last}`;
   const scoreStr = r => `${r.ws}-${r.ls}${r.ot ? ` (${r.ot > 1 ? r.ot : ''}OT)` : ''}`;
+  const grade = p => DATA.GRADE[p.stars] || DATA.GRADE[2];
 
   function top10Body(prevPoll) {
     const prev = {};
@@ -96,6 +107,7 @@ const Forum = (() => {
       return `${i + 1}. ${t.name} ${t.mascot} ${L.recStr(t)} ${mv}`;
     }).join('\n');
   }
+  const seedLines = c => G.seeds[c].map((id, i) => { const t = L.team(id); return `${i + 1}. ${t.name} ${t.mascot} (${L.recStr(t)})${i < 2 ? ' — division champs' : ' — wild card'}`; }).join('\n');
 
   // ── weekly news ──
   function weekly(wk, results, pollBefore) {
@@ -103,12 +115,13 @@ const Forum = (() => {
     const is = issue(`wk-${G.year}-${wk}`, label, 'week');
     const u = L.user();
     const uid = u.id;
+    if (!results.length) return;
 
     // megathread
     thread(is, {
       tag: 'MEGATHREAD', pinned: true, a: MOD, heat: 60,
       title: `${label} Scoreboard & Discussion Megathread`,
-      body: `All the finals from ${label}. Keep it civil, keep it fun.\n\n` + results.map(r => `${rk(r.W.id, r.rankBefore[r.W.id])}${r.W.name} ${r.ws}, ${rk(r.Lo.id, r.rankBefore[r.Lo.id])}${r.Lo.name} ${r.ls}${r.ot ? ' (OT)' : ''}`).join('\n'),
+      body: `All the finals from ${label}. Keep it civil, keep it fun.\n\n` + results.map(r => `${r.W.name} ${r.ws}, ${r.Lo.name} ${r.ls}${r.ot ? ' (OT)' : ''}`).join('\n'),
       replies: replies(5, [{ w: 1, lines: R.neutral }], { W: results[0].W.name, L: results[0].Lo.name, WM: results[0].W.mascot, LM: results[0].Lo.mascot }),
     });
 
@@ -127,7 +140,7 @@ const Forum = (() => {
         const body = `FINAL: ${r.W.name} ${r.ws}, ${r.Lo.name} ${r.ls}${r.ot ? ' in overtime' : ''}.\n\nTop performers:\n` +
           r.top.slice(0, 4).map(x => { const p = G.players[x.pid]; return p ? `• ${p.pos} ${pname(p)} (${L.team(p.teamId).abbr}): ${x.line}` : ''; }).join('\n') +
           `\n\nConditions: ${L.weatherLine(L.weather(r.g))}` +
-          `\n\n${u.name} moves to ${L.recStr(u)} on the season.`;
+          (wk <= SEA.REG ? `\n\n${u.name} moves to ${L.recStr(u)} on the season.` : '');
         thread(is, {
           tag: 'GAME THREAD', mine: true, heat: 90, a: fan(u), teams: [r.W.id, r.Lo.id],
           title: won ? `[Post-Game] ${u.name} ${u.mascot} ${verb} ${opp.name}, ${scoreStr(r)}` : `[Post-Game] ${opp.name} ${verb} ${u.name}, ${scoreStr(r)}`,
@@ -136,25 +149,25 @@ const Forum = (() => {
             { ...v, WM: r.W.mascot, LM: r.Lo.mascot }),
         });
       }
-      // upset
+      // upset (by the power rankings)
       if (rL && (!rW || rW > rL + 3)) {
         thread(is, {
           tag: 'UPSET', heat: 95 - rL * 2 + (mine ? 5 : 0), teams: [r.W.id, r.Lo.id], a: fan(r.W),
-          title: !rW ? `UPSET ALERT: Unranked ${r.W.name} stuns #${rL} ${r.Lo.name}, ${scoreStr(r)}` : `#${rW} ${r.W.name} knocks off #${rL} ${r.Lo.name}, ${scoreStr(r)}`,
-          body: `Nobody saw this coming. ${r.W.name} ${r.W.mascot} (${L.recStr(r.W)}) took down ${r.Lo.name} (${L.recStr(r.Lo)}) ${scoreStr(r)}.${sp ? ` ${pname(sp)} led the way with ${star.line}.` : ''}\n\nWhere do the ${r.Lo.mascot} go from here?`,
+          title: !rW ? `UPSET ALERT: ${r.W.name} stun the #${rL} ${r.Lo.name}, ${scoreStr(r)}` : `#${rW} ${r.W.name} knock off #${rL} ${r.Lo.name}, ${scoreStr(r)}`,
+          body: `Nobody saw this coming. The ${r.W.name} ${r.W.mascot} (${L.recStr(r.W)}) took down ${r.Lo.name} (${L.recStr(r.Lo)}) ${scoreStr(r)}.${sp ? ` ${pname(sp)} led the way with ${star.line}.` : ''}\n\nWhere do the ${r.Lo.mascot} go from here?`,
           replies: replies(7, [{ w: 2, team: r.W, lines: R.upsetW }, { w: 2, team: r.Lo, lines: R.upsetL }, { w: 2, lines: R.upsetN }], v),
         });
       } else if (r.ot || (margin <= 3 && r.ws + r.ls >= 55) || (margin <= 3 && rW && rL)) {
         thread(is, {
           tag: 'INSTANT CLASSIC', heat: 70 + (rW && rL ? 10 : 0), teams: [r.W.id, r.Lo.id],
-          title: `INSTANT CLASSIC: ${rk(0, rW)}${r.W.name} outlasts ${rk(0, rL)}${r.Lo.name} ${scoreStr(r)}`,
-          body: `What a game. ${r.ws + r.ls} combined points${r.ot ? `, ${r.ot > 1 ? r.ot + ' overtimes' : 'overtime'}` : ''} and a finish nobody will forget.`,
+          title: `INSTANT CLASSIC: ${r.W.name} outlast ${r.Lo.name} ${scoreStr(r)}`,
+          body: `What a game. ${r.ws + r.ls} combined points${r.ot ? `, ${r.ot > 1 ? r.ot + ' overtime periods' : 'overtime'}` : ''} and a finish nobody will forget.`,
           replies: replies(6, [{ w: 2, team: r.W, lines: R.winFan }, { w: 1, team: r.Lo, lines: R.loseFan }, { w: 2, lines: R.neutral }], v),
         });
       } else if (margin >= 35) {
         thread(is, {
           tag: 'BLOWOUT', heat: 55 + (rW ? 8 : 0), teams: [r.W.id, r.Lo.id],
-          title: `${rk(0, rW)}${r.W.name} hangs ${r.ws} on ${r.Lo.name} in a ${r.ws}-${r.ls} rout`,
+          title: `${r.W.name} hang ${r.ws} on ${r.Lo.name} in a ${r.ws}-${r.ls} rout`,
           body: `Total domination. ${r.W.name} led wire to wire.`,
           replies: replies(5, [{ w: 2, team: r.W, lines: R.winFan }, { w: 1, team: r.Lo, lines: R.loseFan }, { w: 2, lines: R.neutral }], v),
         });
@@ -170,21 +183,23 @@ const Forum = (() => {
       thread(is, {
         tag: 'PERFORMANCE', heat: 72 + (t.user ? 10 : 0), mine: false, teams: [t.id], a: fan(t),
         title: `${p.pos} ${pname(p)} (${t.abbr}) was UNSTOPPABLE: ${x.line}`,
-        body: `${pname(p)} put the ${t.mascot} on his back this week. ${DATA.CLASS_LONG[p.cls]}, #${p.num}, out of ${p.home}.\n\nSeason so far: ${L.seasonLine(p)}.`,
+        body: `${pname(p)} put the ${t.mascot} on his back this week. #${p.num}, ${p.age} years old, ${DATA.expLabel(p).toLowerCase()} in the league out of ${p.college}.\n\nSeason so far: ${L.seasonLine(p)}.`,
         replies: replies(6, [{ w: 2, team: t, lines: R.perf }, { w: 3, lines: R.perf }], { P: pname(p), N: p.num }),
       });
     }
 
-    // poll
-    const newOne = pollBefore[0] !== G.poll[0];
+    // power rankings (regular season only)
     const t1 = L.team(G.poll[0]), t2 = L.team(G.poll[1]), t3 = L.team(G.poll[2]);
-    const uR = L.ranked(uid);
-    thread(is, {
-      tag: 'POLL', heat: newOne ? 85 : 62, a: MOD,
-      title: newOne ? `NEW #1: ${t1.name} takes over the top spot in the BlitzBoard Top 10` : `BlitzBoard Top 10 after ${label}: ${t1.name} stays on top`,
-      body: top10Body(pollBefore) + (uR ? `\n\n${u.name} checks in at #${uR}.` : `\n\n${u.name} is outside the Top 10 this week.`),
-      replies: replies(6, [{ w: 1, lines: R.poll }], { T1: t1.name, T2: t2.name, M3: t3.mascot }),
-    });
+    if (wk <= SEA.REG) {
+      const newOne = pollBefore[0] !== G.poll[0];
+      const uR = L.ranked(uid);
+      thread(is, {
+        tag: 'POWER RANKINGS', heat: newOne ? 85 : 62, a: MOD,
+        title: newOne ? `NEW #1: ${t1.name} take over the top spot in the BlitzBoard Power Rankings` : `BlitzBoard Power Rankings after ${label}: ${t1.name} stay on top`,
+        body: top10Body(pollBefore) + (uR ? `\n\n${u.name} check in at #${uR}.` : `\n\n${u.name} are outside the top 10 this week.`),
+        replies: replies(6, [{ w: 1, lines: R.poll }], { T1: t1.name, T2: t2.name, M3: t3.mascot }),
+      });
+    }
 
     // injuries
     const inj = results.flatMap(r => r.injuries).map(i => ({ ...i, p: G.players[i.pid] }))
@@ -200,78 +215,78 @@ const Forum = (() => {
     }
 
     // hot seat
-    if (wk >= 5 && wk <= 11) {
+    if (wk >= 5 && wk <= SEA.REG) {
       const cold = G.teams.filter(t => t.rec.l >= 4 && t.rec.w <= t.rec.l - 3).sort((a, b) => a.rec.w - b.rec.w)[0];
       if (cold && U.chance(0.55)) {
         thread(is, {
           tag: 'HOT SEAT', heat: 50 + (cold.user ? 25 : 0), teams: [cold.id], a: fan(cold),
-          title: cold.user ? `Real talk: is ${cold.name}'s head coach on the hot seat?` : `Hot seat watch: how much longer does ${cold.name}'s staff have?`,
-          body: `${cold.name} sits at ${L.recStr(cold)} and the fanbase is restless. Is it the coaching or the roster?`,
+          title: cold.user ? `Real talk: is the ${cold.name} head coach on the hot seat?` : `Hot seat watch: how much longer does the ${cold.name} staff have?`,
+          body: `The ${cold.name} sit at ${L.recStr(cold)} and the fanbase is restless. Is it the coaching or the roster?`,
           replies: replies(5, [{ w: 2, team: cold, lines: R.hotseat }, { w: 2, lines: R.hotseat }], {}),
         });
       }
     }
 
     // undefeated watch
-    if (wk >= 5 && wk <= 11) {
+    if (wk >= 5 && wk <= SEA.REG) {
       const perfect = G.teams.filter(t => t.rec.l === 0 && t.rec.w > 0);
-      if (perfect.length && perfect.length <= 5) {
+      if (perfect.length && perfect.length <= 4) {
         thread(is, {
           tag: 'DISCUSSION', heat: 52 + perfect.length, a: neutralFan(),
-          title: `Undefeated watch: ${perfect.length} team${perfect.length > 1 ? 's' : ''} still perfect after ${label}`,
-          body: perfect.map(t => `• ${t.name} ${t.mascot} (${L.recStr(t)})`).join('\n') + '\n\nWho finishes the regular season unbeaten?',
+          title: `Perfect season watch: ${perfect.length} team${perfect.length > 1 ? 's' : ''} still unbeaten after ${label}`,
+          body: perfect.map(t => `• ${t.name} ${t.mascot} (${L.recStr(t)})`).join('\n') + '\n\nCan anyone run the table?',
           replies: replies(4, [{ w: 1, lines: R.neutral }], { W: perfect[0].name, L: perfect[perfect.length - 1].name, WM: perfect[0].mascot }),
         });
       }
     }
 
-    // heisman watch
-    if ([4, 7, 10].includes(wk)) {
-      const hl = L.heismanList(5);
+    // MVP race
+    if ([5, 9, 12].includes(wk)) {
+      const hl = L.mvpList(5);
       if (hl.length) {
         const lead = hl[0].p;
         thread(is, {
-          tag: 'HEISMAN', heat: 68, a: neutralFan(),
-          title: `Heisman Watch: ${pname(lead)} (${L.team(lead.teamId).abbr}) leads the race after ${label}`,
+          tag: 'MVP RACE', heat: 68, a: neutralFan(),
+          title: `MVP Ladder: ${pname(lead)} (${L.team(lead.teamId).abbr}) leads the race after ${label}`,
           body: hl.map((x, i) => `${i + 1}. ${x.p.pos} ${pname(x.p)}, ${L.team(x.p.teamId).name} — ${L.seasonLine(x.p)}`).join('\n'),
-          replies: replies(5, [{ w: 1, lines: R.heisman }], { P: pname(lead) }),
+          replies: replies(5, [{ w: 1, lines: R.mvp }], { P: pname(lead) }),
         });
       }
     }
 
-    // postseason storylines
-    if (wk === 11) {
+    // playoff picture & postseason storylines
+    if (wk === SEA.REG && G.seeds) {
+      const inField = [0, 1].some(c => G.seeds[c].includes(uid));
       thread(is, {
-        tag: 'POSTSEASON', heat: 80, a: MOD, pinned: false,
-        title: 'Championship Weekend is set!',
-        body: (G.schedule[12] && G.schedule[12].length ? '' : '') + [0, 1].map(c => { const s = L.standings(c); return `${DATA.CONFS[c].long}: ${s[0].name} vs ${s[1].name}`; }).join('\n'),
-        replies: replies(4, [{ w: 1, lines: R.neutral }], { W: t1.name, L: t2.name, WM: t1.mascot }),
+        tag: 'PLAYOFFS', heat: 92, a: MOD, pinned: true,
+        title: 'The playoff field is SET',
+        body: [0, 1].map(c => `${DATA.CONFS[c].long}\n${seedLines(c)}`).join('\n\n') + '\n\nWild Card Round: 1 vs 4, 2 vs 3 in each conference.' + (inField ? `\n\nThe ${u.name} ${u.mascot} are IN.` : `\n\nThe ${u.name} ${u.mascot} miss the playoffs.`),
+        replies: replies(6, [{ w: 1, lines: R.poll }], { T1: t1.name, T2: t2.name, M3: t3.mascot }),
       });
     }
-    if (wk === 12) {
+    if (wk === SEA.WC) {
+      thread(is, {
+        tag: 'PLAYOFFS', heat: 88, a: MOD, pinned: true,
+        title: 'Conference Championship matchups are set',
+        body: (G.schedule[SEA.CC] || []).map(g => `${DATA.CONFS[g.conf].long}: ${L.team(g.a).name} at ${L.team(g.h).name}`).join('\n'),
+        replies: replies(5, [{ w: 1, lines: R.neutral }], { W: t1.name, L: t2.name, WM: t1.mascot }),
+      });
+    }
+    if (wk === SEA.CC) {
       for (const r of results) {
         thread(is, {
-          tag: 'CHAMPIONS', heat: 82 + (r.W.user ? 10 : 0), teams: [r.W.id], a: fan(r.W), mine: r.W.user,
-          title: `${r.W.name} ${r.W.mascot} are your ${DATA.CONFS[r.g.conf].name} Champions!`,
-          body: `${r.W.name} beat ${r.Lo.name} ${scoreStr(r)} to claim the ${DATA.CONFS[r.g.conf].long} crown.`,
+          tag: 'CHAMPIONS', heat: 86 + (r.W.user ? 10 : 0), teams: [r.W.id], a: fan(r.W), mine: r.W.user,
+          title: `The ${r.W.name} ${r.W.mascot} are your ${DATA.CONFS[r.g.conf].name} Conference champions!`,
+          body: `${r.W.name} beat ${r.Lo.name} ${scoreStr(r)} and punch their ticket to the Blitz Bowl.`,
           replies: replies(5, [{ w: 3, team: r.W, lines: R.champ }, { w: 1, team: r.Lo, lines: R.loseFan }], { LM: r.Lo.mascot }),
         });
       }
-      const p = G.poll.slice(0, 4).map(id => L.team(id));
-      thread(is, {
-        tag: 'PLAYOFF', heat: 92, a: MOD, pinned: true,
-        title: 'The College Football Playoff field is SET',
-        body: `Semifinal 1: #1 ${p[0].name} vs #4 ${p[3].name}\nSemifinal 2: #2 ${p[1].name} vs #3 ${p[2].name}` + (p.includes(u) ? `\n\n${u.name} is IN.` : `\n\n${u.name} misses the cut.`),
-        replies: replies(6, [{ w: 1, lines: R.poll }], { T1: p[0].name, T2: L.team(G.poll[4]).name, M3: p[3].mascot }),
-      });
-    }
-    if (wk === 13) {
-      const [a, b] = results.map(r => r.W);
+      const [a, b] = G.confChamps.map(id => L.team(id));
       if (a && b) {
         thread(is, {
-          tag: 'PLAYOFF', heat: 94, a: MOD, pinned: true,
-          title: `It's ${a.name} vs ${b.name} for the National Championship`,
-          body: `The semifinals are in the books. One game left.`,
+          tag: 'BLITZ BOWL', heat: 95, a: MOD, pinned: true,
+          title: `It's ${a.name} vs ${b.name} in the Blitz Bowl`,
+          body: `The ${DATA.CONFS[0].name} champs (${L.recStr(a)}) take on the ${DATA.CONFS[1].name} champs (${L.recStr(b)}). One game for the title.`,
           replies: replies(6, [{ w: 1, team: a, lines: R.winFan }, { w: 1, team: b, lines: R.winFan }, { w: 1, lines: R.neutral }], { WM: a.mascot, LM: b.mascot, P: '', S: '' }),
         });
       }
@@ -284,44 +299,52 @@ const Forum = (() => {
     const is = issue(`pre-${G.year}`, `Preseason ${G.year}`, 'preseason');
     const u = L.user(), uR = L.ranked(u.id);
     thread(is, {
-      tag: 'POLL', heat: 80, a: MOD, pinned: true,
-      title: `BlitzBoard Preseason Top 10 for ${G.year}`,
+      tag: 'POWER RANKINGS', heat: 80, a: MOD, pinned: true,
+      title: `BlitzBoard Preseason Power Rankings for ${G.year}`,
       body: top10Body([]).replace(/ \(NEW\)/g, ''),
       replies: replies(6, [{ w: 1, lines: R.poll }], { T1: L.team(G.poll[0]).name, T2: L.team(G.poll[1]).name, M3: L.team(G.poll[2]).mascot }),
     });
     thread(is, {
       tag: 'PREVIEW', heat: 88, a: fan(u), mine: true, teams: [u.id],
-      title: `${G.year} ${u.name} ${u.mascot} season preview: ${uR ? `can the #${uR} ${u.mascot} live up to the hype?` : 'is this the year they break through?'}`,
-      body: `Ratings heading into the season — OFF ${L.ratings(u).off}, DEF ${L.ratings(u).def}.\n\nOpener: ${(() => { const g = G.schedule[1].find(x => x.h === u.id || x.a === u.id); return g ? `${g.h === u.id ? 'vs' : '@'} ${L.team(g.h === u.id ? g.a : g.h).name}` : 'TBD'; })()}\n\nPredictions?`,
+      title: `${G.year} ${u.name} ${u.mascot} season preview: ${uR ? `can the #${uR} ${u.mascot} win the ${L.divName(u)}?` : 'is this the year they make the playoffs?'}`,
+      body: `Ratings heading into the season — OFF ${L.ratings(u).off}, DEF ${L.ratings(u).def}.\n\nWeek 1: ${(() => { const g = G.schedule[1].find(x => x.h === u.id || x.a === u.id); return g ? `${g.h === u.id ? 'vs' : '@'} ${L.team(g.h === u.id ? g.a : g.h).name}` : 'TBD'; })()}\n\nPredictions?`,
       replies: replies(8, [{ w: 3, team: u, lines: R.winFan.concat(R.camp) }, { w: 2, lines: R.neutral }], { WM: u.mascot, LM: 'opponent', S: '', P: 'our QB', W: u.name, L: 'everyone' }),
     });
     const qbs = Object.values(G.players).filter(p => p.teamId != null && p.pos === 'QB' && L.isStarter(L.team(p.teamId), p)).sort((a, b) => b.ovr - a.ovr).slice(0, 5);
     thread(is, {
-      tag: 'HEISMAN', heat: 64, a: neutralFan(),
-      title: 'Way-too-early Heisman favorites',
+      tag: 'MVP RACE', heat: 64, a: neutralFan(),
+      title: 'Way-too-early MVP favorites',
       body: qbs.map((p, i) => `${i + 1}. QB ${pname(p)}, ${L.team(p.teamId).name} (${p.ovr} OVR)`).join('\n'),
-      replies: replies(4, [{ w: 1, lines: R.heisman }], { P: qbs[0] ? pname(qbs[0]) : 'the favorite' }),
+      replies: replies(4, [{ w: 1, lines: R.mvp }], { P: qbs[0] ? pname(qbs[0]) : 'the favorite' }),
     });
     sortIssue(is);
   }
 
   function draftOpen() {
     const d = G.draft;
-    const is = issue(`draft-${G.year}`, `Signing Day Draft ${G.year}`, 'draft');
+    const is = issue(`draft-${G.year}`, `Draft ${G.year}`, 'draft');
     const u = L.user();
     if (d.kind === 'founding') {
       thread(is, {
         tag: 'NEWS', heat: 96, a: MOD, pinned: true, mine: true, teams: [u.id],
-        title: `Welcome to the ${DATA.CONFS[u.conf].long}, ${u.name} ${u.mascot}!`,
-        body: `The league officially welcomes its newest program. The ${u.mascot} will build their first recruiting class in the Inaugural Signing Day Draft — ${d.rounds} rounds, snake order.\n\nWelcome aboard, Coach.`,
+        title: `Welcome to the ${L.divName(u)}, ${u.name} ${u.mascot}!`,
+        body: `The league officially welcomes its newest franchise. The ${u.mascot} will build their first roster in the Inaugural Draft — ${d.rounds} rounds, snake order.\n\nWelcome aboard, GM.`,
         replies: replies(8, [{ w: 1, lines: R.welcome }], { UM: u.mascot }),
+      });
+    } else {
+      const traded = d.order.filter((id, i) => id !== d.orig[i]).length;
+      if (traded) thread(is, {
+        tag: 'DRAFT', heat: 60, a: insider(),
+        title: `${traded} picks have changed hands heading into the ${G.year} Draft`,
+        body: d.order.map((id, i) => ({ id, o: d.orig[i], i })).filter(x => x.id !== x.o).slice(0, 12).map(x => `#${x.i + 1}: ${L.team(x.id).abbr} (via ${L.team(x.o).abbr})`).join('\n'),
+        replies: replies(3, [{ w: 1, lines: R.draft }], { M: U.pick(G.teams).mascot }),
       });
     }
     const top = d.pool.slice(0, 8).map(id => G.players[id]);
     thread(is, {
-      tag: 'RECRUITING', heat: 78, a: insider(),
-      title: `Signing Day Draft ${G.year} Big Board: ${pname(top[0])} headlines the class`,
-      body: top.map((p, i) => `${i + 1}. ${p.pos} ${pname(p)} — ${'★'.repeat(p.stars)} — ${p.home}`).join('\n'),
+      tag: 'DRAFT', heat: 78, a: insider(),
+      title: `${G.year} Draft Big Board: ${pname(top[0])} headlines the class`,
+      body: top.map((p, i) => `${i + 1}. ${p.pos} ${pname(p)}, ${p.college} — ${grade(p)}`).join('\n'),
       replies: replies(5, [{ w: 1, lines: R.draft }], { M: U.pick(G.teams).mascot }),
     });
     sortIssue(is);
@@ -329,14 +352,14 @@ const Forum = (() => {
 
   function draftRecap() {
     const d = G.draft;
-    const is = issue(`draft-${G.year}`, `Signing Day Draft ${G.year}`, 'draft');
+    const is = issue(`draft-${G.year}`, `Draft ${G.year}`, 'draft');
     const u = L.user();
     const g = d.grades;
     const first = d.log[0], fp = G.players[first.pid];
     thread(is, {
-      tag: 'RECRUITING', heat: 80, a: insider(), teams: [first.teamId],
+      tag: 'DRAFT', heat: 80, a: insider(), teams: [first.teamId],
       title: `${L.team(first.teamId).name} make ${fp.pos} ${pname(fp)} the #1 overall pick`,
-      body: `${pname(fp)} (${'★'.repeat(fp.stars)}, ${fp.ovr} OVR) out of ${fp.home} goes first overall.`,
+      body: `${pname(fp)} (${fp.college}, ${fp.ovr} OVR, ${grade(fp)}) goes first overall.`,
       replies: replies(4, [{ w: 1, team: L.team(first.teamId), lines: R.winFan }, { w: 2, lines: R.draft }], { WM: L.team(first.teamId).mascot, LM: 'rivals', P: pname(fp), M: L.team(first.teamId).mascot, S: '' }),
     });
     const steal = d.log.filter(e => e.overall > 40).map(e => ({ e, p: G.players[e.pid] })).sort((a, b) => L.prospectValue(b.p) - L.prospectValue(a.p))[0];
@@ -345,7 +368,7 @@ const Forum = (() => {
       thread(is, {
         tag: 'DISCUSSION', heat: 66 + (t.user ? 10 : 0), teams: [t.id],
         title: `Steal of the draft? ${t.name} land ${steal.p.pos} ${pname(steal.p)} at pick #${steal.e.overall}`,
-        body: `${'★'.repeat(steal.p.stars)} prospect, ${steal.p.ovr} OVR with ${U.potGrade(steal.p.pot)} potential. How did he slide that far?`,
+        body: `${grade(steal.p)} out of ${steal.p.college}, ${steal.p.ovr} OVR with ${U.potGrade(steal.p.pot)} potential. How did he slide that far?`,
         replies: replies(4, [{ w: 1, lines: R.draft }], { M: t.mascot }),
       });
     }
@@ -353,12 +376,12 @@ const Forum = (() => {
     thread(is, {
       tag: 'DRAFT GRADE', heat: 90, mine: true, a: fan(u), teams: [u.id],
       title: `${u.name} draft class reaction thread — BlitzBoard grade: ${g[u.id] ? g[u.id].grade : 'B'}`,
-      body: mine.map(x => `R${x.e.round} #${x.e.overall}: ${x.p.pos} ${pname(x.p)} ${'★'.repeat(x.p.stars)} (${x.p.ovr})`).join('\n'),
+      body: mine.length ? mine.map(x => `R${x.e.round} #${x.e.overall}: ${x.p.pos} ${pname(x.p)}, ${x.p.college} (${x.p.ovr})`).join('\n') : 'No picks this year — the front office traded them all away.',
       replies: replies(7, [{ w: 3, team: u, lines: R.draft }, { w: 1, lines: R.draft }], { M: u.mascot }),
     });
     thread(is, {
       tag: 'DRAFT GRADE', heat: 70, a: insider(),
-      title: `Instant draft grades for all ${G.teams.length} programs`,
+      title: `Instant draft grades for all ${G.teams.length} teams`,
       body: G.teams.slice().sort((a, b) => (g[b.id] ? g[b.id].v : 0) - (g[a.id] ? g[a.id].v : 0)).map(t => `${t.name}: ${g[t.id] ? g[t.id].grade : '—'}`).join('\n'),
       replies: replies(5, [{ w: 1, lines: R.draft }], { M: U.pick(G.teams).mascot }),
     });
@@ -382,22 +405,23 @@ const Forum = (() => {
   }
 
   function seasonEnd() {
-    const is = issue(`wk-${G.year}-14`, DATA.WEEK_LABEL(14), 'week');
+    const is = issue(`wk-${G.year}-${SEA.FINAL}`, DATA.WEEK_LABEL(SEA.FINAL), 'week');
     const c = L.team(G.champion), u = L.user();
     thread(is, {
       tag: 'CHAMPIONS', heat: 99, pinned: true, a: MOD, teams: [c.id], mine: c.user,
-      title: `${c.name.toUpperCase()} ${c.mascot.toUpperCase()} ARE THE ${G.year} NATIONAL CHAMPIONS`,
-      body: `${c.name} finish ${L.recStr(c)} and hoist the trophy.${c.user ? `\n\nFrom expansion dreams to national champions — what a ride for ${u.name}.` : ''}`,
+      title: `THE ${c.name.toUpperCase()} ${c.mascot.toUpperCase()} WIN THE ${G.year} BLITZ BOWL`,
+      body: `${c.name} finish ${L.recStr(c)} in the regular season and run the table in the playoffs.${c.user ? `\n\nFrom expansion franchise to champions — what a ride for ${u.name}.` : ''}`,
       replies: replies(8, [{ w: 3, team: c, lines: R.champ }, { w: 2, lines: R.champ.concat(R.neutral) }], { W: c.name, WM: c.mascot, L: 'the field', LM: 'rivals' }),
     });
-    const h = G.awards.heisman;
-    if (h) {
+    for (const [key, title] of [['mvp', 'Most Valuable Player'], ['roy', 'Rookie of the Year']]) {
+      const h = G.awards[key];
+      if (!h) continue;
       const ht = L.team(h.team);
       thread(is, {
-        tag: 'HEISMAN', heat: 88 + (ht.user ? 8 : 0), a: MOD, teams: [ht.id],
-        title: `${h.name} (${ht.abbr}) wins the ${G.year} Heisman Trophy`,
-        body: `The ${ht.name} ${h.pos} takes home college football's top individual honor.\n\nSeason: ${h.line}`,
-        replies: replies(5, [{ w: 2, team: ht, lines: R.perf }, { w: 2, lines: R.heisman }], { P: h.name, N: '' }),
+        tag: key === 'mvp' ? 'MVP' : 'AWARDS', heat: (key === 'mvp' ? 88 : 72) + (ht.user ? 8 : 0), a: MOD, teams: [ht.id],
+        title: `${h.name} (${ht.abbr}) named ${G.year} ${title}`,
+        body: `The ${ht.name} ${h.pos} takes home the league's ${title} award.\n\nSeason: ${h.line}`,
+        replies: replies(5, [{ w: 2, team: ht, lines: R.perf }, { w: 2, lines: R.mvp }], { P: h.name, N: '' }),
       });
     }
     sortIssue(is);
@@ -410,27 +434,44 @@ const Forum = (() => {
     if (big.length) {
       thread(is, {
         tag: 'NEWS', heat: 74, a: insider(),
-        title: `Sticker Report: ${big.filter(x => x.tier === 3).length} players earn Elite helmet stickers this offseason`,
-        body: 'Helmet stickers earned on the field last season:\n\n' + big.map(x => `• ${DATA.STICKER_TIERS[x.tier].label} ${DATA.STICKERS[x.id].name} — ${x.pos} ${x.name} (${L.team(x.teamId).abbr})`).join('\n'),
+        title: `Badge Report: ${big.filter(x => x.tier === 3).length} players earn Elite badges this offseason`,
+        body: 'Badges earned on the field last season:\n\n' + big.map(x => `• ${DATA.STICKER_TIERS[x.tier].label} ${DATA.STICKERS[x.id].name} — ${x.pos} ${x.name} (${L.team(x.teamId).abbr})`).join('\n'),
         replies: replies(4, [{ w: 1, lines: R.draft }], { M: u.mascot }),
       });
     }
-    if (o.leagueDeclared.length) {
+    if (o.leagueRetired.length) {
       thread(is, {
-        tag: 'NEWS', heat: 80, a: insider(),
-        title: `${o.leagueDeclared.length} underclassmen declare early for the pros`,
-        body: o.leagueDeclared.slice(0, 10).map(p => `• ${p.pos} ${p.name} (${L.team(p.teamId) ? L.team(p.teamId).abbr : ''}) — ${p.ovr} OVR`).join('\n'),
-        replies: replies(4, [{ w: 1, lines: R.neutral }], { W: 'they', L: 'everyone', WM: 'pros' }),
+        tag: 'RETIREMENT', heat: 80, a: insider(),
+        title: `${o.leagueRetired.length} notable veterans hang up their cleats`,
+        body: o.leagueRetired.slice(0, 10).map(p => `• ${p.pos} ${p.name} (${L.team(p.teamId).abbr}) — age ${p.age}, ${p.exp + 1} seasons · career: ${p.car}`).join('\n'),
+        replies: replies(4, [{ w: 1, lines: R.retire }], {}),
       });
     }
     thread(is, {
       tag: 'DISCUSSION', heat: 84, mine: true, a: fan(u), teams: [u.id],
-      title: `${u.name} lose ${o.departed.length + o.declared.length} players — who steps up in ${G.year}?`,
-      body: o.departed.concat(o.declared).sort((a, b) => b.ovr - a.ovr).slice(0, 8).map(p => `• ${p.pos} ${p.name} (${p.ovr})`).join('\n') + '\n\nThe draft is next. What are the biggest needs?',
+      title: o.retired.length ? `${u.name} lose ${o.retired.length} veteran${o.retired.length > 1 ? 's' : ''} to retirement — who steps up in ${G.year}?` : `No retirements in ${u.name} this year — is this roster ready to contend?`,
+      body: (o.retired.length ? o.retired.sort((a, b) => b.ovr - a.ovr).slice(0, 8).map(p => `• ${p.pos} ${p.name} (${p.ovr}, age ${p.age})`).join('\n') + '\n\n' : '') + 'The draft is next. Trade up, trade down, or stand pat?',
       replies: replies(6, [{ w: 3, team: u, lines: R.draft }, { w: 1, lines: R.neutral }], { M: u.mascot, W: u.name, L: 'rivals', WM: u.mascot }),
     });
     sortIssue(is);
   }
 
-  return { weekly, preseason, draftOpen, draftRecap, campReport, seasonEnd, offseason };
+  // ── trades ──
+  const assetList = (P, K) => P.map(p => `${p.pos} ${p.name} (${p.ovr} OVR, age ${p.age})`).concat(K.map(k => `${k.y} Round ${k.r} pick${k.o !== k.own ? ` (orig. ${L.team(k.o).abbr})` : ''}`));
+  function trade(rec) {
+    const is = currentIssue();
+    const A = L.team(rec.a), B = L.team(rec.b);
+    const mine = A.user || B.user;
+    const star = rec.aP.concat(rec.bP).sort((x, y) => y.ovr - x.ovr)[0];
+    const aGets = assetList(rec.bP, rec.bK), bGets = assetList(rec.aP, rec.aK);
+    thread(is, {
+      tag: 'TRADE', heat: (star ? 60 + Math.max(0, star.ovr - 70) : 55) + (mine ? 25 : 0), a: insider(), teams: [A.id, B.id], mine,
+      title: star ? `TRADE: ${star.pos} ${star.name} is headed to ${rec.bP.some(p => p.pid === star.pid) ? A.name : B.name}` : `TRADE: ${A.name} and ${B.name} swap picks`,
+      body: `${A.name} ${A.mascot} receive:\n${aGets.map(x => `• ${x}`).join('\n') || '• —'}\n\n${B.name} ${B.mascot} receive:\n${bGets.map(x => `• ${x}`).join('\n') || '• —'}`,
+      replies: replies(6, [{ w: 2, team: A, lines: R.tradeWin }, { w: 2, team: B, lines: R.tradeLose.concat(R.tradeWin) }, { w: 2, lines: R.tradeN }], {}),
+    });
+    sortIssue(is);
+  }
+
+  return { weekly, preseason, draftOpen, draftRecap, campReport, seasonEnd, offseason, trade };
 })();

@@ -28,7 +28,7 @@ const Engine = (() => {
   const ROTATE = { RB: 1, WR: 1, DL: 1, LB: 1, CB: 1, TE: 1, S: 1 };
 
   // ── players & lineups ──
-  const GHOST = pos => ({ id: -1, first: 'Walk', last: 'On', pos, num: 0, ovr: 42, attrs: { spd: 42, str: 42, awr: 42, skl: 42 } });
+  const GHOST = pos => ({ id: -1, first: 'Practice', last: 'Squad', pos, num: 0, ovr: 42, attrs: { spd: 42, str: 42, awr: 42, skl: 42 } });
   function lineupFor(team) {
     const lu = {};
     for (const pos of DATA.POSITIONS) lu[pos] = L.depthHealthy(team, pos).map(p => p.id);
@@ -74,6 +74,10 @@ const Engine = (() => {
   const elusR = (gs, s, p) => p.pos === 'RB' ? A(gs, s, p, 'skl') * 0.5 + A(gs, s, p, 'spd') * 0.35 + A(gs, s, p, 'str') * 0.15 : p.pos === 'QB' ? A(gs, s, p, 'spd') * 0.7 + A(gs, s, p, 'str') * 0.3 - 4 : A(gs, s, p, 'spd') * 0.55 + A(gs, s, p, 'skl') * 0.2 + A(gs, s, p, 'str') * 0.25;
   const qbAcc = (gs, s, p) => A(gs, s, p, 'skl') * 0.7 + A(gs, s, p, 'awr') * 0.3;
   const sig = z => 1 / (1 + Math.exp(-z));
+  // diminishing returns on rating gaps: typical edges (±8) count almost fully, a 30-point mismatch counts like ~13,
+  // so elite-vs-weak matchups stay lopsided without turning every snap into a sure thing
+  const GAPK = Number(globalThis.__GAPK) || 14;
+  const gap = d => GAPK * Math.tanh(d / GAPK);
 
   function unitAvg(gs, side, pos, n) {
     const pl = avail(gs, side, pos), v = [];
@@ -278,31 +282,25 @@ const Engine = (() => {
   // ── possession changes ──
   function startDrive(gs) { gs.drive = { side: gs.poss, start: gs.ball, plays: 0, yds: 0, clk: gs.clock, q: gs.qtr }; }
   function changePoss(gs, side, ball) {
-    if (gs.ot) return otNext(gs);
+    if (gs.ot && otEnd(gs)) return;
     gs.poss = side; gs.ball = U.clamp(Math.round(ball), 1, 99);
     gs.down = 1; gs.togo = Math.min(10, 100 - gs.ball);
     gs.phase = 'play';
     startDrive(gs);
   }
-  function beginOT(gs, side) {
-    gs.otSide = side; gs.poss = side; gs.ball = 75; gs.down = 1; gs.togo = 10; gs.phase = 'play';
-    startDrive(gs);
-    ev(gs, `OT${gs.ot}: ${gs.abbr[side]} takes over at the ${gs.abbr[1 - side]} 25.`, 'info');
+  // NFL overtime: a 10-minute period opened by a kickoff. Each team is guaranteed a possession;
+  // once both have had one, the game ends the moment a possession finishes with someone ahead.
+  const OTLEN = 600;
+  function startOT(gs) {
+    ev(gs, 'End of regulation — we are headed to OVERTIME! Ten minutes, both teams get the ball.', 'qend');
+    gs.ot = 1; gs.qtr = 5; gs.clock = OTLEN; gs.otDone = 0;
+    gs.phase = 'kickoff'; gs.kicker = U.ri(0, 1);
+    ev(gs, `${gs.abbr[1 - gs.kicker]} wins the toss and will receive.`, 'info');
   }
-  function otNext(gs) {
-    gs.otPoss++;
-    if (gs.otPoss % 2 === 0) {
-      if (gs.score[0] !== gs.score[1]) return finish(gs);
-      gs.ot++; gs.qtr++;
-      if (gs.ot > 7) {
-        const w = gs.u[0].k >= gs.u[1].k ? 0 : 1;
-        addPts(gs, w, 3);
-        ev(gs, `${gs.abbr[w]} finally ends the marathon with a field goal!`, 'fg');
-        return finish(gs);
-      }
-      return beginOT(gs, gs.ot % 2 ? gs.otFirst : 1 - gs.otFirst);
-    }
-    beginOT(gs, 1 - gs.otSide);
+  function otEnd(gs) {
+    gs.otDone = (gs.otDone || 0) + 1;
+    if (gs.otDone >= 2 && gs.score[0] !== gs.score[1]) { finish(gs); return true; }
+    return false;
   }
   function finish(gs) {
     gs.over = true; gs.phase = 'over';
@@ -312,32 +310,37 @@ const Engine = (() => {
 
   // ── clock ──
   function runoff(gs, kind) {
-    if (gs.ot) return 0;
     const o = gs.poss, diff = gs.score[o] - gs.score[1 - o];
-    if (kind === 'inc') return U.ri(5, 8);
-    if ((gs.qtr === 2 && gs.clock < 120) || (gs.qtr === 4 && gs.clock < 300 && diff < 0)) return U.ri(11, 19);
-    if (gs.qtr === 4 && diff > 0 && gs.clock < 480) return U.ri(38, 44);
-    return U.ri(25, 37);
+    // NFL pace: the clock keeps running after first downs, so a normal snap burns ~36 seconds (about 63 plays a side)
+    if (kind === 'inc') return U.ri(6, 9);
+    if ((gs.qtr === 2 && gs.clock < 120) || (gs.qtr === 4 && gs.clock < 300 && diff < 0)) return U.ri(13, 21);
+    if (gs.qtr === 4 && diff > 0 && gs.clock < 480) return U.ri(40, 45);
+    return U.ri(31, 42);
   }
   function tick(gs, t) {
-    if (gs.ot) return;
+    const before = gs.clock;
     gs.clock -= t;
-    gs.ts[gs.poss].top += Math.min(t, Math.max(0, gs.clock + t));
+    if ((gs.qtr === 2 || gs.qtr === 4) && before > 120 && gs.clock < 120) { gs.clock = 120; ev(gs, 'Two-minute warning.', 'info'); }
+    gs.ts[gs.poss].top += Math.max(0, before - Math.max(0, gs.clock));
   }
   function checkClock(gs) {
-    if (gs.ot || gs.over || gs.clock > 0) return;
+    if (gs.over || gs.clock > 0) return;
     gs.clock = 0;
+    if (gs.ot) {
+      if (gs.score[0] !== gs.score[1]) return finish(gs);
+      // no ties: another period, same possession
+      ev(gs, `End of OT${gs.ot} — still tied. Play continues.`, 'qend');
+      gs.ot++; gs.qtr++; gs.clock = OTLEN;
+      return;
+    }
     if (gs.qtr === 2) {
       ev(gs, 'HALFTIME', 'half');
       gs.qtr = 3; gs.clock = QLEN; gs.phase = 'kickoff'; gs.kicker = gs.recv1;
       for (const id in gs.stam) gs.stam[id] = Math.min(100, gs.stam[id] + 35);
       aiAdjust(gs, 0); aiAdjust(gs, 1);
     } else if (gs.qtr === 4) {
-      if (gs.score[0] === gs.score[1]) {
-        ev(gs, 'End of regulation — we are headed to OVERTIME!', 'qend');
-        gs.ot = 1; gs.qtr = 5; gs.otFirst = U.ri(0, 1); gs.otPoss = 0;
-        beginOT(gs, gs.otFirst);
-      } else finish(gs);
+      if (gs.score[0] === gs.score[1]) startOT(gs);
+      else finish(gs);
     } else {
       ev(gs, `End of the ${qName(gs.qtr)}`, 'qend');
       gs.qtr++; gs.clock = QLEN;
@@ -350,23 +353,23 @@ const Engine = (() => {
     addPts(gs, side, 6);
     const diff = gs.score[side] - gs.score[1 - side];
     let pat;
-    const goTwo = gs.ot >= 3 || (gs.qtr >= 4 && (diff === -2 || diff === -5 || diff === -10) && gs.clock < 600);
+    const goTwo = (gs.qtr >= 4 && (diff === -2 || diff === -5 || diff === -10) && gs.clock < 600);
     if (goTwo) {
       if (U.chance(0.46)) { addPts(gs, side, 2); pat = 'Two-point try is GOOD.'; } else pat = 'Two-point try fails.';
     } else {
       const k = who(gs, side, 'K');
-      if (U.chance(0.955 + ((k ? k.ovr : 60) - 70) * 0.002)) { addPts(gs, side, 1); pat = 'PAT good.'; } else pat = 'PAT is NO GOOD!';
+      if (U.chance(0.94 + ((k ? k.ovr : 60) - 70) * 0.002)) { addPts(gs, side, 1); pat = 'PAT good.'; } else pat = 'PAT is NO GOOD!';
     }
     gs.drive.td = true;
     ev(gs, `${text} TOUCHDOWN ${gs.abbr[side]}! ${pat}`, 'td', { scorer: side });
-    if (gs.ot) return otNext(gs);
+    if (gs.ot && otEnd(gs)) return;
     gs.phase = 'kickoff'; gs.kicker = side;
   }
   function safety(gs, text) {
     const d = 1 - gs.poss;
     addPts(gs, d, 2);
     ev(gs, `${text} SAFETY! ${gs.abbr[d]} adds two.`, 'td', { scorer: d });
-    if (gs.ot) return otNext(gs);
+    if (gs.ot && otEnd(gs)) return;
     gs.phase = 'kickoff'; gs.kicker = gs.poss;
   }
 
@@ -378,14 +381,14 @@ const Engine = (() => {
     gs.lastPlay = det;
     gs.poss = r;
     if (U.chance(0.62)) {
-      gs.ball = 25; det.touchback = true; det.land = U.ri(-8, -2);
-      ev(gs, `${gs.abbr[k]} kicks off — touchback. ${gs.abbr[r]} ball at the 25.`, 'kick');
+      gs.ball = 35; det.touchback = true; det.land = U.ri(-8, -2);
+      ev(gs, `${gs.abbr[k]} kicks off — touchback. ${gs.abbr[r]} ball at the 35.`, 'kick');
     } else if (U.chance(0.006)) {
       gs.ball = 100; det.end = 100; tick(gs, 12);
       touchdown(gs, r, `${nm(ret)} takes the kickoff ALL THE WAY BACK!`);
       return checkClock(gs);
     } else {
-      gs.ball = U.clamp(Math.round(U.gauss(24, 6)), 8, 48);
+      gs.ball = U.clamp(Math.round(U.gauss(28, 6)), 10, 50);
       tick(gs, 6);
       ev(gs, `${nm(ret)} returns the kickoff to the ${spot(gs)}.`, 'kick');
     }
@@ -446,8 +449,7 @@ const Engine = (() => {
       addPts(gs, o, 3);
       gs.drive.fg = true;
       ev(gs, `${nm(k)} ${dist}-yd field goal is GOOD!`, 'fg', { scorer: o });
-      if (gs.ot) otNext(gs);
-      else { gs.phase = 'kickoff'; gs.kicker = o; }
+      if (!(gs.ot && otEnd(gs))) { gs.phase = 'kickoff'; gs.kicker = o; }
     } else {
       det.good = false; det.miss = U.pick(['wide left', 'wide right', 'short']);
       ev(gs, `${nm(k)} ${dist}-yd field goal attempt is NO GOOD — ${det.miss}.`, 'miss');
@@ -492,7 +494,8 @@ const Engine = (() => {
     const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = slots(gs, d, false);
     const side = oc === 'outside' ? (U.chance(0.5) ? 'L' : 'R') : 'M';
     const det = { type: 'run', call: oc, dcall: dc, o, los: gs.ball, O: idsOf(O), D: idsOf(D), side, carrier: 'RB', blocks: [] };
-    const rb = U.chance(0.1) && oc === 'inside' ? O.QB : O.RB;
+    const rb2 = who(gs, o, 'RB', 1);
+    const rb = U.chance(0.1) && oc === 'inside' ? O.QB : rb2 && rb2 !== O.RB && rb2.ovr >= O.RB.ovr - 15 && U.chance(0.32) ? rb2 : O.RB;
     det.carrier = slotOf(O, rb);
     const mod = { runstop: -4, blitz: oc === 'inside' ? -1 : 2, cover: 4, base: 0 }[dc] + (oc === 'outside' && dc === 'runstop' ? -2 : 0);
     const pairs = side === 'M' ? [['LG', 'DT1'], ['RG', 'DT2'], ['C', dc === 'runstop' ? 'S1' : dc === 'blitz' ? 'LB1' : 'MLB']]
@@ -504,7 +507,7 @@ const Engine = (() => {
       const def = db.pos === 'DL' ? runDef(gs, d, db) : tackleR(gs, d, db);
       const stkO = sm(gs, det, ob, 'grader', side === 'M') + sm(gs, det, ob, 'puller', side !== 'M' && ob.pos === 'OL') + sm(gs, det, ob, 'anchor', db.pos === 'DL') * 0.5;
       const stkD = sm(gs, det, db, 'stuffer');
-      const m = (off - def) * 0.7 + U.gauss(0, 9) + mod + soft(stkO, 2.5) - soft(stkD, 2.5);
+      const m = gap(off - def) * 0.7 + U.gauss(0, 9) + mod + soft(stkO, 2.5) - soft(stkD, 2.5);
       det.blocks.push({ o: ok, d: dk, m: Math.round(m), win: m >= 0 });
       sum += m;
       if (m < -11 && !tfl) tfl = dk;
@@ -520,7 +523,7 @@ const Engine = (() => {
       const g1 = Math.round(U.clamp(1.5 + laneQ * 2.4 + U.gauss(0, 1.4) + (side !== 'M' ? U.gauss(0.3, 1.8) : 0) + sm(gs, det, rb, 'hammer', shortYd(gs)), -1, 7));
       const l2k = side === 'M' ? (dc === 'blitz' ? 'LB2' : 'MLB') : side === 'L' ? (det.blocks[1].win ? 'MLB' : 'LB1') : (det.blocks[1].win ? 'MLB' : 'LB2');
       const l2 = D[l2k];
-      const m2 = (elusR(gs, o, rb) - tackleR(gs, d, l2)) * 0.6 + U.gauss(0, 10) + laneQ * 4 + ({ cover: 3, runstop: -3, blitz: 1, base: 0 }[dc]) + (side !== 'M' ? (A(gs, o, rb, 'spd') - A(gs, d, l2, 'spd')) * 0.3 : 0) + (l2k === 'MLB' && side !== 'M' ? 3 : 0)
+      const m2 = gap(elusR(gs, o, rb) - tackleR(gs, d, l2)) * 0.6 + U.gauss(0, 10) + laneQ * 4 + ({ cover: 3, runstop: -3, blitz: 1, base: 0 }[dc]) + (side !== 'M' ? gap(A(gs, o, rb, 'spd') - A(gs, d, l2, 'spd')) * 0.3 : 0) + (l2k === 'MLB' && side !== 'M' ? 3 : 0)
         + soft(sm(gs, det, rb, 'wrecking'), 3) - soft(sm(gs, det, l2, 'thumper') + sm(gs, det, l2, 'sideline', side !== 'M'), 3);
       const juke = m2 < 8 && sp(gs, det, rb, 'jukebox', true, 0.35);
       levels.push({ d: l2k, win: m2 >= 8 || juke, y: g1 });
@@ -528,7 +531,7 @@ const Engine = (() => {
       else {
         const g2 = g1 + U.ri(2, 6);
         const l3k = dc === 'runstop' ? 'S2' : side === 'R' ? 'S2' : 'S1';
-        const m3 = (elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.6 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) + sm(gs, det, rb, 'wrecking') * 0.4 - sm(gs, det, D[l3k], 'suretackle') * 0.6;
+        const m3 = gap(elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.6 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) + sm(gs, det, rb, 'wrecking') * 0.4 - sm(gs, det, D[l3k], 'suretackle') * 0.6;
         levels.push({ d: l3k, win: m3 >= 0, y: g2 });
         if (m3 < 0) { yards = g2 + U.ri(0, 4); tackler = l3k; }
         else { yards = g2 + U.ri(8, 40) + Math.round(sm(gs, det, rb, 'homerun') * U.rand(0.5, 1.5)); tackler = side === 'R' ? 'CB2' : 'CB1'; }
@@ -596,11 +599,11 @@ const Engine = (() => {
     const rushStkRaw = (rp, bp) => sm(gs, det, rp, 'bender', rp.pos === 'DL' && (rp === D.DE1 || rp === D.DE2)) + sm(gs, det, rp, 'bullrush') * (bp && tierOf(bp, 'anchor') >= 0 ? 0.3 : 1)
       + sm(gs, det, rp, 'closer', lead) + sm(gs, det, rp, 'blitzer', dc === 'blitz' && rp.pos !== 'DL')
       - (bp ? sm(gs, det, bp, 'brickwall') + sm(gs, det, bp, 'anchor') * 0.5 : 0);
-    const rushRes = pairs.map(([r, b]) => ({ r, b, m: (passRush(gs, d, D[r]) - passBlk(gs, o, O[b])) * 0.7 + U.gauss(0, 9) - (dc === 'cover' ? 2 : 0) + rushStk(D[r], O[b]) }));
+    const rushRes = pairs.map(([r, b]) => ({ r, b, m: gap(passRush(gs, d, D[r]) - passBlk(gs, o, O[b])) * 0.7 + U.gauss(0, 9) - (dc === 'cover' ? 2 : 0) + rushStk(D[r], O[b]) }));
     const weakest = rushRes.filter(x => x.r.startsWith('DT')).sort((a, b) => b.m - a.m)[0];
     weakest.m -= 6; weakest.help = help;
     blitzers.forEach((bz, i) => {
-      if (extra[i]) rushRes.push({ r: bz, b: extra[i], m: passRush(gs, d, D[bz]) - passBlk(gs, o, O[extra[i]]) * 0.9 + U.gauss(0, 9) + rushStk(D[bz], O[extra[i]]) });
+      if (extra[i]) rushRes.push({ r: bz, b: extra[i], m: gap(passRush(gs, d, D[bz]) - passBlk(gs, o, O[extra[i]])) * 0.9 + U.gauss(0, 9) + rushStk(D[bz], O[extra[i]]) });
       else rushRes.push({ r: bz, b: null, m: 20 });
     });
     let pressT = 4.2, presser = null;
@@ -622,7 +625,7 @@ const Engine = (() => {
       let sep;
       if (!dk) sep = 9 + U.gauss(0, 3);
       else {
-        sep = (routeR(gs, o, rec) - coverR(gs, d, D[dk])) * 0.5 + U.gauss(0, 4.8);
+        sep = gap(routeR(gs, o, rec) - coverR(gs, d, D[dk])) * 0.5 + U.gauss(0, 4.8);
         if (depth >= 15) sep += { base: -3, cover: -5, blitz: 2, runstop: 3 }[dc];
         else if (depth < 10) sep += { base: 0, cover: 2.5, blitz: 0, runstop: 1 }[dc];
         if (oc === 'pa' && dc !== 'cover') sep += 3;
@@ -693,9 +696,9 @@ const Engine = (() => {
     const qbStk = sm(gs, det, qb, 'dime', dpt >= 15) + sm(gs, det, qb, 'iceveins', clutch(gs)) + sm(gs, det, qb, 'trigger', oc === 'quick' || oc === 'screen') * 0.6
       + (pressured ? sm(gs, det, qb, 'pocket') * 2.5 : 0);
     const recStk = sm(gs, det, O[target.slot], 'gluehands', target.sep < 0) + sm(gs, det, O[target.slot], 'redzone', redZone(gs)) * 0.2;
-    const pC = sig(-0.04 + target.sep * 0.15 + (acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt) + soft(qbStk + recStk, 0.32));
+    const pC = sig(-0.04 + target.sep * 0.15 + gap(acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt) + soft(qbStk + recStk, 0.32));
     const hawk = cov0 && target.sep < 1 && sp(gs, det, cov0, 'ballhawk', true, 0.5) ? 1.1 : 0;
-    const pI = sig(-4.4 - target.sep * 0.2 - (acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0) + gs.wxm.int + hawk);
+    const pI = sig(-4.4 - target.sep * 0.2 - gap(acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0) + gs.wxm.int + hawk);
     // Moss'd: a contested deep ball the receiver simply goes up and takes
     const mossd = dpt >= 15 && target.sep < 2 && sp(gs, det, O[target.slot], 'mossd', true, 0.35);
     qs.pa++;
@@ -735,7 +738,7 @@ const Engine = (() => {
       let tackler = null;
       for (let i = 0; i < 3; i++) {
         const dk = chasers[i], df = D[dk];
-        const m = (elusR(gs, o, rec) - tackleR(gs, d, df)) * 0.6 + U.gauss(0, 11) + (i === 0 && target.sep > 4 ? 5 : 0) - i * 2 + soft(sm(gs, det, rec, 'yac'), 3) - soft(sm(gs, det, df, 'suretackle') + sm(gs, det, df, 'sideline', oc === 'screen'), 3);
+        const m = gap(elusR(gs, o, rec) - tackleR(gs, d, df)) * 0.6 + U.gauss(0, 11) + (i === 0 && target.sep > 4 ? 5 : 0) - i * 2 + soft(sm(gs, det, rec, 'yac'), 3) - soft(sm(gs, det, df, 'suretackle') + sm(gs, det, df, 'sideline', oc === 'screen'), 3);
         attempts.push({ d: dk, at: Math.round(dpt + yac), win: m > 9 });
         if (m > 9) { yac += U.ri(2, 6); if (i === 2) yac += U.ri(6, 35); }
         else { tackler = dk; yac += m > 0 ? U.ri(1, 3) : 0; break; }
@@ -792,7 +795,7 @@ const Engine = (() => {
   function aiFourth(gs) {
     const o = gs.poss, diff = gs.score[o] - gs.score[1 - o], fgDist = 100 - gs.ball + 17;
     const inRange = fgDist <= maxFg(gs);
-    if (gs.ot) return diff < -3 ? 'go' : inRange ? 'fg' : 'go';
+    if (gs.ot && diff < 0 && (gs.otDone || 0) >= 1) return diff >= -3 && inRange ? 'fg' : 'go';
     const lateG = gs.qtr === 4 && gs.clock < 360, veryLate = gs.qtr === 4 && gs.clock < 150;
     if (veryLate && diff < 0) return diff >= -3 && inRange ? 'fg' : 'go';
     if (lateG && diff < -8) return 'go';
@@ -804,7 +807,7 @@ const Engine = (() => {
   }
   function fourthInfo(gs) {
     const fgDist = 100 - gs.ball + 17;
-    return { suggest: aiFourth(gs), fgDist, fgP: fgProb(gs), canFg: fgDist <= 62, canPunt: !gs.ot };
+    return { suggest: aiFourth(gs), fgDist, fgP: fgProb(gs), canFg: fgDist <= 62, canPunt: true };
   }
   const canKneel = gs => !gs.ot && gs.qtr === 4 && gs.score[gs.poss] > gs.score[1 - gs.poss] && gs.clock <= 120 && gs.down < 4;
 
@@ -851,8 +854,7 @@ const Engine = (() => {
       else oc = aiOffCall(gs);
     }
     if (oc === 'kneel' || oc === 'fg') { step(gs, { off: oc, def: input.def }); if (gs.lastPlay) gs.lastPlay.live = false; return gs.lastPlay; }
-    if (oc === 'punt' && !gs.ot) return prepPunt(gs);
-    if (oc === 'punt') oc = aiOffCall(gs);
+    if (oc === 'punt') return prepPunt(gs);
     if (!userOff && oc === 'screen' && U.chance(0.45)) oc = 'quick';
     const play = Playbook.offById(oc) || Playbook.pickOff(oc, gs.plan[o] && gs.plan[o].book);
     const flip = userOff && input.flip != null ? !!input.flip : U.chance(0.5);
@@ -1028,7 +1030,7 @@ const Engine = (() => {
     const k = det.kickSide, r = det.o, ret = G.players[det.returner] || GHOST('WR');
     gs.poss = r;
     if (res.td) { gs.ball = 100; tick(gs, 12); touchdown(gs, r, `${nm(ret)} takes the kickoff ALL THE WAY BACK!`); gs.wpH.push(winProb(gs)); return checkClock(gs); }
-    if (res.touchback) { gs.ball = 25; ev(gs, `${gs.abbr[k]} kicks into the end zone — ${nm(ret)} takes a knee. ${gs.abbr[r]} ball at the 25.`, 'kick'); }
+    if (res.touchback) { gs.ball = 35; ev(gs, `${gs.abbr[k]} kicks into the end zone — ${nm(ret)} takes a knee. ${gs.abbr[r]} ball at the 35.`, 'kick'); }
     else {
       gs.ball = U.clamp(Math.round(res.end), 1, 99);
       tick(gs, 6);
@@ -1098,7 +1100,7 @@ const Engine = (() => {
       checkClock(gs);
       return 'ok';
     }
-    if (oc === 'punt' && !gs.ot) { punt(gs); gs.wpH.push(winProb(gs)); return gs.over ? 'over' : 'ok'; }
+    if (oc === 'punt') { punt(gs); gs.wpH.push(winProb(gs)); return gs.over ? 'over' : 'ok'; }
     if (oc === 'fg') { fieldGoal(gs); gs.wpH.push(winProb(gs)); return gs.over ? 'over' : 'ok'; }
     if (oc === 'punt') oc = aiOffCall(gs);
     const dc = userDef ? input.def : aiDefCall(gs);

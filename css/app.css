@@ -1,4 +1,4 @@
-/* ── CFB BLITZ ─────────────────────────────────────────────────── */
+/* ── PRO BLITZ ─────────────────────────────────────────────────── */
 /* Mobile-first. Themes via [data-theme] on <body>; team accent via --accent. */
 
 :root {
@@ -731,3 +731,23 @@ body[data-theme="day"] .stk-t-silver { color: #475569; } body[data-theme="day"] 
 .face-num { position: absolute; right: -4px; bottom: -3px; min-width: calc(var(--fs) * 0.36); height: calc(var(--fs) * 0.32); padding: 0 3px; border-radius: 999px; border: 1.5px solid; font: 700 calc(var(--fs) * 0.21)/1 var(--f-display); display: grid; place-items: center; box-sizing: border-box; }
 .gain-tag { font-weight: 800; }
 .chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--line, rgba(255,255,255,.08)); color: var(--text); }
+/* ── pro league: draft grades, trade center ── */
+.grade-tag { margin-right: 4px; }
+.grade-tag.g5 { background: color-mix(in srgb, var(--gold) 24%, transparent); color: var(--gold); }
+.grade-tag.g4 { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.delta.neg { color: var(--bad); }
+.trade-partners { flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin: 0 -14px 12px; padding: 2px 14px 6px; scrollbar-width: none; }
+.trade-partners::-webkit-scrollbar { display: none; }
+.trade-partners .tp { flex-shrink: 0; display: grid; justify-items: center; gap: 3px; padding: 6px 6px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font: 700 10.5px/1 var(--f-display); color: var(--muted); min-width: 50px; }
+.trade-partners .tp.on { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.trade-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.trade-sides .chips { flex-wrap: wrap; overflow: visible; padding: 0; }
+.trade-sides .chip { height: 28px; font-size: 11.5px; padding: 0 9px; }
+.trade-meter { position: relative; height: 8px; border-radius: 999px; background: var(--surface-3); overflow: visible; }
+.trade-meter i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; transition: width .25s; }
+.trade-meter b { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--text); opacity: .6; border-radius: 1px; }
+.trade-check { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--surface-3); color: var(--muted); flex-shrink: 0; margin-left: 6px; }
+.row.me .trade-check { background: var(--accent); color: var(--on-accent); }
+.tbl-stand td, .tbl-stand th { white-space: nowrap; }
+.tbl-stand .st-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.tbl-stand .tag { margin-left: 2px; }

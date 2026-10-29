@@ -9,11 +9,15 @@ const DATA = (() => {
   const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'CB', 'S', 'K'];
   const POS_NAME = { QB: 'Quarterback', RB: 'Running Back', WR: 'Wide Receiver', TE: 'Tight End', OL: 'Offensive Line', DL: 'Defensive Line', LB: 'Linebacker', CB: 'Cornerback', S: 'Safety', K: 'Kicker' };
   const OFFENSE = ['QB', 'RB', 'WR', 'TE', 'OL'];
-  const ROSTER_QUOTA = { QB: 3, RB: 3, WR: 5, TE: 2, OL: 7, DL: 6, LB: 5, CB: 4, S: 3, K: 1 };
+  const ROSTER_QUOTA = { QB: 3, RB: 4, WR: 6, TE: 3, OL: 8, DL: 8, LB: 6, CB: 5, S: 4, K: 1 };
   const STARTERS = { QB: 1, RB: 1, WR: 3, TE: 1, OL: 5, DL: 4, LB: 3, CB: 2, S: 2, K: 1 };
-  const ROSTER_MAX = 52;
-  const CLASS = ['FR', 'SO', 'JR', 'SR'];
-  const CLASS_LONG = ['Freshman', 'Sophomore', 'Junior', 'Senior'];
+  const ROSTER_MAX = 53, OFF_ROSTER_MAX = 60; // 53 in season; extra camp bodies are allowed until cut-down day
+  // league calendar: 14-week regular season, then a 4-team bracket in each conference and the title game
+  const SEASON = { REG: 14, WC: 15, CC: 16, FINAL: 17, DEADLINE: 9, ROUNDS: 7, PLAYOFF: 4 };
+  const expLabel = p => (p.exp > 0 ? `${p.exp} yr${p.exp > 1 ? 's' : ''}` : 'Rookie');
+  // draft prospects carry a scouting grade (1-5) instead of recruiting stars
+  const GRADE = { 5: '1st-round grade', 4: '2nd-round grade', 3: 'Day 2 grade', 2: 'Day 3 grade', 1: 'Priority FA' };
+  const GRADE_SHORT = { 5: 'R1', 4: 'R2', 3: 'D2', 2: 'D3', 1: 'FA' };
 
   const ATTRS = ['spd', 'str', 'awr', 'skl'];
   const SKILL_LABEL = { QB: 'THR', RB: 'ELU', WR: 'CTH', TE: 'HND', OL: 'BLK', DL: 'RSH', LB: 'TKL', CB: 'COV', S: 'COV', K: 'KPW' };
@@ -36,7 +40,30 @@ const DATA = (() => {
     DL: [90, 99], LB: [40, 59], CB: [20, 39], S: [20, 49], K: [90, 99],
   };
 
-  // Fictional programs for the AI side of the league.
+  // Fictional pro franchises for the AI side of the league (real cities, invented nicknames).
+  const FRANCHISES = [
+    { name: 'Portland', mascot: 'Lumberjacks', abbr: 'POR', logo: { shape: 'shield', icon: 'mountain', primary: '#0F4D2C', secondary: '#C8A24A' } },
+    { name: 'San Antonio', mascot: 'Stallions', abbr: 'SAS', logo: { shape: 'circle', icon: 'horns', primary: '#13294B', secondary: '#C0C6CF' } },
+    { name: 'Orlando', mascot: 'Thunder', abbr: 'ORL', logo: { shape: 'diamond', icon: 'bolt', primary: '#4338CA', secondary: '#FBBF24' } },
+    { name: 'St. Louis', mascot: 'Archers', abbr: 'STL', logo: { shape: 'hex', icon: 'star', primary: '#B3122E', secondary: '#F4F5F7' } },
+    { name: 'Salt Lake', mascot: 'Summit', abbr: 'SLC', logo: { shape: 'shield', icon: 'mountain', primary: '#5B9BD5', secondary: '#13294B' } },
+    { name: 'Columbus', mascot: 'Captains', abbr: 'CLB', logo: { shape: 'crest', icon: 'anchor', primary: '#1C1F26', secondary: '#F2B705' } },
+    { name: 'Sacramento', mascot: 'Gold', abbr: 'SAC', logo: { shape: 'circle', icon: 'crown', primary: '#F2B705', secondary: '#1C1F26' } },
+    { name: 'Oklahoma City', mascot: 'Outlaws', abbr: 'OKC', logo: { shape: 'shield', icon: 'flame', primary: '#D2601A', secondary: '#111418' } },
+    { name: 'Memphis', mascot: 'Blues', abbr: 'MEM', logo: { shape: 'hex', icon: 'wing', primary: '#1F4FBF', secondary: '#E5E7EB' } },
+    { name: 'Louisville', mascot: 'Thoroughbreds', abbr: 'LOU', logo: { shape: 'crest', icon: 'horns', primary: '#6D1A36', secondary: '#C8A24A' } },
+    { name: 'Birmingham', mascot: 'Ironmen', abbr: 'BIR', logo: { shape: 'diamond', icon: 'helmet', primary: '#334155', secondary: '#E0262F' } },
+    { name: 'Austin', mascot: 'Outriders', abbr: 'AUS', logo: { shape: 'circle', icon: 'star', primary: '#E5671B', secondary: '#F4F5F7' } },
+    { name: 'Omaha', mascot: 'Stampede', abbr: 'OMA', logo: { shape: 'shield', icon: 'horns', primary: '#7A3E1D', secondary: '#F2B705' } },
+    { name: 'Honolulu', mascot: 'Waves', abbr: 'HON', logo: { shape: 'circle', icon: 'anchor', primary: '#0E8C8C', secondary: '#F4F5F7' } },
+    { name: 'San Diego', mascot: 'Sea Lions', abbr: 'SD', logo: { shape: 'hex', icon: 'paw', primary: '#0E5E8C', secondary: '#FBBF24' } },
+    { name: 'Virginia Beach', mascot: 'Admirals', abbr: 'VAB', logo: { shape: 'crest', icon: 'anchor', primary: '#13294B', secondary: '#E0262F' } },
+    { name: 'Hartford', mascot: 'Monarchs', abbr: 'HFD', logo: { shape: 'shield', icon: 'crown', primary: '#4B2A85', secondary: '#F2B705' } },
+    { name: 'Albuquerque', mascot: 'Roadrunners', abbr: 'ABQ', logo: { shape: 'diamond', icon: 'wing', primary: '#B4531B', secondary: '#13294B' } },
+    { name: 'Raleigh', mascot: 'Pines', abbr: 'RAL', logo: { shape: 'circle', icon: 'mountain', primary: '#1F8A3C', secondary: '#111418' } },
+    { name: 'Milwaukee', mascot: 'Huskies', abbr: 'MKE', logo: { shape: 'hex', icon: 'claw', primary: '#15181E', secondary: '#A7B1BC' } },
+  ];
+  // Colleges the draft prospects come from.
   const SCHOOLS = [
     { name: 'Ashford', mascot: 'Aviators', abbr: 'ASH', logo: { shape: 'shield', icon: 'wing', primary: '#13294B', secondary: '#C8A24A' } },
     { name: 'Bayport', mascot: 'Mariners', abbr: 'BAY', logo: { shape: 'circle', icon: 'anchor', primary: '#0E5E8C', secondary: '#F4F5F7' } },
@@ -71,15 +98,22 @@ const DATA = (() => {
     { id: 'silver', hex: '#A7B1BC', name: 'Silver' }, { id: 'white', hex: '#F4F5F7', name: 'White' },
   ];
 
+  const COLLEGES = SCHOOLS.map(s => s.name).concat(['Lone Pine State', 'Bayou Tech', 'Northern Plains', 'Coastal Carolina A&M', 'Desert State', 'Great Lakes', 'Mid-Valley', 'Tidewater', 'Blue Ridge', 'Gulf Coast']);
+
+  // Two conferences of two divisions each; division winners and two wild cards make the playoffs.
   const CONFS = [
-    { id: 0, name: 'Heartland', long: 'Heartland Conference', short: 'HRT' },
-    { id: 1, name: 'Crest', long: 'Crest Conference', short: 'CRS' },
+    { id: 0, name: 'American', long: 'American Conference', short: 'AC' },
+    { id: 1, name: 'National', long: 'National Conference', short: 'NC' },
+  ];
+  const DIVS = [
+    { id: 0, conf: 0, name: 'AC East' }, { id: 1, conf: 0, name: 'AC West' },
+    { id: 2, conf: 1, name: 'NC East' }, { id: 3, conf: 1, name: 'NC West' },
   ];
 
   const DIFFICULTY = [
-    { id: 'blueblood', label: 'Blue Blood', desc: 'Loaded roster, national title expectations from day one.', prestige: 4.5, tag: 'Easy' },
-    { id: 'contender', label: 'Contender', desc: 'A solid program one great draft away from the top.', prestige: 3, tag: 'Normal' },
-    { id: 'rebuild', label: 'Rebuild', desc: 'Thin depth, low expectations. Build it brick by brick.', prestige: 1.5, tag: 'Hard' },
+    { id: 'dynasty', label: 'Dynasty', desc: 'A stacked roster built to win the Blitz Bowl right now.', prestige: 4.5, tag: 'Easy' },
+    { id: 'contender', label: 'Contender', desc: 'A playoff-caliber team one good draft away from the top.', prestige: 3, tag: 'Normal' },
+    { id: 'rebuild', label: 'Rebuild', desc: 'Thin depth and an aging core. Build through the draft and trades.', prestige: 1.5, tag: 'Hard' },
   ];
 
   // Training groups — offense / defense split as the off-season camp works.
@@ -105,9 +139,9 @@ const DATA = (() => {
     { id: 'intense', label: 'Intense', mult: 1.5, inj: 0.08, desc: 'Two-a-days. Big gains, real injury risk.' },
   ];
   const CAMP_SESSIONS = [
-    { name: 'Spring Practice', desc: 'Install the playbook and find out who can play.' },
-    { name: 'Summer Conditioning', desc: 'Strength, speed and stamina in the heat.' },
-    { name: 'Fall Camp', desc: 'Final tune-up before the season opener.' },
+    { name: 'OTAs', desc: 'Install the playbook and get the rookies up to speed.' },
+    { name: 'Minicamp', desc: 'Full-squad work: strength, speed and stamina.' },
+    { name: 'Training Camp', desc: 'Pads on, depth chart battles, final tune-up before Week 1.' },
   ];
 
   const PLANS = {
@@ -204,12 +238,12 @@ const DATA = (() => {
   };
   const stickersFor = pos => Object.keys(STICKERS).filter(id => STICKERS[id].pos.includes(pos));
 
-  const WEEK_LABEL = w => (w <= 11 ? `Week ${w}` : w === 12 ? 'Conference Championships' : w === 13 ? 'Playoff Semifinals' : 'National Championship');
-  const WEEK_SHORT = w => (w <= 11 ? `Wk ${w}` : w === 12 ? 'CCG' : w === 13 ? 'CFP Semi' : 'Title');
+  const WEEK_LABEL = w => (w <= SEASON.REG ? `Week ${w}` : w === SEASON.WC ? 'Wild Card Round' : w === SEASON.CC ? 'Conference Championships' : 'The Blitz Bowl');
+  const WEEK_SHORT = w => (w <= SEASON.REG ? `Wk ${w}` : w === SEASON.WC ? 'WC' : w === SEASON.CC ? 'CONF' : 'BOWL');
 
   return {
-    FIRST, LAST, TOWNS, POSITIONS, POS_NAME, OFFENSE, ROSTER_QUOTA, STARTERS, ROSTER_MAX, CLASS, CLASS_LONG,
-    ATTRS, SKILL_LABEL, ATTR_LABEL, ATTR_LONG, OVR_W, NUMBERS, SCHOOLS, COLORS, CONFS, DIFFICULTY,
+    FIRST, LAST, TOWNS, POSITIONS, POS_NAME, OFFENSE, ROSTER_QUOTA, STARTERS, ROSTER_MAX, OFF_ROSTER_MAX, SEASON, expLabel, GRADE, GRADE_SHORT,
+    ATTRS, SKILL_LABEL, ATTR_LABEL, ATTR_LONG, OVR_W, NUMBERS, FRANCHISES, SCHOOLS, COLLEGES, COLORS, CONFS, DIVS, DIFFICULTY,
     STICKER_TIERS, STICKERS, stickersFor, WEATHER, WEATHER_TIME, TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
     attrLabel: (pos, a) => (a === 'skl' ? SKILL_LABEL[pos] : ATTR_LABEL[a]),
   };
