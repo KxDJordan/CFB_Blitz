@@ -169,10 +169,47 @@ const UI = (() => {
   }
   function sheet(html, opts = {}) {
     const root = document.getElementById('sheet-root');
-    root.innerHTML = `<div class="sheet-bg ${opts.center ? 'center' : ''}" data-sheetbg="${opts.locked ? 'locked' : ''}"><div class="sheet" role="dialog" aria-modal="true">${opts.center ? '' : '<div class="grabber"></div>'}${html}</div></div>`;
+    root.innerHTML = `<div class="sheet-bg ${opts.center ? 'center' : ''}" data-sheetbg="${opts.locked ? 'locked' : ''}"><div class="sheet" role="dialog" aria-modal="true">${opts.center ? '' : `<div class="grab-zone"${opts.locked ? ' data-locked="1"' : ''}><div class="grabber"></div></div>`}${html}</div></div>`;
     lockBehindSheet(true);
   }
-  function closeSheet() { document.getElementById('sheet-root').innerHTML = ''; lockBehindSheet(false); }
+  // the sheet slides (or, centred, shrinks) away before it is removed; opening another sheet meanwhile replaces it at once
+  function closeSheet() {
+    const root = document.getElementById('sheet-root'), bg = root.firstElementChild;
+    lockBehindSheet(false);
+    if (!bg || bg.classList.contains('closing')) return;
+    bg.classList.add('closing');
+    setTimeout(() => bg.remove(), 280);
+  }
+  const sheetIsOpen = () => !!document.querySelector('#sheet-root .sheet-bg:not(.closing)');
+  // drag the grabber bar down to dismiss: past a quarter of the sheet (or a quick flick of 50px+) it closes, otherwise it springs back
+  function wireSheetDrag() {
+    let drag = null;
+    document.addEventListener('pointerdown', e => {
+      const zone = e.target.closest && e.target.closest('.grab-zone');
+      if (!zone || zone.dataset.locked) return;
+      const sh = zone.closest('.sheet');
+      drag = { sh, bg: sh.parentElement, y0: e.clientY, dy: 0, t: performance.now(), v: 0, id: e.pointerId };
+      sh.style.transition = 'none'; sh.style.animation = 'none';
+      try { zone.setPointerCapture(e.pointerId); } catch (err) { /* already released */ }
+    });
+    document.addEventListener('pointermove', e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dy = Math.max(0, e.clientY - drag.y0), now = performance.now();
+      drag.v = (dy - drag.dy) / Math.max(1, now - drag.t); drag.dy = dy; drag.t = now;
+      drag.sh.style.transform = `translateY(${dy}px)`;
+      drag.bg.style.backgroundColor = `rgba(2, 6, 14, ${0.6 * (1 - Math.min(1, dy / drag.sh.offsetHeight))})`;
+    });
+    const end = e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag; drag = null;
+      // closing hands back to the stylesheet's slide-down (it starts from where the finger left the sheet);
+      // springing back keeps the open animation off so it doesn't replay
+      if (d.dy > Math.min(160, d.sh.offsetHeight * 0.25) || (d.v > 0.5 && d.dy > 50)) { d.sh.style.animation = ''; closeSheet(); return; }
+      d.sh.style.transition = 'transform .25s var(--ease)'; d.sh.style.transform = ''; d.bg.style.backgroundColor = '';
+    };
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
+  }
   // while a sheet is up, the screen underneath must not receive taps or swipes
   function lockBehindSheet(on) {
     document.body.classList.toggle('sheet-open', on);
@@ -297,7 +334,7 @@ const UI = (() => {
         ${marquee}
         ${cont}
         <button class="btn btn-primary btn-lg btn-block menu-cta mi" style="--d:${career ? .52 : .45}s" data-a="newCareer">${I.play} New Career</button>
-        <button class="btn btn-ghost btn-block mi" style="--d:${career ? .58 : .5}s" data-a="settings">${I.gear} Settings</button>
+        <div class="btn-row mi" style="--d:${career ? .58 : .5}s"><button class="btn btn-ghost" data-a="settings">${I.gear} Settings</button><button class="btn btn-ghost" data-a="achSheet">${I.trophy} Achievements</button></div>
       </div>
       <div class="menu-foot mi" style="--d:.65s">Saves automatically on this device</div>
     </div>`;
@@ -442,6 +479,7 @@ const UI = (() => {
         ${vs(ur.off, or.def, 'Your offense', 'their defense')}
         ${vs(ur.def, or.off, 'Your defense', 'their offense')}
       </details>
+      ${(() => { const rv = Career.rivalGame(g); return rv ? `<div class="rival-banner"><b>${Career.rivalLevel(rv.heat).toUpperCase()}</b><span>Rivalry game · series ${rv.w}-${rv.l}</span><div class="heat-bar"><i style="width:${Math.min(100, rv.heat)}%"></i></div></div>` : ''; })()}
       <button class="plan-chip-row" data-a="planSheet"><span class="kicker" style="color:var(--muted)">Game plan</span><span class="grow">${Playbook.BOOKS[G.plan.book || 'multiple'].name} · ${DATA.PLANS.off.find(p => p.id === G.plan.off).short} · ${DATA.PLANS.def.find(p => p.id === G.plan.def).short}</span>${I.chev}</button>
       <div class="btn-row mt12"><button class="btn btn-primary btn-lg" data-a="playGame">${I.play} Play Game</button><button class="btn btn-lg fit" style="flex:0 0 auto" data-a="quickSim">${I.ff} Sim</button></div>
     </div>`;
@@ -475,7 +513,7 @@ const UI = (() => {
   }
   function homeTab() {
     const u = L.user();
-    return heroCard(u) + nextGameCard() + tradeCard() + practiceCard() + forumTeaser() + leadersCard(u) + injuryCard(u);
+    return heroCard(u) + nextGameCard() + reelCard() + tradeCard() + practiceCard() + forumTeaser() + leadersCard(u) + injuryCard(u);
   }
 
   // ── roster ──
@@ -526,6 +564,7 @@ const UI = (() => {
     sheet(`<div class="team-stripe" style="background:linear-gradient(90deg,${t ? t.logo.primary : '#334155'} 0 60%,${t ? t.logo.secondary : '#64748b'} 60%)"></div><div class="pc-head" style="${t ? teamVars(t) : '--team-1:#334155;--team-2:#64748b'}">${jersey(p, 64)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]} · #${p.num} · Age ${p.age}</div><div class="tiny" style="opacity:.7;margin-top:2px">${esc(p.college)}${t ? ` · ${tfull(t)}` : ''}</div></div><div class="pc-ovr"><b>${p.ovr}</b><span>OVR</span></div></div>
       ${G.phase === 'season' || G.phase === 'post' ? `<div class="small mb8" style="margin-top:-2px">${seasonGain(p) > 0 ? `<b class="good">+${seasonGain(p)} OVR</b> this season` : '<span class="muted">No OVR change yet this season</span>'}<span class="muted"> · started at ${p.ovr0 ?? p.ovr}</span></div>` : ''}
       <div class="kv mb12"><div><b>${U.potGrade(p.pot)}</b><span>Potential</span></div><div><b style="font-size:14px;line-height:18px">${DATA.expLabel(p)}</b><span>Experience</span></div><div><b>${L.tradeValue(p).toFixed(1)}</b><span>Trade value</span></div><div><b style="font-size:14px;line-height:18px">${status}</b><span>Status</span></div></div>
+      ${p.dl || p.pow ? `<div class="honor-row mb12">${p.dl === 'steal' ? '<span class="tag t-good">Draft steal</span>' : p.dl === 'bust' ? '<span class="tag t-bad">Draft bust</span>' : ''}${p.pow ? `<span class="tag t-gold">${p.pow}× Player of the Week</span>` : ''}</div>` : ''}
       <div class="contract-line mb12">${p.fa ? `Free agent · asking <b>${money(p.ask.sal)}</b> × ${yrsTxt(p.ask.yrs)}` : p.expiring ? `Contract expiring · asking <b>${money(p.ask.sal)}</b> × ${yrsTxt(p.ask.yrs)}` : `Contract <b>${contractStr(p)}</b> left`}<span class="muted"> · market ${money(L.marketSalary(p))}</span></div>
       ${p.fa && G.phase !== 'draft' ? `<button class="btn btn-primary btn-block mb12" data-a="faOffer" data-v="${p.id}">Make an offer</button>` : ''}
       ${mine && p.expiring ? `<div class="btn-row mb12"><button class="btn btn-primary" data-a="resign" data-v="${p.id}" ${p.ask.sal > L.capRoom(t) ? 'disabled' : ''}>Re-sign ${money(p.ask.sal)}</button><button class="btn" data-a="letGo" data-v="${p.id}">Let him walk</button></div>` : ''}
@@ -651,6 +690,160 @@ const UI = (() => {
   }
 
   // ── program ──
+  // ════════════════ CAREER: staff, rivalries, achievements, draft classes, weekly reel ════════════════
+  function coachRow(c, role, btn = '') {
+    const R = Career.ROLES.find(r => r.id === role);
+    if (!c) return `<div class="row coach-row vacant"><span class="coach-role">${R.short}</span><div class="grow"><div class="r1">Vacant</div><div class="r2">${Career.marketOpen() ? 'Hire one from the coaching market' : 'Filled before Week 1'}</div></div></div>`;
+    const tr = Career.TRAITS[c.trait];
+    return `<div class="row coach-row"><span class="coach-role">${R.short}</span><div class="grow"><div class="r1">${esc(c.first)} ${esc(c.last)} ${stars(Career.stars(c))}</div><div class="r2"><b>${tr.name}</b> · ${tr.desc}</div><div class="tiny muted">Age ${c.age}${c.seasons ? ` · ${c.seasons} season${c.seasons > 1 ? 's' : ''} on staff` : ''}${c.titles ? ` · ${c.titles}× champion` : ''}</div></div>${btn}</div>`;
+  }
+  function staffCard() {
+    const u = L.user();
+    return `<div class="section-title"><h3>Coaching staff</h3><button class="link" data-a="staffSheet">${Career.marketOpen() ? 'Hire & fire' : 'Details'}</button></div>
+      <div class="card flush"><div class="list">${Career.ROLES.map(r => coachRow(u.staff[r.id], r.id)).join('')}</div></div>`;
+  }
+  function staffSheet() {
+    const u = L.user(), role = S.staffRole || 'oc', open = Career.marketOpen(), cur = u.staff[role];
+    const pool = open ? G.coachPool.filter(c => c.role === role).sort((a, b) => b.r - a.r) : [];
+    sheet(`<div class="h-lg mb8">Coaching staff</div>
+      <div class="small muted mb12">Coordinators lift their side of the ball on game day, most of all their specialty. The development coach shapes how fast the roster grows. ${open ? 'The coaching market is open until Week 1.' : 'The coaching market opens when the season ends.'}</div>
+      <div class="plan-chips c3 mb12">${Career.ROLES.map(r => `<button class="plan-chip ${r.id === role ? 'on' : ''}" data-a="staffRole" data-v="${r.id}">${r.short}${u.staff[r.id] ? '' : ' · open'}</button>`).join('')}</div>
+      <div class="kicker mb8">${Career.ROLES.find(r => r.id === role).name}</div>
+      <div class="card flush"><div class="list">${coachRow(cur, role, cur && open ? `<button class="btn btn-sm btn-danger" data-a="fireCoach" data-v="${role}">Fire</button>` : '')}</div></div>
+      ${open ? `<div class="kicker mb8">On the market</div><div class="card flush"><div class="list">${pool.length ? pool.map(c => coachRow(c, role, Career.interested(c) ? `<button class="btn btn-sm btn-primary" data-a="hireCoach" data-v="${c.id}">Hire</button>` : '<span class="tag">Wants a winner</span>')).join('') : '<div class="row"><div class="small muted">Nobody left on the market for this job.</div></div>'}</div></div>
+      <div class="tiny muted">Hiring replaces whoever has the job now. Big names only join prestigious franchises, and prestige rises with winning seasons and playoff runs.</div>` : ''}`);
+  }
+  function rivalsCard() {
+    const list = Career.rivalList().slice(0, 4);
+    if (!list.length) return '';
+    return `<div class="section-title"><h3>Rivalries</h3><span class="tiny muted">close games & playoff meetings add heat</span></div>
+      <div class="card flush"><div class="list">${list.map(r => {
+        const t = L.team(r.id), lv = Career.rivalLevel(r.heat), last = r.games[0];
+        return `<button class="row tap" style="width:100%;text-align:left" data-a="team" data-v="${t.id}">${logo(t, 34)}<div class="grow"><div class="r1">${tfull(t)} ${lv ? `<span class="tag rival-tag">${lv}</span>` : ''}</div><div class="r2">Series ${r.w}-${r.l}${last ? ` · last: ${last.us > last.them ? 'W' : 'L'} ${last.us}-${last.them}${last.po ? ' (playoffs)' : ''}` : ''}</div>${lv && r.why ? `<div class="tiny muted">${esc(r.why)}</div>` : ''}<div class="heat-bar"><i style="width:${Math.min(100, r.heat)}%"></i></div></div></button>`;
+      }).join('')}</div></div>`;
+  }
+  function achCard() {
+    const list = Career.achList(), got = list.filter(a => a.got).length;
+    return `<div class="section-title"><h3>Achievements</h3><button class="link" data-a="achSheet">${got}/${list.length} unlocked</button></div>
+      <button class="card ach-strip" data-a="achSheet">${list.map(a => `<span class="ach-dot ${a.got ? 'on' : ''}${a.career ? ' mine' : ''}">${a.got ? a.icon : ''}</span>`).join('')}</button>`;
+  }
+  function achSheet() {
+    const list = Career.achList(), got = list.filter(a => a.got).length;
+    sheet(`<div class="h-lg mb8">Achievements</div><div class="small muted mb12">${got} of ${list.length} unlocked on this device. They carry over between careers, so start a new one to chase the rest.</div>
+      <div class="card flush"><div class="list">${list.map(a => `<div class="row ach-row ${a.got ? 'on' : ''}"><span class="ach-ico">${a.got ? a.icon : '🔒'}</span><div class="grow"><div class="r1">${esc(a.name)}${a.career ? ' <span class="tag t-accent">This career</span>' : ''}</div><div class="r2">${esc(a.desc)}</div>${a.got ? `<div class="tiny muted">Unlocked ${a.got.year} · ${esc(a.got.team)}</div>` : ''}</div></div>`).join('')}</div></div>`);
+  }
+  function draftClassCard() {
+    const revs = G.draftReviews || [], u = L.user();
+    const pending = Object.keys(G.draftHist || {}).map(Number).filter(y => !revs.some(r => r.year === y)).sort((a, b) => b - a);
+    if (!revs.length && !pending.length) return '';
+    return `<div class="section-title"><h3>Draft classes</h3><span class="tiny muted">re-graded two seasons later</span></div>
+      <div class="card flush"><div class="list">${revs.map(r => { const st = r.steals[0]; return `<button class="row tap" style="width:100%;text-align:left" data-a="draftClass" data-v="${r.year}"><span class="tag t-accent">${r.year}</span><div class="grow"><div class="r1">Your grade: ${r.orig[u.id] ? `${r.orig[u.id]} → ` : ''}<b>${r.grades[u.id] || '—'}</b></div><div class="r2">${st ? `Steal: ${esc(st.name)} (#${st.pick}, ${esc(L.team(st.by).abbr)})` : 'No standout steals'}</div></div>${I.chev}</button>`; }).join('')}
+        ${pending.map(y => `<div class="row"><span class="tag">${y}</span><div class="grow"><div class="r1">Draft day grade: <b>${(G.draftHist[y] || {})[u.id] || '—'}</b></div><div class="r2">Re-graded after the ${y + 1} season</div></div></div>`).join('')}</div></div>`;
+  }
+  function draftClassSheet(year) {
+    const r = (G.draftReviews || []).find(x => x.year === year);
+    if (!r) return;
+    const row = (x, cls) => { const p = G.players[x.pid], t = L.team(x.by); return `<button class="row tap" style="width:100%;text-align:left" ${p ? `data-a="player" data-v="${x.pid}"` : ''}>${p ? jersey(p, 36) : logo(t, 30)}<div class="grow"><div class="r1">${esc(x.name)} <span class="tag ${cls}">${x.v > 0 ? '+' : ''}${x.v}</span></div><div class="r2">Rd ${x.round} #${x.pick} · ${esc(t.abbr)} ${x.pos} · ${x.ovr} OVR two years later</div></div></button>`; };
+    const teams = G.teams.filter(t => r.grades[t.id]).sort((a, b) => r.grades[a.id].localeCompare(r.grades[b.id]));
+    sheet(`<div class="h-lg mb8">${year} draft, re-graded</div><div class="small muted mb12">Each pick is measured against what that slot produced in this class. Busts are first-rounders who fell short; steals came later and outplayed their slot.</div>
+      <div class="kicker mb8">Steals</div><div class="card flush"><div class="list">${r.steals.length ? r.steals.map(x => row(x, 't-good')).join('') : '<div class="row small muted">None stood out.</div>'}</div></div>
+      <div class="kicker mb8">Busts</div><div class="card flush"><div class="list">${r.busts.length ? r.busts.map(x => row(x, 't-bad')).join('') : '<div class="row small muted">Every first-rounder held up.</div>'}</div></div>
+      <div class="kicker mb8">Team grades</div><div class="card flush"><table class="tbl"><thead><tr><th>Team</th><th>Draft day</th><th>Now</th></tr></thead><tbody>${teams.map(t => `<tr class="${t.user ? 'me' : ''}"><td>${tname(t)}</td><td>${r.orig[t.id] || '—'}</td><td><b>${r.grades[t.id]}</b></td></tr>`).join('')}</tbody></table></div>`);
+  }
+  // ── weekly honours & the top-3 reel ──
+  function reelCard() {
+    const R = G.reel;
+    if (!R || R.year !== G.year || G.phase !== 'season') return '';
+    const row = (c, lbl) => {
+      if (!c) return '';
+      const p = G.players[c.pid], t = L.team(c.team);
+      return `<button class="row tap" style="width:100%;text-align:left" ${p ? `data-a="player" data-v="${c.pid}"` : ''}>${p ? jersey(p, 38) : logo(t, 34)}<div class="grow"><div class="r1">${esc(c.name)} ${t.user ? '<span class="tag t-accent">Yours</span>' : ''}</div><div class="r2">${lbl} · ${esc(t.abbr)} ${c.pos} · ${esc(c.line)}</div></div></button>`;
+    };
+    return `<div class="section-title"><h3>${DATA.WEEK_LABEL(R.wk)} in review</h3></div>
+      <div class="card flush"><div class="list">${row(R.pow.off, 'Offensive Player of the Week')}${row(R.pow.def, 'Defensive Player of the Week')}</div>
+      ${R.plays.length ? `<button class="reel-cta" data-a="reelSheet">${I.play} Top ${R.plays.length} plays of the week</button>` : ''}</div>`;
+  }
+  // a play without a recording: the ball's path drawn on a field strip (offense attacking right)
+  function reelDiagram(p) {
+    const T = L.team(p.team), O = L.team(p.team === p.h ? p.a : p.h);
+    const y = p.y || 45, start = p.los != null ? p.los : Math.max(5, 100 - y), end = p.kind === 'td' ? 104 : Math.min(99, start + y);
+    const air = /pass|complete|catch|hits|finds/i.test(p.text) && !/ runs | rush/i.test(p.text);
+    const x0 = 10 + start, x1 = 10 + end, mid = (x0 + x1) / 2;
+    const path = air ? `M${x0},15 Q${mid},${(15 - Math.min(13, (x1 - x0) * 0.35)).toFixed(1)} ${x1},15` : `M${x0},15 L${x1},15`;
+    let lines = '';
+    for (let i = 1; i < 10; i++) lines += `<line x1="${10 + i * 10}" y1="0" x2="${10 + i * 10}" y2="30" stroke="#fff" stroke-opacity=".35" stroke-width=".3"/><text x="${10 + i * 10}" y="28" font-size="3" fill="#fff" fill-opacity=".55" text-anchor="middle">${i <= 5 ? i * 10 : 100 - i * 10}</text>`;
+    return `<svg class="reel-svg" viewBox="0 0 120 30" preserveAspectRatio="xMidYMid meet">
+      <rect width="120" height="30" fill="#1d6b3a"/><rect width="10" height="30" fill="${T.logo.primary}" opacity=".85"/><rect x="110" width="10" height="30" fill="${O.logo.primary}" opacity=".85"/>
+      ${lines}<line x1="${x0}" y1="0" x2="${x0}" y2="30" stroke="#60a5fa" stroke-width=".6"/>
+      <path d="${path}" fill="none" stroke="#facc15" stroke-width=".8" stroke-dasharray="200" stroke-dashoffset="200"><animate attributeName="stroke-dashoffset" values="200;0;0" keyTimes="0;.7;1" dur="2.6s" repeatCount="indefinite"/></path>
+      <ellipse rx="1.6" ry="1" fill="#7c3f12" stroke="#fff" stroke-width=".25"><animateMotion path="${path}" keyPoints="0;1;1" keyTimes="0;.7;1" calcMode="linear" dur="2.6s" repeatCount="indefinite"/></ellipse>
+    </svg>`;
+  }
+  // a play from your own live game: the recorded positions played back on a small field (offense attacking up)
+  let reelRaf = 0;
+  function stopReel() { cancelAnimationFrame(reelRaf); reelRaf = 0; }
+  function startReel(clip) {
+    const cv = document.getElementById('reelcv');
+    if (!cv) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const T = clip.t.map(id => L.team(id)), cols = T.map(t => t.logo.primary);
+    const [r0, g0, b0] = U.hexToRgb(cols[0]), [r1, g1, b1] = U.hexToRgb(cols[1]);
+    if (Math.hypot(r0 - r1, g0 - g1, b0 - b1) < 120) cols[1] = '#f8fafc';
+    const FW = 53.33, sc = W / (FW + 4), n = clip.f.length, dur = n / clip.fps, o = clip.o ?? 0;
+    const t0 = performance.now();
+    let camY = clip.f[0][1];
+    const frame = now => {
+      if (!document.body.contains(cv)) return stopReel();
+      reelRaf = requestAnimationFrame(frame);
+      const el = ((now - t0) / 1000) % (dur + 1.4);
+      const k = Math.min(n - 1.001, el * clip.fps), i = Math.floor(k), u = k - i, A0 = clip.f[i], B0 = clip.f[i + 1];
+      const v = j => A0[j] + (B0[j] - A0[j]) * u;
+      camY = el < 0.05 ? A0[1] : camY + (v(1) - camY) * 0.1;
+      const X = x => (x + 2) * sc, Y = y => H * 0.58 - (y - camY) * sc;
+      ctx.fillStyle = '#1d6b3a'; ctx.fillRect(0, 0, W, H);
+      for (let yd = Math.floor((camY - H / sc) / 5) * 5; yd < camY + H / sc; yd += 5) {
+        if (yd < -10 || yd >= 110) continue;
+        if (yd < 0 || yd >= 100) { ctx.fillStyle = yd < 0 ? cols[o] : cols[1 - o]; ctx.globalAlpha = 0.75; ctx.fillRect(X(0), Y(yd + 5), FW * sc, 5 * sc); ctx.globalAlpha = 1; continue; }
+        if ((yd / 5) % 2) { ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fillRect(X(0), Y(yd + 5), FW * sc, 5 * sc); }
+        ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = yd % 10 ? 0.6 : 1.2;
+        ctx.beginPath(); ctx.moveTo(X(0), Y(yd)); ctx.lineTo(X(FW), Y(yd)); ctx.stroke();
+        if (yd % 10 === 0 && yd > 0) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `700 ${Math.round(sc * 2.2)}px Oswald, sans-serif`; ctx.textAlign = 'center'; const lb = String(yd <= 50 ? yd : 100 - yd); ctx.fillText(lb, X(5), Y(yd) + sc * 0.8); ctx.fillText(lb, X(FW - 5), Y(yd) + sc * 0.8); }
+      }
+      clip.side.forEach((s, a) => {
+        const px = X(v(3 + a * 2)), py = Y(v(4 + a * 2));
+        ctx.beginPath(); ctx.arc(px, py, sc * 0.85, 0, Math.PI * 2);
+        ctx.fillStyle = cols[s]; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = s === 1 && cols[1] === '#f8fafc' ? T[1].logo.primary : 'rgba(255,255,255,.85)'; ctx.stroke();
+      });
+      const bx = X(v(0)), by = Y(v(1)), bz = v(2);
+      ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(bx, by, sc * 0.45, sc * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8b4513'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(bx, by - bz * sc * 0.45, sc * 0.55, sc * 0.36, -0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    };
+    reelRaf = requestAnimationFrame(frame);
+  }
+  function reelSheet() {
+    stopReel();
+    const R = G.reel, i = S.reelI, p = R.plays[i];
+    if (!p) return;
+    const H = L.team(p.h), Aw = L.team(p.a), T = L.team(p.team);
+    sheet(`<div class="reel-head"><span class="reel-rank">#${i + 1}</span><div class="grow"><div class="kicker">${DATA.WEEK_LABEL(R.wk)} · top plays</div><div class="h-md">${esc(p.tag)}</div></div>${logo(T, 40)}</div>
+      <div class="reel-stage">${p.clip ? '<canvas id="reelcv"></canvas><span class="reel-badge">REPLAY</span>' : reelDiagram(p)}</div>
+      <div class="reel-text">${esc(p.text)}</div>
+      <div class="tiny muted mb12">${p.q > 4 ? `OT${p.q - 4}` : `${U.ord(p.q)} quarter`} · ${U.clock(p.clk)} · ${esc(H.abbr)} ${p.sc[0]}, ${esc(Aw.abbr)} ${p.sc[1]}</div>
+      <div class="btn-row">${i < R.plays.length - 1 ? `<button class="btn" data-a="reelNav" data-v="1">${I.back} #${i + 2}</button>` : ''}${i > 0 ? `<button class="btn btn-primary" data-a="reelNav" data-v="-1">Next: #${i} ${I.chev}</button>` : '<button class="btn btn-primary" data-a="closeSheet">Done</button>'}</div>`);
+    if (p.clip) requestAnimationFrame(() => startReel(p.clip));
+  }
+  // offseason: what happened to your staff, and the way into the coaching market
+  function staffNewsCard() {
+    const lines = (G.staffNews || []).map(m => `<div class="small mb8">${m.why === 'retire' ? '👋' : '🌳'} <b>${esc(m.name)}</b> (${Career.ROLES.find(r => r.id === m.role).short}) ${m.why === 'retire' ? 'retired.' : `was hired away by ${esc(m.dest)}.`}</div>`).join('');
+    const vac = Career.ROLES.filter(r => !L.user().staff[r.id]);
+    return `<div class="section-title"><h3>Coaching staff</h3><span class="tiny muted">market open until Week 1</span></div>
+      <div class="card">${lines}${vac.length ? `<div class="small mb12"><b class="bad">${vac.length} opening${vac.length > 1 ? 's' : ''}:</b> ${vac.map(r => r.name).join(', ')}</div>` : lines ? '' : '<div class="small muted mb12">Your staff is intact. New candidates are on the market.</div>'}<button class="btn btn-block" data-a="staffSheet">Open the coaching market</button></div>`;
+  }
+
   function programTab() {
     const u = L.user();
     const titles = u.hist.filter(h => h.champ).length, ccs = u.hist.filter(h => h.cc).length;
@@ -660,11 +853,13 @@ const UI = (() => {
     return `<div class="hero-card" style="${teamVars(u)}"><div class="hero-stripe"></div><div class="hero-in">${logo(u, 84, 'hero-logo')}<div class="grow"><div class="kicker" style="color:rgba(255,255,255,.75)">Est. ${G.history.length ? G.history[0].year : G.year} · ${esc(u.abbr)}</div><div class="hero-name">${tfull(u)}</div><div class="hero-sub">Season ${G.season} · ${esc(L.divName(u))}</div></div></div>
       <div class="hero-stats"><div class="hero-stat"><b>${titles}</b><span>Titles</span></div><div class="hero-stat"><b>${ccs}</b><span>Conf</span></div><div class="hero-stat"><b>${mvps}</b><span>MVPs</span></div><div class="hero-stat"><b>${best ? `${best.w}-${best.l}` : '—'}</b><span>Best</span></div></div></div>
       <button class="btn btn-block mb12" data-a="brandSheet">${I.shield} Edit logo & colors</button>
+      ${staffCard()}${rivalsCard()}${achCard()}${draftClassCard()}
       <div class="section-title"><h3>Franchise history</h3></div>
       ${u.hist.length ? `<div class="card flush"><table class="tbl"><thead><tr><th>Season</th><th>Record</th><th>Div</th><th>Seed</th><th>Result</th></tr></thead><tbody>${u.hist.slice().reverse().map(h => `<tr><td><b>${h.year}</b></td><td>${h.w}-${h.l}</td><td>${h.dw ?? '-'}-${h.dl ?? '-'}${h.divWin ? ' <span class="tag t-accent">DIV</span>' : ''}</td><td>${h.seed ? '#' + h.seed : '—'}</td><td>${h.champ ? '<span class="tag t-gold">Champions</span>' : h.po ? `<span class="tag">${RES[h.po]}</span>` : '<span class="dim">Missed</span>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="card"><div class="small muted">Your first season is underway. History is written in January.</div></div>'}
       ${G.history.length ? `<div class="section-title"><h3>League champions</h3></div><div class="card flush"><div class="list">${G.history.slice().reverse().map(h => { const c = L.team(h.champ); return `<div class="row">${logo(c, 30)}<div class="grow"><div class="r1">${h.year} · ${tfull(c)}</div><div class="r2">MVP: ${h.mvp ? `${esc(h.mvp.name)} (${esc(h.mvp.teamName)})` : '—'}</div></div></div>`; }).join('')}</div></div>` : ''}
       <div class="section-title"><h3>Settings</h3></div>
       <div class="card">${themePicker(G.settings.theme)}
+        <div class="divider"></div>${sfxToggle()}
         <div class="divider"></div>
         <div class="flex between"><div><div style="font-weight:700">Call every play</div><div class="small muted">Pick the offensive & defensive call each snap in live games</div></div><button class="toggle ${G.settings.callPlays !== false ? 'on' : ''}" data-a="toggleCalls" aria-label="Toggle play calling"></button></div>
         <div class="divider"></div>
@@ -735,7 +930,7 @@ const UI = (() => {
       return;
     }
     if (L.isUser(cur.teamId)) {
-      if (S.draft.fast) { S.draft.fast = false; toast(`${I.flame.replace('<svg', '<svg style="width:16px;height:16px;color:var(--accent)"')} You're on the clock!`); U.vibrate(30); render(); }
+      if (S.draft.fast) { S.draft.fast = false; toast(`${I.flame.replace('<svg', '<svg style="width:16px;height:16px;color:var(--accent)"')} You're on the clock!`); U.vibrate(30); Sfx.play('onClock'); render(); }
       return;
     }
     draftTimer = setTimeout(() => { if (S.screen === 'draft') { L.draftAI(); render(); } }, S.draft.fast ? 60 : 480);
@@ -791,6 +986,7 @@ const UI = (() => {
     sheet(`<div class="pc-head" style="--team-1:#1e293b;--team-2:var(--accent)">${jersey(p, 60)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]} · ${esc(p.college)}</div><div class="tiny" style="opacity:.7;margin-top:4px">Age ${p.age} · hometown ${esc(p.home)}</div></div><div class="pc-ovr"><b>${v.exact ? '' : '~'}${v.mid}</b><span>OVR</span></div></div>
       <div class="kv mb12"><div><b style="font-size:13px;line-height:18px">${ovrRange(p)}</b><span>OVR range</span></div><div><b style="font-size:13px;line-height:18px">${potRange(p)}</b><span>Potential</span></div><div><b style="font-size:13px;line-height:18px">${DATA.GRADE_SHORT[p.stars]}</b><span>Grade</span></div><div><b>#${ids.indexOf(p.id) + 1}</b><span>Board</span></div></div>
       <div class="card" style="padding:12px 14px"><div class="flex between"><div><div style="font-weight:700">Scouting ${scoutDots(p)}</div><div class="tiny muted">${['Media consensus only', 'One visit: a rough read', 'Two visits: a solid read', 'Full workup: you know exactly what he is'][v.lv]}</div></div>${v.lv < 3 ? `<button class="btn btn-sm btn-primary" data-a="scoutP" data-v="${p.id}" ${(G.scoutPts || 0) <= 0 ? 'disabled' : ''}>Scout · ${G.scoutPts || 0} left</button>` : ''}</div></div>
+      ${(() => { const h = Career.hintFor(p); return h ? `<div class="scout-note ${h.k}"><b>Scouts' note</b>${esc(h.text)}</div>` : ''; })()}
       ${c ? `<div class="kicker mb8">Combine</div><div class="kv mb12"><div><b>${c.forty.toFixed(2)}</b><span>40 yd</span></div><div><b>${c.bench}</b><span>Bench</span></div><div><b>${c.cone.toFixed(2)}</b><span>3-cone</span></div><div><b>${c.iq}</b><span>IQ</span></div></div>` : ''}
       <div class="card" style="padding:12px 14px">${attrs}</div>
       <div class="kicker mb8">Badges</div>${v.lv >= 2 ? stkList(p, 'No badges coming out of college.') : '<div class="small muted mb12">Scout him twice to learn his traits.</div>'}
@@ -906,6 +1102,7 @@ const UI = (() => {
     Live.lineup();
     gameUpdate();
     renderPanel();
+    if (st.gs.rival && st.gs.log.length <= 1) setTimeout(() => { if (S.game === st) { Live.bigText('RIVALRY GAME', '#f97316'); Sfx.play('bigPlay'); } }, 500);
     later(gNext, 900);
   }
   function later(fn, ms) {
@@ -948,6 +1145,9 @@ const UI = (() => {
     Live.play(det, res => {
       if (S.game !== st || st.done) return;
       if (det && det.live) Engine.commit(gs, det, res);
+      // keep the recording of anything that could make the weekly highlight reel
+      const clip = Live.takeClip(), fresh = gs.log.slice(before);
+      if (clip && fresh.some(e => e.kind === 'td' || e.kind === 'big' || e.kind === 'to' || e.kind === 'fg')) (gs.clips = gs.clips || []).push({ ns: fresh.map(e => e.n), clip });
       afterPlay(before);
     });
   }
@@ -1220,6 +1420,7 @@ const UI = (() => {
     Live.bigText(won ? 'VICTORY' : 'FINAL', won ? '#facc15' : '#e2e8f0');
     toast(won ? `${I.trophy.replace('<svg', '<svg style="width:16px;height:16px;color:var(--gold)"')} Victory! ${esc(res.W.abbr)} ${res.ws}–${res.ls}` : `Final: ${esc(res.W.abbr)} ${res.ws}–${res.ls}`);
     U.vibrate(won ? [30, 60, 30] : 20);
+    Sfx.play(won ? (st.g.type === 'final' ? 'champ' : 'win') : 'lose');
   }
 
   SCREENS.final = () => {
@@ -1266,6 +1467,7 @@ const UI = (() => {
         <div class="card"><div class="stat-trio" style="margin:0"><div><b>${o.retired.length}</b><span>Retired</span></div><div><b>${picks.length}</b><span>Draft picks</span></div><div><b>${L.roster(u).length}</b><span>Under contract</span></div></div>
           ${capCard(u)}
           <div class="btn-row mt12"><button class="btn" data-a="openTrade">${I.refresh} Trades</button><button class="btn" data-a="openScout">${I.eye} Scout (${G.scoutPts || 0})</button></div></div>
+        ${staffNewsCard()}
         <div class="section-title"><h3>Biggest risers</h3><span class="tiny muted">Offseason development</span></div>
         ${o.risers.length ? devList(o.risers) : '<div class="card"><div class="small muted">No major jumps this year.</div></div>'}
         ${(o.decliners || []).length ? `<div class="section-title"><h3>Slowing down</h3><span class="tiny muted">Father Time is undefeated</span></div>${devList(o.decliners)}` : ''}
@@ -1403,20 +1605,32 @@ const UI = (() => {
     A.confirmNew();
   };
   A.confirmNew = () => { closeSheet(); initCreate(); S.screen = 'create'; render(); };
-  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div>${displayInfo()}`);
-  // screen-fit readout, so a layout gap on a particular phone can be diagnosed from real numbers
-  const displayInfo = () => {
-    const de = document.documentElement, st = document.getElementById('stage').getBoundingClientRect(), cs = getComputedStyle(de);
-    const probe = document.createElement('div'); probe.style.cssText = 'position:fixed;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);visibility:hidden';
-    document.body.appendChild(probe); const pc = getComputedStyle(probe), safe = `${parseInt(pc.top)}/${parseInt(pc.bottom)}`; probe.remove();
-    const vv = window.visualViewport ? Math.round(visualViewport.height) : '–';
-    return `<div class="kicker mb8 mt16">Display</div><div class="small muted num">screen ${screen.width}×${screen.height} · window ${innerWidth}×${innerHeight} · visual ${vv} · doc ${de.clientHeight} · app ${Math.round(st.top)}–${Math.round(st.bottom)} · fit ${cs.getPropertyValue('--app-h').trim() || '–'} · safe ${safe} · ${de.classList.contains('standalone') ? 'home screen' : 'browser'}</div>`;
+  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div><div class="divider"></div>${sfxToggle()}`);
+  // sound is a device preference (localStorage), so it works before a franchise exists
+  function sfxToggle() {
+    return `<div class="flex between"><div><div style="font-weight:700">Sound effects</div><div class="small muted">Game sounds, crowd and menu clicks · muted by the silent switch</div></div><button class="toggle ${Sfx.isOn() ? 'on' : ''}" data-a="toggleSfx" aria-label="Toggle sound effects"></button></div>`;
+  }
+  A.toggleSfx = (v, el) => { Sfx.setOn(!Sfx.isOn()); el.classList.toggle('on', Sfx.isOn()); };
+  // career: staff, achievements, draft classes, weekly reel
+  A.staffSheet = () => staffSheet();
+  A.staffRole = v => { S.staffRole = v; staffSheet(); };
+  A.hireCoach = v => {
+    const r = Career.hire(+v);
+    if (!r.ok) { toast(esc(r.why), 3000); Sfx.play('error'); return; }
+    Sfx.play('deal'); U.vibrate(25);
+    toast(`Hired ${esc(r.c.first)} ${esc(r.c.last)} · ${Career.TRAITS[r.c.trait].name}`);
+    render(); staffSheet();
   };
+  A.fireCoach = v => { const r = Career.fire(v); if (!r.ok) { if (r.why) toast(esc(r.why)); return; } toast(`${esc(r.c.first)} ${esc(r.c.last)} has been let go`); render(); staffSheet(); };
+  A.achSheet = () => achSheet();
+  A.draftClass = v => draftClassSheet(+v);
+  A.reelSheet = () => { S.reelI = G.reel.plays.length - 1; reelSheet(); };
+  A.reelNav = v => { S.reelI = U.clamp(S.reelI + +v, 0, G.reel.plays.length - 1); reelSheet(); };
   A.theme = v => {
     localStorage.setItem('cfbblitz.theme', v);
     if (G && G.settings) { G.settings.theme = v; L.save(); }
     if (S.create) S.create.theme = v;
-    const sheetOpen = document.getElementById('sheet-root').innerHTML;
+    const sheetOpen = sheetIsOpen();
     render();
     if (sheetOpen && S.screen === 'menu') A.settings();
   };
@@ -1537,7 +1751,7 @@ const UI = (() => {
     L.draftPick(+v);
     L.save();
     closeSheet();
-    U.vibrate([20, 40, 30]);
+    U.vibrate([20, 40, 30]); Sfx.play('draft');
     render();
     revealPick(p, cur);
   };
@@ -1585,7 +1799,8 @@ const UI = (() => {
     const gs = S.game.gs;
     sheet(`<div class="h-lg">Game plan</div><div class="small muted mb12" style="margin-top:4px">Your coordinators call plays from this plan on auto, and their suggestions lean on it when you call.</div><div id="htplan">${planPicker(gs.plan[gs.userSide], 'gplan')}</div>
       <div class="divider"></div><div class="flex between"><div><div style="font-weight:700">Call every play</div><div class="small muted">Off = coordinators call, you watch (4th downs still ask if enabled)</div></div><button class="toggle ${S.game.auto ? '' : 'on'}" data-a="gauto"></button></div>
-      <div class="divider"></div><div class="flex between"><div><div style="font-weight:700">4th-down decisions</div><div class="small muted">On auto-call, still ask me on 4th down</div></div><button class="toggle ${G.settings.askFourth ? 'on' : ''}" data-a="gfourth"></button></div>`);
+      <div class="divider"></div><div class="flex between"><div><div style="font-weight:700">4th-down decisions</div><div class="small muted">On auto-call, still ask me on 4th down</div></div><button class="toggle ${G.settings.askFourth ? 'on' : ''}" data-a="gfourth"></button></div>
+      <div class="divider"></div>${sfxToggle()}`);
   };
   A.gauto = () => {
     const st = S.game;
@@ -1653,13 +1868,13 @@ const UI = (() => {
   A.tradeClear = () => { S.trade = newOffer(S.trade.b); render(); };
   A.tradePropose = () => {
     const o = offerOf(S.trade), ev = L.evalTrade(o);
-    if (!ev.ok) { toast(esc(ev.why)); return; }
+    if (!ev.ok) { toast(esc(ev.why)); Sfx.play('error'); return; }
     L.executeTrade(o);
     const B = L.team(o.b);
     S.trade = newOffer(o.b);
     render();
     toast(`${I.refresh.replace('<svg', '<svg style="width:16px;height:16px;color:var(--accent)"')} Deal done with ${esc(B.name)}`);
-    U.vibrate(25);
+    U.vibrate(25); Sfx.play('deal');
   };
   A.tradeExit = () => { const b = S.tradeBack || { screen: 'hub', tab: 'roster' }; S.screen = b.screen === 'trade' ? 'hub' : b.screen; S.tab = b.tab || 'home'; S.tradeBack = null; render(); };
   A.askRelease = v => { const p = G.players[+v]; S.releasePid = +v; confirmSheet(`Release ${pname(p)}?`, `${p.pos} · ${p.ovr} OVR · age ${p.age}. He becomes a free agent, and ${money(L.deadMoney(p))} of his salary stays on your cap this year as dead money.`, 'Release', 'confirmRelease', true); };
@@ -1673,12 +1888,12 @@ const UI = (() => {
   A.offerAdj = v => { const [k, x] = v.split('|'), o = S.offer; if (k === 'sal') o.sal = Math.max(0.8, Math.round((o.sal + +x) * 10) / 10); else o.yrs = +x; offerSheet(o.pid); };
   A.offerSubmit = () => {
     const o = S.offer, p = G.players[o.pid], r = L.offerFA(o.pid, o.sal, o.yrs);
-    if (!r.ok) { toast(esc(r.why), 3200); return; }
-    closeSheet(); render(); toast(`Signed ${pname(p)} — ${money(o.sal)} × ${yrsTxt(o.yrs)}`); U.vibrate(25);
+    if (!r.ok) { toast(esc(r.why), 3200); Sfx.play('error'); return; }
+    closeSheet(); render(); toast(`Signed ${pname(p)} — ${money(o.sal)} × ${yrsTxt(o.yrs)}`); U.vibrate(25); Sfx.play('deal');
   };
   A.faNextDay = () => { L.advanceFA(); S.lastKey = ''; render(); toast(`Free agency Day ${G.faDay} — new signings around the league`); };
   A.openFAPhase = () => { L.startFA(); S.fa = { pos: 'ALL' }; S.screen = 'fa'; render(); toast('Free agency is open'); };
-  A.resign = v => { const r = L.resign(+v); closeSheet(); render(); if (r.ok) U.vibrate(25); toast(r.ok ? 'Re-signed' : esc(r.why), 2800); };
+  A.resign = v => { const r = L.resign(+v); closeSheet(); render(); if (r.ok) U.vibrate(25); Sfx.play(r.ok ? 'deal' : 'error'); toast(r.ok ? 'Re-signed' : esc(r.why), 2800); };
   A.letGo = v => { L.letGo(+v); closeSheet(); render(); };
   A.openScout = () => { S.screen = 'scout'; render(); };
   A.scoutExit = () => { S.screen = screenForPhase(); render(); };
@@ -1697,8 +1912,20 @@ const UI = (() => {
       const el = e.target.closest('[data-a]');
       if (!el) return;
       const fn = A[el.dataset.a];
-      if (fn) { e.preventDefault(); fn(el.dataset.v, el, e); }
+      if (fn) { e.preventDefault(); Sfx.play(el.classList.contains('toggle') ? 'toggle' : 'tap'); fn(el.dataset.v, el, e); }
     });
+    wireSheetDrag();
+    // achievements queue up and wait a beat, so they never trample the game's own toasts
+    const achQ = [];
+    let achBusy = false;
+    const nextAch = () => {
+      const a = achQ.shift();
+      if (!a) { achBusy = false; return; }
+      toast(`<span class="ach-toast">${a.icon}</span><b>Achievement unlocked</b> · ${esc(a.name)}`, 2800);
+      Sfx.play('achievement'); U.vibrate([20, 40, 20]);
+      setTimeout(nextAch, 3100);
+    };
+    Career.setOnUnlock(a => { achQ.push(a); if (!achBusy) { achBusy = true; setTimeout(nextAch, 1600); } });
     document.addEventListener('input', e => { const el = e.target.closest('[data-bind]'); if (el) A.bind(el); });
     // iOS: stop swipes from leaking past an open sheet (backdrop, or the sheet already at its scroll limit)
     let touchY = 0;

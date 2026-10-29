@@ -53,6 +53,11 @@ const Forum = (() => {
     fa: ['Finally spending money. About time.', 'Overpaid. Mark it down.', 'That contract is a bargain for what he brings.', 'Front office is going all in this year.', 'Love the signing, hate the years.', 'Fit matters more than the name. This fits.'],
     combine: ['Tape > 40 times. Every year people forget.', 'That 40 time just made somebody a lot of money.', 'Bench reps are overrated for a corner.', 'The football IQ score is the one I actually care about.', 'Workout warrior alert.'],
     retire: ['Hall of Fame career. Thank you for everything.', 'One of the best to ever do it here.', 'Enjoy retirement, legend.', 'Feels like he played forever. End of an era.', 'Never got the ring he deserved.'],
+    rival: ['I don\'t care about our record. Beat {R}.', 'Circle it on the calendar. Every year.', 'Their fans are the worst in the league and I will not be taking questions.', 'Last time still keeps me up at night.', 'Bragging rights on the line. My whole office is split on this one.', 'If we lose this one I\'m changing my name and moving.', 'Series record says it all. {SR}.', 'Best rivalry in the league and it\'s not close.'],
+    coach: ['Huge loss for the staff. That scheme was the whole identity.', 'Can\'t blame him — head coach jobs don\'t come around often.', 'Who replaces him? That\'s the question for the front office.', 'Good for him honestly. Earned it.', 'Coaching tree is getting deep. That\'s a good sign for the program.', 'This is what happens when you win — everybody wants your people.'],
+    regrade: ['Hindsight is 20/20 but some of these picks aged terribly.', 'Told everyone that late-round guy was a steal. Nobody listened.', 'Draft grades on draft day are useless. This is the real report card.', 'That first-rounder has been a disaster. Hate to say it.', 'Scouting department deserves a raise after that class.', 'Some front offices just know how to find talent.'],
+    pow: ['Absolutely took over that game. Deserved.', '{P} is the best player nobody talks about.', 'Fantasy league just got won.', 'Put that tape in the Hall of Fame.', 'The other team will be seeing him in their nightmares.', 'Weekly reminder that {P} is a problem.'],
+    reel: ['Number one is not even close. Rewatched it ten times.', 'The broadcast booth lost their minds on that one.', 'How did he even get out of that?', 'Defense deserves a spot on the list too.', 'This week\'s top 3 is elite.'],
   };
 
   function replies(n, pools, vars) {
@@ -508,5 +513,17 @@ const Forum = (() => {
     sortIssue(is);
   }
 
-  return { weekly, preseason, draftOpen, draftRecap, campReport, seasonEnd, offseason, trade, freeAgency };
+  // a one-off story in the current issue (rivalries, coaching moves, draft re-grades, weekly honours);
+  // pools name a reply bank above, optionally voiced by one team's fans
+  function news(t) {
+    const is = currentIssue();
+    thread(is, {
+      tag: t.tag, title: t.title, body: t.body || '', heat: t.heat || 60, teams: t.teams || [], mine: !!t.mine,
+      a: t.by === 'mod' ? MOD : insider(),
+      replies: replies(t.n || 5, (t.pools || [{ w: 1, lines: 'neutral' }]).map(p => ({ w: p.w, team: p.team, lines: R[p.lines] || R.neutral })), t.vars || {}),
+    });
+    sortIssue(is);
+  }
+
+  return { weekly, preseason, draftOpen, draftRecap, campReport, seasonEnd, offseason, trade, freeAgency, news };
 })();

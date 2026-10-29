@@ -131,6 +131,7 @@ const Live = (() => {
     parts = parts.filter(p => p.age < p.life);
     shake *= Math.pow(0.03, dt);
     slow = Math.max(0, slow - dt); hit = Math.max(0, hit - dt * 2.4); excite = Math.max(0, excite - dt * 0.35);
+    Sfx.crowd(paused ? 0 : Math.min(1, excite + (gs && gs.rival ? 0.3 : 0)));
     insetCur += (inset - insetCur) * (1 - Math.exp(-dt * 8));
     updateWeather(dt);
     draw();
@@ -321,6 +322,7 @@ const Live = (() => {
     collide();
     freeChecks();
     stepBall();
+    record();
     if (S.dead) {
       S.deadT += DT;
       if (S.deadT > 1.5 && S.onDone) {
@@ -381,8 +383,27 @@ const Live = (() => {
   function throwBall(from, to, dur, peak, onLand, z0 = 2.0, z1 = 1.3) {
     S.ball = { mode: 'air', fx: from.x, fy: from.y, fz: z0, tx: to[0], ty: to[1], tz: z1, t0: S.t, dur, peak, onLand };
     S.carrier = null;
+    // long hang time is a kick; a real arc is a pass; snaps and pitches stay quiet
+    if (dur >= 1.5) Sfx.play('kick'); else if (peak >= 0.8) Sfx.play('throw');
   }
   function looseBall(x, y, z, vx, vy, vz) { S.ball = { mode: 'loose', x, y, z, vx, vy, vz }; S.carrier = null; }
+  // ── highlight recording: from the snap until a beat after the whistle, every player and the ball at 12 fps ──
+  const REC_EVERY = 5, REC_MAX = 240;
+  function record() {
+    if (S.snapT == null || (S.dead && S.deadT > 1.2)) return;
+    const R = S.rec || (S.rec = { f: [], side: S.list.map(a => a.side), n: 0 });
+    if (R.n++ % REC_EVERY || R.f.length >= REC_MAX || R.side.length !== S.list.length) return;
+    const r = v => Math.round(v * 10) / 10, b = ballPos(), fr = [r(b.x), r(b.y), r(b.z)];
+    for (const a of S.list) fr.push(r(a.x), r(a.y));
+    R.f.push(fr);
+  }
+  // hand the last play's recording to the caller (once)
+  function takeClip() {
+    if (!S || !S.rec || S.rec.f.length < 6) return null;
+    const c = { t: gs.t.slice(), o: S.o, side: S.rec.side, f: S.rec.f, fps: 1 / (DT * REC_EVERY) };
+    S.rec = null;
+    return c;
+  }
   function ballPos() {
     const b = S.ball;
     if (b.mode === 'held') {
@@ -411,6 +432,7 @@ const Live = (() => {
   function dead(fx) {
     if (S.dead) return;
     S.dead = true; S.deadT = 0;
+    Sfx.play('whistle', 0.5);
     const F0 = S.fp, c0 = S.carrier;
     if (F0 && F0.L0 != null && F0.kind !== 'ret' && c0 && c0.side === S.o && (F0.td || (c0.y - F0.L0) * (F0.cdir || 1) >= 20)) S.replay = performance.now();
     for (const e of S.engs) if (!e.done) release(e);
@@ -490,6 +512,7 @@ const Live = (() => {
     d.down = 9; d.stayDown = true; d.vx = c.vx; d.vy = c.vy; d.face = c.face;
     shake = Math.max(shake, 0.5);
     burst(c.x, c.y, 'rgba(226,232,240,.9)', 14);
+    Sfx.play('tackle');
     if (F && F.qb === c && F.mode === 'pass') { hit = 1; shake = 1.1; slowMo(0.45); excite = Math.max(excite, 0.6); burst(c.x, c.y, 'rgba(255,255,255,.95)', 22, 5); pop(c.x, c.y + 1, 'SACK!', '#fca5a5', { big: true }); }
     const sc = S;
     setTimeout(() => { if (S !== sc) return; c.stayDown = false; c.down = 1.0; d.stayDown = false; d.down = 0.7; }, 900 / speed);
@@ -1205,6 +1228,7 @@ const Live = (() => {
     r.vx *= 0.65; r.vy *= 0.65; r.secureT = S.t + 0.3; // securing the catch costs a step
     F.caught = true; F.mode = 'yac'; F.res.outcome = 'complete'; F.res.carrier = r.key.slice(1); F.catchY = r.y; F.cdir = 1;
     burst(r.x, r.y, 'rgba(255,255,255,.6)', 5, 1.5);
+    Sfx.play('catch');
     r.brain = runnerBrain; r.route = null; r.lane = null;
     for (const a of S.list) {
       if (a === r) continue;
@@ -2308,14 +2332,26 @@ const Live = (() => {
   }
 
   // ── fx ──
-  function pop(x, y, text, color, opts = {}) { pops.push({ x, y, text, color, age: 0, life: opts.life || 1.4, big: opts.big }); }
+  // callouts that carry a sound
+  const POP_SFX = {
+    'HUT!': 'snap', 'SACK!': 'bigHit', 'FUMBLE!': 'turnover', 'INTERCEPTED!': 'turnover', 'TURNOVER!': 'turnover', 'RECOVERED': 'bigPlay',
+    "IT'S GOOD!": 'fieldGoal', 'NO GOOD': 'noGood', 'PANCAKE': 'tackle', 'BROKEN UP': 'tackle',
+    'BROKE TACKLE': 'bigPlay', 'JUKE!': 'bigPlay', 'SPIN MOVE': 'bigPlay', 'STIFF ARM': 'bigPlay', 'MISSED TACKLE': 'bigPlay', 'ESCAPES!': 'bigPlay',
+  };
+  function pop(x, y, text, color, opts = {}) {
+    pops.push({ x, y, text, color, age: 0, life: opts.life || 1.4, big: opts.big });
+    if (POP_SFX[text]) Sfx.play(POP_SFX[text], 0.25);
+  }
   function burst(x, y, color = 'rgba(226,232,240,.9)', n = 12, up = 3) {
     for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = U.rand(1, 4); parts.push({ x, y, z: 0.3, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: U.rand(1, up), age: 0, life: U.rand(0.4, 0.8), s: U.rand(3, 6), c: color }); }
   }
   function confetti(x, y, cols) {
     for (let i = 0; i < 80; i++) { const a = Math.random() * Math.PI * 2, v = U.rand(1, 6); parts.push({ x, y, z: 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: U.rand(5, 12), age: 0, life: U.rand(1.2, 2.2), s: U.rand(4, 7), c: U.pick(cols) }); }
   }
-  function bigText(text, color = '#ffffff', side = null) { flash = { text, color, t0: performance.now(), side }; }
+  function bigText(text, color = '#ffffff', side = null) {
+    flash = { text, color, t0: performance.now(), side };
+    if (text === 'TOUCHDOWN') Sfx.play('touchdown', 1);
+  }
   function slowMo(sec) { slow = Math.max(slow, sec); }
   // how much of the canvas the play-call panel covers (px); the field shifts up to keep the line visible
   function setInset(px) { inset = Math.max(0, Math.min(px, H * 0.55)); }
@@ -2325,5 +2361,5 @@ const Live = (() => {
   function skip() { if (S) { S.onDone = null; if (!S.dead) dead(); } }
   function debug() { return { S, cut, bodies: S ? Object.fromEntries(S.list.map(a => [a.key, a])) : {} }; }
 
-  return { mount, unmount, resize, play, lineup, ready, setSpeed, setPaused, skip, bigText, setInset, debug };
+  return { mount, unmount, resize, play, lineup, ready, setSpeed, setPaused, skip, bigText, setInset, debug, takeClip };
 })();

@@ -232,6 +232,7 @@ const L = (() => {
       plan: { off: 'balanced', def: 'base' }, practice: 'OL', lastPractice: null,
       settings: { theme: cfg.theme || 'night', askFourth: true, callPlays: true, speed: 2 },
       draft: null, camp: null, off: null, threadSeq: 1, faceV: 2, picks: [], pickCurve: null, draftOrder: null, trades: [],
+      difficulty: cfg.difficulty || 'contender',
     };
     const diff = DATA.DIFFICULTY.find(d => d.id === cfg.difficulty) || DATA.DIFFICULTY[1];
     const ai = cfg.aiTeams.slice(0, 15);
@@ -252,6 +253,7 @@ const L = (() => {
     updatePoll();
     ensurePicks(G.year + 1);
     setupDraft('founding');
+    Career.ensure();
     Forum.draftOpen();
     save();
   }
@@ -312,6 +314,7 @@ const L = (() => {
       p.pot = Math.max(p.pot, p.ovr + 2);
       p.gr = rollGrowth(p.pot); p.ovr0 = p.ovr;
       rollStickers(p);
+      Career.rollArc(p);
       // the scouting fog: the media consensus is close but not right, and your own read starts wide
       p.cons = +(prospectValue(p) + U.gauss(0, 3.5)).toFixed(1);
       p.sc = 0; p.sb = { o: +U.gauss(0, 1).toFixed(2), p: +U.gauss(0, 1).toFixed(2) };
@@ -379,7 +382,7 @@ const L = (() => {
     const p = G.players[pid], t = team(cur.teamId);
     d.pool = d.pool.filter(x => x !== pid);
     p.teamId = t.id; p.num = jerseyNum(t, p.pos); uniqueFace(p, t); t.roster.push(pid);
-    p.draft = { year: G.year, round: cur.round, pick: cur.overall, via: cur.orig !== cur.teamId ? cur.orig : null };
+    p.draft = { year: G.year, round: cur.round, pick: cur.overall, via: cur.orig !== cur.teamId ? cur.orig : null, by: t.id };
     p.contract = rookieDeal(cur.overall, cur.round);
     if (t.user) p.scouted = scoutView(p);
     d.log.push({ ...cur, pid });
@@ -436,6 +439,7 @@ const L = (() => {
   function finishDraft() {
     const d = G.draft;
     d.grades = draftGrades();
+    Career.rememberDraft(d);
     learnPickCurve();
     Forum.draftRecap();
     for (const pid of d.pool) delete G.players[pid];
@@ -538,6 +542,7 @@ const L = (() => {
     rebuildDepth(t);
     G.faLog.unshift({ pid: p.id, name: `${p.first} ${p.last}`, pos: p.pos, ovr: p.ovr, age: p.age, team: t.id, sal: p.contract.sal, yrs, year: G.year, day: G.faDay || 0 });
     if (G.faLog.length > 60) G.faLog.length = 60;
+    Career.onSign(p, t);
   }
   const freeAgents = () => G.fa.map(id => G.players[id]).filter(isFA).sort((a, b) => b.ovr - a.ovr);
   // will he sign? he takes an offer at (or very near) his asking price; a winning team gets a small discount
@@ -699,6 +704,7 @@ const L = (() => {
     G.trades.unshift(rec);
     if (G.trades.length > 40) G.trades.length = 40;
     if (!silent) Forum.trade(rec);
+    Career.onTrade(rec);
     save();
     return rec;
   }
@@ -759,7 +765,7 @@ const L = (() => {
       if (!g.pos.includes(p.pos) || p.inj > 0) continue;
       // room to grow shrinks as he approaches his potential
       const room = U.clamp((p.pot - p.ovr) / 10, 0, 1.4); // nothing left to unlock once he reaches his ceiling
-      const pts = U.rand(1.2, 3.4) * I.mult * devMult(p) * room * (p.gr || 1) * scale;
+      const pts = U.rand(1.2, 3.4) * I.mult * devMult(p) * room * (p.gr || 1) * scale * Career.devMult(t, p);
       const before = p.ovr, deltas = {};
       g.attrs.forEach((a, i) => {
         const d = grow(p, a, Math.max(0, pts * shares[i] * 1.6 + U.gauss(0, 0.3) * scale));
@@ -768,7 +774,7 @@ const L = (() => {
       p.ovr = calcOvr(p);
       let injured = 0, stkUp = null;
       if (isCamp && U.chance(0.07 * I.mult * U.clamp((p.pot - 60) / 25, 0.4, 1.4))) stkUp = growSticker(p, 2);
-      if (isCamp && U.chance(I.inj)) { injured = U.ri(1, 3); p.inj = Math.max(p.inj, injured); }
+      if (isCamp && U.chance(I.inj * Career.injMult(t))) { injured = U.ri(1, 3); p.inj = Math.max(p.inj, injured); }
       res.push({ pid: p.id, before, after: p.ovr, deltas, injured, stkUp });
     }
     return res.sort((a, b) => (b.after - b.before) - (a.after - a.before) || b.after - a.after);
@@ -801,7 +807,7 @@ const L = (() => {
       if (p.inj > 0) continue;
       const w = DATA.OVR_W[p.pos], top = DATA.ATTRS.slice().sort((a, b) => w[b] - w[a]).slice(0, 2);
       const room = U.clamp((p.pot - p.ovr) / 10, 0, 1.4); // nothing left to unlock once he reaches his ceiling
-      for (const a of top) grow(p, a, U.rand(0.02, 0.07) * (p.gr || 1) * room * devMult(p));
+      for (const a of top) grow(p, a, U.rand(0.02, 0.07) * (p.gr || 1) * room * devMult(p) * Career.devMult(t, p));
       p.ovr = calcOvr(p);
     }
   }
@@ -945,13 +951,15 @@ const L = (() => {
       top: top.slice(0, 6).map(x => ({ pid: x.pid, side: x.side, kind: x.kind, line: x.line })),
       scoring, pog: pog ? { pid: pog.pid, side: pog.side, kind: pog.kind, line: pog.line } : null,
     };
-    return { g, W, Lo, ws: Math.max(g.hs, g.as), ls: Math.min(g.hs, g.as), rankBefore, top, injuries: gs.injuries, ot: gs.ot };
+    const res = { g, W, Lo, ws: Math.max(g.hs, g.as), ls: Math.min(g.hs, g.as), rankBefore, top, injuries: gs.injuries, ot: gs.ot };
+    Career.onGame(g, gs, res);
+    return res;
   }
 
   function createUserGame(g) {
     return Engine.create(team(g.h), team(g.a), {
       neutral: g.neutral, weather: weather(g), userSide: g.h === G.userTeamId ? 0 : 1,
-      askFourth: G.settings.askFourth, userCalls: G.settings.callPlays !== false, userPlan: G.plan, playoff: g.wk > SEA.REG,
+      askFourth: G.settings.askFourth, userCalls: G.settings.callPlays !== false, userPlan: G.plan, playoff: g.wk > SEA.REG, rival: !!Career.rivalGame(g),
     });
   }
   function finishWeek(userRes) {
@@ -962,15 +970,17 @@ const L = (() => {
       Engine.simToEnd(gs);
       results.push(applyResult(g, gs));
     }
-    for (const t of G.teams) for (const p of roster(t)) if (p.inj > 0) p.inj--;
+    for (const t of G.teams) for (const p of roster(t)) if (p.inj > 0) { p.inj--; if (p.inj > 0 && Career.quickHeal(t)) p.inj--; }
     weeklyPractice();
     G.teams.forEach(rebuildDepth);
     const pollBefore = G.poll.slice();
     updatePoll();
     Forum.weekly(wk, results, pollBefore);
+    Career.weekWrap(wk, results);
     // front offices work the phones until the deadline
     if (wk < SEA.DEADLINE && U.chance(0.35)) aiTrade();
     advanceWeek();
+    Career.rivalryHype();
     save();
     return results;
   }
@@ -1025,7 +1035,7 @@ const L = (() => {
     const ml = mvpList(5), rl = mvpList(1, true);
     G.awards = { mvp: award(ml[0]), roy: award(rl[0]), finalists: ml.map(x => x.p.id) };
     for (const t of G.teams) {
-      t.hist.push({ year: G.year, w: t.rec.w, l: t.rec.l, cw: t.rec.cw, cl: t.rec.cl, dw: t.rec.dw, dl: t.rec.dl, rank: rank(t.id), seed: seedOf(t.id), po: postDepth(t.id), divWin: divStandings(t.div)[0] === t, champ: t.id === G.champion, cc: G.confChamps.includes(t.id) });
+      t.hist.push({ year: G.year, w: t.rec.w, l: t.rec.l, cw: t.rec.cw, cl: t.rec.cl, dw: t.rec.dw, dl: t.rec.dl, rank: rank(t.id), seed: seedOf(t.id), po: postDepth(t.id), divWin: divStandings(t.div)[0] === t, dpos: divStandings(t.div).indexOf(t) + 1, champ: t.id === G.champion, cc: G.confChamps.includes(t.id) });
     }
     // next year's draft order: non-playoff teams worst-first, then by how deep they went
     G.draftOrder = G.teams.slice().sort((a, b) => postDepth(a.id) - postDepth(b.id) || winPct(a) - winPct(b) || (a.rec.pf - a.rec.pa) - (b.rec.pf - b.rec.pa)).map(t => t.id);
@@ -1037,18 +1047,22 @@ const L = (() => {
       roy: G.awards.roy ? { ...G.awards.roy, teamName: team(G.awards.roy.team).abbr } : null,
     });
     Forum.seasonEnd();
+    Career.seasonEnd();
     G.phase = 'recap';
   }
 
   // Development by age: young players climb toward their potential, prime players hold, veterans slide.
   function progress(p) {
-    const a = p.age, gap = p.pot - p.ovr, gr = p.gr || 1;
+    Career.applyArc(p);
+    const a = p.age, gap = p.pot - p.ovr, gr = p.gr || 1, tm = p.teamId != null ? team(p.teamId) : null;
     let g;
     if (a <= 25) g = gap * U.rand(0.1, 0.25) * gr + 0.3;
     else if (a <= 27) g = gap * U.rand(0.03, 0.12) * gr + U.rand(-1, 0.3);
     else if (a <= 30) g = U.rand(-3.5, -0.5);
     else g = U.rand(-5.5, -2);
     if (gap > 0) g += (Math.min(p.starts, SEA.REG) / SEA.REG) * 0.6;
+    // coaching: the development staff speeds growth and slows the decline
+    if (g > 0) g *= Career.devMult(tm, p); else if (a >= 28) g *= Career.vetMult(tm);
     const d = addOvr(p, g);
     if (a >= 28) p.pot = Math.max(p.ovr, Math.round(p.pot - U.rand(1, 3)));
     p.pot = Math.max(p.pot, p.ovr);
@@ -1098,6 +1112,7 @@ const L = (() => {
     G.phase = 'graduation';
     // offseason dealing around the league
     for (let i = 0; i < 2; i++) if (U.chance(0.6)) aiTrade();
+    Career.offseason();
     save();
   }
   function beginAnnualDraft() {
@@ -1118,7 +1133,9 @@ const L = (() => {
     G.poll = [];
     updatePoll();
     G.phase = 'season';
+    Career.staffSeasonStart();
     Forum.preseason();
+    Career.rivalryHype();
     save();
   }
 
@@ -1152,6 +1169,7 @@ const L = (() => {
       if (G.scoutPts == null) G.scoutPts = 0;
       for (const p of Object.values(G.players)) if (p.teamId != null && !p.contract) p.contract = { sal: +(marketSalary(p) * U.rand(0.8, 1.2)).toFixed(1), yrs: U.ri(1, 4) };
       for (const t of G.teams) if (payroll(t) > DATA.CAP) fitUnderCap(t, true);
+      Career.ensure();
       return true;
     } catch (e) { return false; }
   }

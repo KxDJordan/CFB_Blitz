@@ -58,10 +58,10 @@ const Engine = (() => {
     }
     return out;
   }
-  // Effective attribute: fatigue + home field.
+  // Effective attribute: fatigue + home field + the coaching staff's game-day edge.
   function A(gs, side, p, a) {
     const f = 0.82 + 0.18 * (stam(gs, p) / 100);
-    return p.attrs[a] * f + (side === 0 && !gs.neutral ? 1.2 : 0);
+    return p.attrs[a] * f + (side === 0 && !gs.neutral ? 1.2 : 0) + (gs.cb ? gs.cb[side][p.pos] || 0 : 0);
   }
   // composite skills
   const passBlk = (gs, s, p) => A(gs, s, p, 'skl') * 0.6 + A(gs, s, p, 'str') * 0.3 + A(gs, s, p, 'awr') * 0.1;
@@ -86,7 +86,7 @@ const Engine = (() => {
   }
   function computeUnits(gs, side) {
     const u = {};
-    for (const pos of DATA.POSITIONS) u[pos.toLowerCase()] = unitAvg(gs, side, pos, DATA.STARTERS[pos]);
+    for (const pos of DATA.POSITIONS) u[pos.toLowerCase()] = unitAvg(gs, side, pos, DATA.STARTERS[pos]) + (gs.cb ? gs.cb[side][pos] || 0 : 0);
     if (side === 0 && !gs.neutral) for (const k in u) u[k] += 1.2;
     gs.u[side] = u;
   }
@@ -184,6 +184,7 @@ const Engine = (() => {
       phase: 'kickoff', kicker: U.ri(0, 1), recv1: 0,
       ot: 0, otPoss: 0, otFirst: 0, otSide: 0, over: false, n: 0, lastPlay: null, tos: [3, 3],
       drive: { side: 0, start: 25, plays: 0, yds: 0, clk: QLEN, q: 1 }, wpH: [],
+      cb: [Career.coachBonus(home), Career.coachBonus(away)], rival: !!opts.rival,
     };
     gs.recv1 = 1 - gs.kicker;
     gs.wxm = DATA.WEATHER[gs.wx.type] || DATA.WEATHER.clear;
@@ -198,6 +199,8 @@ const Engine = (() => {
 
   function ev(gs, text, kind = 'play', extra = {}) {
     const e = { n: gs.n++, q: gs.qtr, clk: gs.clock, text, kind, side: gs.poss, sc: gs.score.slice(), sit: gs.lastSit || null, ...extra };
+    // big plays and scores remember their yardage and where they started (for the weekly highlight reel)
+    if (gs._g && (kind === 'td' || kind === 'big')) { e.y = gs._g.y; e.los = gs._g.los; }
     gs.log.push(e);
     return e;
   }
@@ -471,6 +474,7 @@ const Engine = (() => {
   function gain(gs, yds, text, opts = {}) {
     const o = gs.poss, d = 1 - o;
     const y = Math.min(yds, 100 - gs.ball);
+    gs._g = { y, los: gs.ball };
     gs.ball += y;
     gs.ts[o].plays++; gs.ts[o].yds += y;
     if (opts.kind === 'pass') gs.ts[o].py += y; else if (opts.kind === 'run') gs.ts[o].ry += y;
@@ -850,6 +854,7 @@ const Engine = (() => {
   // Field goals and kneels resolve immediately (det.live = false).
   function prepare(gs, input = {}) {
     if (gs.over) return null;
+    gs._g = null;
     gs.lastSit = null; gs.lastPlay = null;
     if (gs.phase === 'kickoff') return prepKickoff(gs);
     const o = gs.poss, d = 1 - o, diff = gs.score[o] - gs.score[d];
@@ -1087,6 +1092,7 @@ const Engine = (() => {
   // input: { off, def } — calls for the user's side; anything missing is AI-called.
   function step(gs, input = {}) {
     if (gs.over) return 'over';
+    gs._g = null;
     input = norm(input);
     gs.lastSit = null; gs.lastPlay = null;
     if (gs.phase === 'kickoff') { kickoff(gs); gs.wpH.push(winProb(gs)); return gs.over ? 'over' : 'ok'; }

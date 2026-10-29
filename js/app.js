@@ -24,26 +24,6 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') set(); });
 })();
 
-// TEMPORARY: home-screen sizing readout (tap to hide); remove once the bottom gap is fixed
-(function viewportDebug() {
-  if (!document.documentElement.classList.contains('standalone')) return;
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;left:8px;top:40%;z-index:9999;padding:8px 10px;border-radius:8px;background:rgba(220,38,38,.92);color:#fff;font:12px/1.35 monospace;white-space:pre';
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
-  const show = () => {
-    const app = document.getElementById('app'), r = app ? app.getBoundingClientRect() : { top: 0, bottom: 0 };
-    const ps = getComputedStyle(probe);
-    box.textContent = `build 6\ninnerH ${innerHeight}  clientH ${document.documentElement.clientHeight}\n` +
-      `vv ${window.visualViewport ? Math.round(visualViewport.height) : '-'}  screen ${screen.width}x${screen.height}\n` +
-      `--app-h ${getComputedStyle(document.documentElement).getPropertyValue('--app-h')}\n` +
-      `safe top ${ps.paddingTop} bot ${ps.paddingBottom}\napp ${Math.round(r.top)}..${Math.round(r.bottom)}`;
-  };
-  box.addEventListener('click', () => box.remove());
-  window.addEventListener('load', () => { document.body.append(probe, box); show(); setTimeout(show, 600); });
-  window.addEventListener('resize', show);
-})();
-
 (function boot() {
   if (L.hasSave() && !L.load()) {
     console.warn('Save could not be read; starting fresh.');
