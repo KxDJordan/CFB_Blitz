@@ -2,8 +2,9 @@
 // ── GAME ENGINE ───────────────────────────────────────────────────
 // Snap-by-snap simulation driven by individual player matchups.
 // Side 0 = home, side 1 = away. gs.ball = yards from the offense's own goal.
-// Every scrimmage play produces gs.lastPlay — a detailed record the live
-// renderer turns into an animated play.
+// step() resolves a snap statistically (simmed games). Watched games use
+// prepare() → the free physical sim in live.js → commit(), so the log
+// reports what actually happened on the field.
 
 const Engine = (() => {
   const QLEN = 900;
@@ -464,7 +465,7 @@ const Engine = (() => {
     if (opts.kind === 'pass') gs.ts[o].py += y; else if (opts.kind === 'run') gs.ts[o].ry += y;
     gs.drive.plays++; gs.drive.yds += y;
     if (opts.onYds) opts.onYds(y);
-    tick(gs, runoff(gs, opts.inc ? 'inc' : 'play'));
+    tick(gs, runoff(gs, opts.inc || opts.oob ? 'inc' : 'play'));
     if (gs.ball >= 100) {
       if (opts.onTD) opts.onTD();
       touchdown(gs, o, text);
@@ -821,10 +822,261 @@ const Engine = (() => {
     return aiOffCall(gs);
   }
 
+  // ── playbook glue ──
+  // A call may be a playbook play id or a call family; the stat-sim works on families.
+  const catOf = id => { const p = Playbook.offById(id) || Playbook.defById(id); return p ? p.cat : id; };
+  function norm(input) {
+    const out = { ...input };
+    if (out.off) out.off = catOf(out.off);
+    if (out.def) out.def = catOf(out.def);
+    return out;
+  }
+
+  // ── LIVE SNAPS ──
+  // prepare() sets up a play for the physical simulation without resolving it;
+  // the live renderer plays it out freely and commit() books what actually happened.
+  // Field goals and kneels resolve immediately (det.live = false).
+  function prepare(gs, input = {}) {
+    if (gs.over) return null;
+    gs.lastSit = null; gs.lastPlay = null;
+    if (gs.phase === 'kickoff') return prepKickoff(gs);
+    const o = gs.poss, d = 1 - o, diff = gs.score[o] - gs.score[d];
+    const fgDist = 100 - gs.ball + 17;
+    const userOff = o === gs.userSide && input.off, userDef = d === gs.userSide && input.def;
+    let oc = userOff ? input.off : null;
+    if (!oc) {
+      if (canKneel(gs)) oc = 'kneel';
+      else if (!gs.ot && (gs.qtr === 2 || gs.qtr === 4) && gs.clock <= 9 && fgDist <= maxFg(gs) + 3 && (gs.qtr === 2 || (diff >= -3 && diff <= 0))) oc = 'fg';
+      else if (gs.down === 4) { const f = aiFourth(gs); oc = f === 'go' ? aiOffCall(gs) : f; }
+      else oc = aiOffCall(gs);
+    }
+    if (oc === 'kneel' || oc === 'fg') { step(gs, { off: oc, def: input.def }); if (gs.lastPlay) gs.lastPlay.live = false; return gs.lastPlay; }
+    if (oc === 'punt' && !gs.ot) return prepPunt(gs);
+    if (oc === 'punt') oc = aiOffCall(gs);
+    if (!userOff && oc === 'screen' && U.chance(0.45)) oc = 'quick';
+    const play = Playbook.offById(oc) || Playbook.pickOff(oc);
+    const flip = userOff && input.flip != null ? !!input.flip : U.chance(0.5);
+    const dplay = (userDef && Playbook.defById(input.def)) || Playbook.pickDef(userDef ? input.def : aiDefCall(gs), gs);
+    const cat = play.cat, dc = dplay.cat;
+    gs.lastSit = `${downTxt(gs)} at ${spot(gs)}`;
+    const t = gs.tend[o];
+    t[play.kind]++; t.n++; t.last = cat;
+    const td = gs.tend[d];
+    if (dc === 'blitz') td.blitz++;
+    td.lastDef = dc;
+    const O = slots(gs, o, true), D = slots(gs, d, false);
+    const det = { type: 'snap', live: true, kind: play.kind, call: cat, dcall: dc, play: play.id, dplay: dplay.id, flip, o, los: gs.ball, togo: gs.togo, O: idsOf(O), D: idsOf(D), down: gs.lastSit };
+    gs.lastPlay = det;
+    return det;
+  }
+  function prepKickoff(gs) {
+    const k = gs.kicker, r = 1 - k;
+    if (U.chance(0.62)) { kickoff(gs); gs.lastPlay.touchback = true; gs.lastPlay.live = false; gs.wpH.push(winProb(gs)); return gs.lastPlay; }
+    const ret = who(gs, r, U.pick(['RB', 'WR', 'CB']), 1) || who(gs, r, 'WR', 0) || GHOST('WR');
+    const det = { type: 'kickoff', live: true, o: r, kickSide: k, returner: ret.id, land: U.ri(-4, 7) };
+    gs.lastPlay = det;
+    return det;
+  }
+  function prepPunt(gs) {
+    const o = gs.poss, d = 1 - o, k = who(gs, o, 'K') || GHOST('K');
+    let dist = Math.round(U.gauss(41 + (k.ovr - 70) * 0.12 + tailwind(gs) * 0.28 - (wet(gs) ? 2 : 0) + sm(gs, null, k, 'bigleg') * 50, 5));
+    if (gs.ball + dist >= 100 && gs.ball >= 50 && sp(gs, null, k, 'coffin')) dist = 100 - gs.ball - U.ri(2, 8);
+    const land = gs.ball + dist;
+    const ret = who(gs, d, 'WR', 1) || who(gs, d, 'CB', 0) || GHOST('WR');
+    if (land >= 100 || U.chance(0.36)) {
+      // touchback or fair catch: nothing to play out — resolve now
+      const det = { type: 'punt', live: false, o, los: gs.ball, land: Math.min(land, 108), returner: ret.id, kicker: k.id };
+      gs.lastPlay = det;
+      tick(gs, U.ri(6, 11));
+      gs.ts[o].plays++;
+      if (land >= 100) { det.touchback = true; det.end = 80; ev(gs, `${nm(k)} punts into the end zone. Touchback.`, 'punt'); changePoss(gs, d, 20); }
+      else { det.fair = true; det.end = land; ev(gs, `${nm(k)} punts ${dist} yds. Fair catch by ${nm(ret)}.`, 'punt'); changePoss(gs, d, U.clamp(100 - land, 1, 99)); }
+      checkClock(gs);
+      gs.wpH.push(winProb(gs));
+      return det;
+    }
+    const det = { type: 'punt', live: true, o, los: gs.ball, land, dist, returner: ret.id, kicker: k.id };
+    gs.lastPlay = det;
+    return det;
+  }
+
+  // Book the outcome of a freely simulated play. `res` comes from the live sim;
+  // if it's missing (watchdog), the play falls back to the stat-sim.
+  function commit(gs, det, res) {
+    if (!det || !det.live || gs.over) return;
+    if (det.type === 'kickoff') return commitKick(gs, det, res);
+    if (det.type === 'punt') return commitPunt(gs, det, res);
+    if (!res) { const fb = det.kind === 'run' ? resolveRun(gs, det.call, det.dcall) : resolvePass(gs, det.call, det.dcall); Object.assign(det, fb, { type: 'snap', live: true }); gs.wpH.push(winProb(gs)); return; }
+    const o = gs.poss, d = 1 - o;
+    const P = id => (id != null && id >= 0 && G.players[id]) || GHOST('WR');
+    const O = {}, Dd = {};
+    for (const k in det.O) O[k] = P(det.O[k]);
+    for (const k in det.D) Dd[k] = P(det.D[k]);
+    const oP = k => (k ? O[k] : null), dP = k => (k ? Dd[k] : null);
+    const play = Playbook.offById(det.play), dplay = Playbook.defById(det.dplay);
+    const qb = O.QB, qs = st(gs, qb, o);
+    const fatX = {};
+    const tk = res.tackler ? dP(res.tackler) : null;
+    const tkTxt = tk ? ` (${nm(tk)})` : '';
+    const broke = res.broke ? ` Broke ${res.broke} tackle${res.broke > 1 ? 's' : ''}!` : '';
+    const room = 100 - gs.ball;
+    const Y = v => Math.min(Math.round(v), room);
+    det.outcome = res.outcome; det.td = !!res.td;
+    fatigue(gs, O, Dd, fatX);
+    // fumble lost on a run/catch/sack: the defense takes over at the spot
+    const lost = res.fumble && res.fumble.lost;
+    if (res.outcome === 'int') {
+      const pk = dP(res.picker), rec = oP(res.target);
+      qs.pa++; qs.pint++; st(gs, pk, d).int++; gs.ts[o].to++; gs.ts[o].plays++;
+      tick(gs, runoff(gs, 'play'));
+      const where = `for ${nm(rec)}`;
+      if (res.touchback) {
+        ev(gs, `${nm(qb)} throws ${where}... INTERCEPTED in the end zone by ${nm(pk)}! Touchback.${stkNote(det, false)}`, 'to');
+        changePoss(gs, d, 25);
+      } else if (res.td) {
+        ev(gs, `${nm(qb)} throws ${where}... PICKED OFF by ${nm(pk)}!`, 'to');
+        gs.poss = d; gs.ball = 100;
+        touchdown(gs, d, `${nm(pk)} takes it back to the house — PICK SIX!${stkNote(det, false)}`);
+      } else {
+        const end = U.clamp(Math.round(res.endOpp), 1, 99); // defense's own frame
+        ev(gs, `${nm(qb)} throws ${where}... INTERCEPTED by ${nm(pk)}, returned to the ${spot(gs, d, end)}.${stkNote(det, false)}`, 'to');
+        changePoss(gs, d, end);
+      }
+      checkClock(gs);
+      gs.wpH.push(winProb(gs));
+      return;
+    }
+    if (res.outcome === 'sack') {
+      const sk = dP(res.sacker) || tk, ss = st(gs, sk, d);
+      ss.sk++; ss.tk++; gs.ts[d].sk++;
+      const y = Y(res.yards);
+      det.yards = y;
+      if (lost) {
+        gs.ts[o].to++; gs.ts[o].plays++;
+        tick(gs, runoff(gs, 'play'));
+        const spotY = U.clamp(gs.ball + y, 1, 99);
+        gs.ball = spotY;
+        ev(gs, `STRIP SACK! ${nm(sk)} knocks the ball from ${nm(qb)} — ${gs.abbr[d]} recovers at the ${spot(gs)}!${stkNote(det, false)}`, 'to');
+        changePoss(gs, d, 100 - spotY);
+        checkClock(gs);
+      } else gain(gs, y, `${nm(qb)} is SACKED by ${nm(sk)} for a loss of ${-y}.${stkNote(det, false)}`, { kind: 'sack' });
+      injury(gs, qb, o, 0.004);
+      gs.wpH.push(winProb(gs));
+      return;
+    }
+    if (res.outcome === 'incomplete' || res.outcome === 'throwaway') {
+      qs.pa++;
+      const rec = oP(res.target), pbu = dP(res.pbu);
+      det.yards = 0;
+      const text = res.outcome === 'throwaway' ? `${nm(qb)} is flushed and throws it away.`
+        : pbu ? `${nm(qb)} throws for ${nm(rec)} — broken up by ${nm(pbu)}!${stkNote(det, false)}`
+          : res.drop ? `${nm(qb)} hits ${nm(rec)} in the hands... dropped.` : `${nm(qb)}${res.pressured ? ' under pressure,' : ''} throws for ${nm(rec)}... incomplete.`;
+      gain(gs, 0, text, { kind: 'pass', inc: true });
+      gs.wpH.push(winProb(gs));
+      return;
+    }
+    // ball-carrier outcomes: run, scramble, complete
+    const car = oP(res.carrier) || qb, cs = st(gs, car, o);
+    const y = Y(res.yards);
+    det.yards = y;
+    if (tk && !res.td) st(gs, tk, d).tk++;
+    const isPass = res.outcome === 'complete';
+    if (isPass) { qs.pa++; qs.pc++; cs.rc++; } else cs.ra++;
+    fatX[car.id] = 1.2;
+    const playName = play ? play.name : '';
+    if (lost) {
+      const rec = dP(res.fumble.rec);
+      gs.ball = U.clamp(gs.ball + y, 1, 99);
+      if (isPass) { qs.py += y; cs.rcy += y; gs.ts[o].py += y; } else { cs.ry += y; gs.ts[o].ry += y; }
+      gs.ts[o].yds += y; gs.ts[o].plays++; gs.ts[o].to++;
+      tick(gs, runoff(gs, 'play'));
+      ev(gs, `${isPass ? `${nm(qb)} hits ${nm(car)} for ${yd(y)}` : `${nm(car)} runs for ${yd(y)}`}... FUMBLE! Recovered by ${nm(rec)}.${stkNote(det, false)}`, 'to');
+      changePoss(gs, d, 100 - gs.ball);
+      checkClock(gs);
+      gs.wpH.push(winProb(gs));
+      return;
+    }
+    let text;
+    const fumNote = res.fumble ? ' Fumbles — but the offense falls on it.' : '';
+    const oob = res.oob ? ' Pushed out of bounds.' : '';
+    if (isPass) {
+      const rec = car;
+      const air = Math.round(res.air || 0);
+      text = `${nm(qb)}${res.pressured ? ' under pressure' : ''} hits ${nm(rec)} for ${yd(y)}${res.td ? '!' : tkTxt + '.'}${air >= 20 ? ` ${air} yards in the air.` : res.yac >= 10 ? ` ${Math.round(res.yac)} after the catch.` : ''}${broke}${oob}${fumNote}${stkNote(det, true)}`;
+    } else if (res.outcome === 'scramble') {
+      qs.ra = qs.ra || 0;
+      text = `${nm(qb)} escapes the pocket and scrambles for ${yd(y)}${res.td ? '!' : tkTxt + '.'}${res.slide ? ' Slides to end it.' : ''}${oob}${fumNote}`;
+    } else {
+      const lane = res.lane || '';
+      text = res.td ? `${nm(car)} takes the ${playName}${lane} — ${res.broke >= 2 ? 'breaks free' : 'finds a crease'} for ${yd(y)}!`
+        : y > 0 ? `${nm(car)} ${playName ? `on the ${playName}` : 'runs'}${lane} for ${yd(y)}${tkTxt}.${broke}${oob}${fumNote}`
+          : y === 0 ? `${nm(car)} is stuffed at the line${tkTxt}.${fumNote}` : `${nm(car)} is dropped for a loss of ${-y}${tkTxt}.${fumNote}`;
+      text += stkNote(det, y >= 4);
+    }
+    gain(gs, y, text, {
+      kind: isPass ? 'pass' : 'run', oob: res.oob,
+      onYds: v => { if (isPass) { qs.py += v; cs.rcy += v; } else cs.ry += v; },
+      onTD: () => { if (isPass) { qs.ptd++; cs.rctd++; } else cs.rtd++; },
+    });
+    if (tk) injury(gs, tk, d);
+    injury(gs, car, o);
+    void dplay;
+    gs.wpH.push(winProb(gs));
+  }
+  function commitKick(gs, det, res) {
+    if (!res) { kickoff(gs); gs.wpH.push(winProb(gs)); return; }
+    const k = det.kickSide, r = det.o, ret = G.players[det.returner] || GHOST('WR');
+    gs.poss = r;
+    if (res.td) { gs.ball = 100; tick(gs, 12); touchdown(gs, r, `${nm(ret)} takes the kickoff ALL THE WAY BACK!`); gs.wpH.push(winProb(gs)); return checkClock(gs); }
+    if (res.touchback) { gs.ball = 25; ev(gs, `${gs.abbr[k]} kicks into the end zone — ${nm(ret)} takes a knee. ${gs.abbr[r]} ball at the 25.`, 'kick'); }
+    else {
+      gs.ball = U.clamp(Math.round(res.end), 1, 99);
+      tick(gs, 6);
+      const tk = res.tacklerPid != null ? G.players[res.tacklerPid] : null;
+      if (tk) st(gs, tk, k).tk++;
+      ev(gs, `${nm(ret)} returns the kickoff to the ${spot(gs)}${tk ? ` (${nm(tk)})` : ''}.${res.broke ? ` Broke ${res.broke} tackle${res.broke > 1 ? 's' : ''}!` : ''}`, res.end >= 40 ? 'big' : 'kick');
+    }
+    det.end = gs.ball;
+    gs.down = 1; gs.togo = 10; gs.phase = 'play';
+    startDrive(gs);
+    checkClock(gs);
+    gs.wpH.push(winProb(gs));
+  }
+  function commitPunt(gs, det, res) {
+    if (!res) { punt(gs); gs.wpH.push(winProb(gs)); return; }
+    const o = det.o, d = 1 - o, k = G.players[det.kicker] || GHOST('K'), ret = G.players[det.returner] || GHOST('WR');
+    tick(gs, U.ri(6, 11));
+    gs.ts[o].plays++;
+    if (res.td) {
+      ev(gs, `${nm(k)} punts ${det.dist} yds...`, 'punt');
+      gs.poss = d; gs.ball = 100;
+      touchdown(gs, d, `${nm(ret)} weaves through the coverage on the return!`);
+      gs.wpH.push(winProb(gs));
+      return checkClock(gs);
+    }
+    const nb = U.clamp(Math.round(res.end), 1, 99);
+    const r = Math.max(0, nb - (100 - Math.min(99, det.land)));
+    ev(gs, `${nm(k)} punts ${det.dist} yds. ${nm(ret)} returns it ${yd(r)}.`, r >= 15 ? 'big' : 'punt');
+    changePoss(gs, d, nb);
+    checkClock(gs);
+    gs.wpH.push(winProb(gs));
+  }
+  // composite ratings for the physical sim
+  function ratings(gs, side, p) {
+    if (!p) p = GHOST('WR');
+    const a = k => A(gs, side, p, k);
+    return {
+      spd: a('spd'), str: a('str'), awr: a('awr'), skl: a('skl'),
+      tackle: tackleR(gs, side, p), elus: elusR(gs, side, p), route: routeR(gs, side, p), cover: coverR(gs, side, p),
+      pblk: passBlk(gs, side, p), rblk: runBlk(gs, side, p), rush: passRush(gs, side, p), rdef: runDef(gs, side, p), acc: qbAcc(gs, side, p),
+    };
+  }
+
   // ── main step ──
   // input: { off, def } — calls for the user's side; anything missing is AI-called.
   function step(gs, input = {}) {
     if (gs.over) return 'over';
+    input = norm(input);
     gs.lastSit = null; gs.lastPlay = null;
     if (gs.phase === 'kickoff') { kickoff(gs); gs.wpH.push(winProb(gs)); return gs.over ? 'over' : 'ok'; }
     const o = gs.poss, d = 1 - o, diff = gs.score[o] - gs.score[d];
@@ -885,7 +1137,8 @@ const Engine = (() => {
   }
 
   return {
-    create, step, simToEnd, winProb, preWinProb, fourthInfo, needsCall, suggestOff, aiDefCall, callEdges, canKneel,
+    create, step, prepare, commit, ratings, catOf, simToEnd, winProb, preWinProb, fourthInfo, needsCall, suggestOff, aiDefCall, callEdges, canKneel,
     spot, downTxt, qName, nm, slots, stam, QLEN, OFF_CALLS, DEF_CALLS,
+    stk: { sm, sp, soft, tierOf, clutch, redZone, shortYd, wxPass, tailwind, crosswind, wet },
   };
 })();

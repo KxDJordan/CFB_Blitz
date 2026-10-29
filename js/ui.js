@@ -774,15 +774,19 @@ const UI = (() => {
     const st = S.game, gs = st.gs;
     gs._togoAtSnap = gs.togo;
     const before = gs.log.length;
-    Engine.step(gs, input);
-    const det = gs.lastPlay;
+    // the engine only sets the play up; the live sim plays it out and the result is booked after
+    const det = Engine.prepare(gs, input);
     const tag = document.getElementById('livetag');
-    if (tag && det && (det.type === 'run' || det.type === 'pass')) {
-      const oc = Engine.OFF_CALLS.find(c => c.id === det.call), dc = Engine.DEF_CALLS.find(c => c.id === det.dcall);
-      tag.innerHTML = `<span>${esc(gs.abbr[det.o])}: ${oc.label}</span><span>${esc(gs.abbr[1 - det.o])}: ${dc.label}</span>`;
+    if (tag && det && det.type === 'snap') {
+      const op = Playbook.offById(det.play), dp = Playbook.defById(det.dplay);
+      tag.innerHTML = `<span>${esc(gs.abbr[det.o])}: ${esc(op.name)}</span><span>${esc(gs.abbr[1 - det.o])}: ${esc(dp.name)}</span>`;
       tag.classList.add('show');
     } else if (tag) tag.classList.remove('show');
-    Live.play(det, () => afterPlay(before));
+    Live.play(det, res => {
+      if (S.game !== st || st.done) return;
+      if (det && det.live) Engine.commit(gs, det, res);
+      afterPlay(before);
+    });
   }
   function afterPlay(before) {
     const st = S.game;
@@ -798,7 +802,7 @@ const UI = (() => {
   // ── play calling ──
   function showCall(need) {
     const st = S.game;
-    st.need = need; st.mode = 'call';
+    st.need = need; st.mode = 'call'; st.pbTab = 'picks'; st.flip = false;
     const tk = document.getElementById('lastplay'); if (tk) tk.classList.remove('show');
     renderPanel();
     startClock();
@@ -822,9 +826,20 @@ const UI = (() => {
     }, 100);
   }
   function stopClock() { const st = S.game; if (st && st.clockIv) { clearInterval(st.clockIv); st.clockIv = null; } }
+  // the coordinator's pick, as a playbook play (cached for this snap)
   function suggestion() {
-    const st = S.game, gs = st.gs;
-    return st.need === 'off' ? Engine.suggestOff(gs) : Engine.aiDefCall(gs, gs.userSide);
+    const st = S.game, gs = st.gs, key = `${st.need}:${gs.n}:${gs.down}:${gs.ball}`;
+    if (st.suggKey === key && st.sugg) return st.sugg;
+    let v;
+    if (st.need === 'off') { const c = Engine.suggestOff(gs); v = ['punt', 'fg', 'kneel'].includes(c) ? c : bestOf(Playbook.OFF.filter(p => p.cat === c && p.run?.scheme !== 'sneak'), gs).id; }
+    else v = Playbook.pickDef(Engine.aiDefCall(gs, gs.userSide), gs).id;
+    st.suggKey = key; st.sugg = v;
+    return v;
+  }
+  // within a call family, prefer short-yardage plays when it's short and shots when it's long
+  function bestOf(list, gs) {
+    const sc = p => (p.kind === 'run' && gs.togo <= 2 ? (p.run.scheme === 'zone' || p.run.scheme === 'power' ? 2 : 0) : 0) + (p.kind === 'pass' && gs.togo >= 8 ? (p.cat === 'deep' ? 1 : 0) : 0) + Math.random();
+    return list.slice().sort((a, b) => sc(b) - sc(a))[0] || Playbook.OFF[0];
   }
   function autoCall() {
     const st = S.game;
@@ -834,13 +849,15 @@ const UI = (() => {
     makeCall(v);
   }
   function callName(id) {
+    const p = Playbook.offById(id) || Playbook.defById(id);
+    if (p) return p.name;
     const c = Engine.OFF_CALLS.find(x => x.id === id) || Engine.DEF_CALLS.find(x => x.id === id);
     return c ? c.label : { punt: 'Punt', fg: 'Field Goal', kneel: 'Kneel' }[id] || id;
   }
   function makeCall(v) {
     const st = S.game;
     if (!st.need) return;
-    const input = st.need === 'off' ? { off: v } : { def: v };
+    const input = st.need === 'off' ? { off: v, flip: !!st.flip } : { def: v };
     snap(input);
   }
   function edgeTag(v) {
@@ -853,31 +870,59 @@ const UI = (() => {
     st.sugg = suggestion();
     const sit = `${Engine.downTxt(gs)} · ${esc(gs.abbr[gs.poss])} ball at ${esc(Engine.spot(gs))} · ${gs.qtr <= 4 ? `Q${gs.qtr} ${U.clock(gs.clock)}` : `OT${gs.qtr - 4}`}`;
     const clock = `<div class="pclock" id="pclock" style="--p:1"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><circle class="pc-fg" cx="20" cy="20" r="17"/></svg><b>${Math.ceil(st.clock || CLOCK_SECS[st.speed])}</b></div>`;
-    let cards = '', intel = '';
+    let cards = '', intel = '', tabs = '', extra = '';
+    const tab = st.pbTab || 'picks';
+    const tabBtn = (id, label) => `<button class="pb-tab ${tab === id ? 'on' : ''}" data-a="gpbTab" data-v="${id}">${label}</button>`;
+    const CAT = { inside: 'Inside run', outside: 'Outside run', quick: 'Quick pass', pa: 'Play action', deep: 'Downfield', screen: 'Screen', base: 'Base', blitz: 'Blitz', cover: 'Coverage', runstop: 'Run stop' };
     if (need === 'off') {
       const raw = Engine.callEdges(gs, us), t = gs.tend[1 - us];
       const mean = U.avg(Object.values(raw)), e = {};
       for (const k in raw) e[k] = (raw[k] - mean) * 0.7;
       const blitzPct = gs.tend[us].n ? Math.round(t.blitz / gs.tend[us].n * 100) : 0;
-      intel = `Defense: blitzing ${blitzPct}% of snaps${t.lastDef ? ` · last look: ${callName(t.lastDef)}` : ''}`;
-      const list = Engine.OFF_CALLS.map(c => ({ id: c.id, label: c.label, desc: c.desc, kind: c.kind, edge: e[c.id] }));
+      intel = `Defense: blitzing ${blitzPct}% of snaps${t.lastDef ? ` · last look: ${CAT[t.lastDef] || callName(t.lastDef)}` : ''}`;
+      const special = [];
       if (gs.down === 4 || Engine.canKneel(gs)) {
         const f = Engine.fourthInfo(gs);
-        if (f.canFg) list.push({ id: 'fg', label: 'Field Goal', desc: `${f.fgDist} yds · ${Math.round(f.fgP * 100)}% make`, kind: 'st' });
-        if (f.canPunt && gs.down === 4) list.push({ id: 'punt', label: 'Punt', desc: 'Flip the field.', kind: 'st' });
-        if (Engine.canKneel(gs)) list.push({ id: 'kneel', label: 'Victory Formation', desc: 'Take a knee, burn clock.', kind: 'st' });
+        if (f.canFg) special.push({ id: 'fg', label: 'Field Goal', desc: `${f.fgDist} yds · ${Math.round(f.fgP * 100)}% make` });
+        if (f.canPunt && gs.down === 4) special.push({ id: 'punt', label: 'Punt', desc: 'Flip the field.' });
+        if (Engine.canKneel(gs)) special.push({ id: 'kneel', label: 'Victory Formation', desc: 'Take a knee, burn clock.' });
       }
-      cards = list.map(c => `<button class="call-card k-${c.kind} ${st.sugg === c.id ? 'sugg' : ''}" data-a="gcall" data-v="${c.id}"><div class="cc-top"><span class="cc-kind">${c.kind === 'st' ? 'SPECIAL' : c.kind.toUpperCase()}</span>${st.sugg === c.id ? '<span class="cc-pick">OC PICK</span>' : ''}</div><div class="cc-name">${c.label}</div><div class="cc-desc">${c.desc}</div>${c.edge != null ? edgeTag(c.edge) : ''}</button>`).join('');
+      tabs = tabBtn('picks', 'OC Picks') + (special.length ? tabBtn('st', 'Special') : '') + Object.entries(Playbook.FORMS).map(([id, f]) => tabBtn(id, f.name.replace('Shotgun ', 'Gun '))).join('');
+      let list;
+      if (tab === 'st' && special.length) list = null;
+      else if (tab === 'picks') {
+        // the coordinator's pick plus the best-looking play from each other family
+        if (st.picksKey !== st.suggKey) {
+          const fam = {};
+          for (const p of U.shuffle(Playbook.OFF.slice())) { if (p.run?.scheme === 'sneak' && gs.togo > 2) continue; if (!fam[p.cat]) fam[p.cat] = p; }
+          const sp0 = Playbook.offById(st.sugg);
+          st.picks = Object.values(fam).filter(p => !sp0 || p.cat !== sp0.cat).sort((a, b) => e[b.cat] - e[a.cat]).slice(0, 4).map(p => p.id);
+          st.picksKey = st.suggKey;
+        }
+        const sp = Playbook.offById(st.sugg);
+        list = st.picks.map(Playbook.offById);
+        if (sp) list.unshift(sp);
+      } else list = Playbook.OFF.filter(p => p.form === tab);
+      const flip = !!st.flip;
+      const card = p => `<button class="call-card pb-card k-${p.kind} ${st.sugg === p.id ? 'sugg' : ''}" data-a="gcall" data-v="${p.id}">${Playbook.svgOff(p, flip)}<div class="cc-top"><span class="cc-kind">${CAT[p.cat]}</span>${st.sugg === p.id ? '<span class="cc-pick">OC PICK</span>' : ''}</div><div class="cc-name">${esc(p.name)}</div><div class="cc-form">${esc(Playbook.FORMS[p.form].name)}</div>${edgeTag(e[p.cat] || 0)}</button>`;
+      const stCard = c => `<button class="call-card k-st ${st.sugg === c.id ? 'sugg' : ''}" data-a="gcall" data-v="${c.id}"><div class="cc-top"><span class="cc-kind">SPECIAL</span>${st.sugg === c.id ? '<span class="cc-pick">OC PICK</span>' : ''}</div><div class="cc-name">${c.label}</div><div class="cc-desc">${c.desc}</div></button>`;
+      cards = list ? (tab === 'picks' ? special.map(stCard).join('') : '') + list.map(card).join('') : special.map(stCard).join('');
+      extra = `<button class="pb-flip ${flip ? 'on' : ''}" data-a="gflip">⇄ Flip</button>`;
     } else {
       const t = gs.tend[1 - us];
       const pr = t.n ? Math.round(t.pass / t.n * 100) : 50;
       const O = Engine.slots(gs, 1 - us, true);
       const threat = ['WR1', 'WR2', 'RB', 'TE', 'QB'].map(k => O[k]).filter(p => p.id >= 0).sort((a, b) => b.ovr - a.ovr)[0];
-      intel = `Offense: pass ${pr}% · run ${100 - pr}%${t.last ? ` · last: ${callName(t.last)}` : ''}${threat ? ` · top threat ${threat.pos} ${esc(threat.last)} (${threat.ovr})` : ''}`;
-      cards = Engine.DEF_CALLS.map(c => `<button class="call-card k-def ${st.sugg === c.id ? 'sugg' : ''}" data-a="gcall" data-v="${c.id}"><div class="cc-top"><span class="cc-kind">DEFENSE</span>${st.sugg === c.id ? '<span class="cc-pick">DC PICK</span>' : ''}</div><div class="cc-name">${c.label}</div><div class="cc-desc">${c.desc}</div></button>`).join('');
+      intel = `Offense: pass ${pr}% · run ${100 - pr}%${t.last ? ` · last: ${CAT[t.last] || callName(t.last)}` : ''}${threat ? ` · top threat ${threat.pos} ${esc(threat.last)} (${threat.ovr})` : ''}`;
+      const groups = { picks: null, zone: ['c2', 'c3', 'c4', 'prevent'], man: ['c1', 'box'], blitz: ['mike', 'c0', 'fire'] };
+      tabs = tabBtn('picks', 'DC Picks') + tabBtn('zone', 'Zone') + tabBtn('man', 'Man') + tabBtn('blitz', 'Blitz');
+      const ids = groups[tab] || null;
+      let list = ids ? ids.map(Playbook.defById) : Playbook.DEF.slice();
+      if (!ids) { const sp = Playbook.defById(st.sugg); list = [sp, ...list.filter(p => p !== sp)]; }
+      cards = list.map(p => `<button class="call-card pb-card k-def ${st.sugg === p.id ? 'sugg' : ''}" data-a="gcall" data-v="${p.id}">${Playbook.svgDef(p)}<div class="cc-top"><span class="cc-kind">${CAT[p.cat]}</span>${st.sugg === p.id ? '<span class="cc-pick">DC PICK</span>' : ''}</div><div class="cc-name">${esc(p.name)}</div><div class="cc-form">${esc(p.desc)}</div></button>`).join('');
     }
-    return `<div class="call-head"><div class="grow"><div class="kicker" style="color:var(--accent)">Your call · ${need === 'off' ? 'Offense' : 'Defense'}</div><div class="call-sit">${sit}</div></div>${clock}</div>
-      <div class="call-intel">${intel}</div><div class="call-scroll">${cards}</div>`;
+    return `<div class="call-head"><div class="grow"><div class="kicker" style="color:var(--accent)">Your call · ${need === 'off' ? 'Offense' : 'Defense'}</div><div class="call-sit">${sit}</div></div>${extra}${clock}</div>
+      <div class="call-intel">${intel}</div><div class="pb-tabs">${tabs}</div><div class="call-scroll">${cards}</div>`;
   }
   function fatiguePanel() {
     const st = S.game, gs = st.gs, us = gs.userSide;
@@ -1240,6 +1285,8 @@ const UI = (() => {
     toast(st.auto ? 'Auto-call on — your coordinators have the headset' : 'You have the headset — call every snap');
   };
   A.gcall = v => makeCall(v);
+  A.gpbTab = v => { const st = S.game; st.pbTab = v; renderPanel(); };
+  A.gflip = () => { const st = S.game; st.flip = !st.flip; renderPanel(); };
   A.gfourth = () => { G.settings.askFourth = !G.settings.askFourth; S.game.gs.askFourth = G.settings.askFourth; L.save(); const tg = document.querySelector('.sheet [data-a="gfourth"]'); if (tg) tg.classList.toggle('on', G.settings.askFourth); };
   A.gtab = v => { S.game.tab = v; pbpSheet(); };
   A.gpbp = () => pbpSheet();
