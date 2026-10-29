@@ -937,9 +937,13 @@ const L = (() => {
     for (const pid of played) { const p = G.players[pid]; if (p) p.st.gp++; }
     for (const inj of gs.injuries) { const p = G.players[inj.pid]; if (p) p.inj = Math.max(p.inj, inj.weeks + 1); }
     const top = topPerformers(gs);
+    // scoring summary (quarter, clock, play, score after) and the player of the game (best line on the winning side)
+    const scoring = gs.log.filter(e => (e.kind === 'td' || e.kind === 'fg') && e.scorer != null).map(e => ({ q: e.q, clk: e.clk, side: e.scorer, kind: /SAFETY/.test(e.text) ? 'sf' : e.kind, text: e.text, sc: e.sc }));
+    const winSide = g.hs > g.as ? 0 : 1, pog = top.find(x => x.side === winSide) || top[0];
     g.box = {
       ts: gs.ts, qs: gs.qs,
       top: top.slice(0, 6).map(x => ({ pid: x.pid, side: x.side, kind: x.kind, line: x.line })),
+      scoring, pog: pog ? { pid: pog.pid, side: pog.side, kind: pog.kind, line: pog.line } : null,
     };
     return { g, W, Lo, ws: Math.max(g.hs, g.as), ls: Math.min(g.hs, g.as), rankBefore, top, injuries: gs.injuries, ot: gs.ot };
   }
@@ -1155,7 +1159,7 @@ const L = (() => {
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } G = null; }
 
   return {
-    rollStickers, growSticker, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr, divRecStr, divName,
+    FACES, rollStickers, growSticker, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr, divRecStr, divName,
     calcOvr, posCounts, rebuildDepth, depthHealthy, moveDepth, setAutoDepth, isStarter,
     units, power, powerFromUnits, offRating, defRating, ratings, groupAvg, needs,
     newCareer, draftCur, draftPick, draftAI, bestPickFor, finishDraft, prospectValue,

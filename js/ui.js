@@ -230,21 +230,75 @@ const UI = (() => {
   const SCREENS = {};
 
   // ════════════════ MENU ════════════════
+// title screen: a night game under the lights. Floodlight beams, crowd bokeh and camera flashes,
+  // a perspective field, and two marquee rows of faces from around the league
   SCREENS.menu = () => {
+    const career = !!(G && G.teams && G.teams.length), u = career ? L.user() : null;
+    const NF = L.FACES || FACE_COLS * FACE_ROWS, pal = career ? G.teams.map(t => t.logo) : DATA.FRANCHISES.map(f => f.logo);
+    const faceAt = (f, lg) => {
+      const c = f % FACE_COLS, r = Math.floor(f / FACE_COLS);
+      return `<span class="face" style="--fs:46px;--ring:${lg.primary};--ring2:${lg.secondary};background-size:${FACE_COLS * 100}% ${FACE_ROWS * 100}%;background-position:${(c / (FACE_COLS - 1) * 100).toFixed(3)}% ${(r / (FACE_ROWS - 1) * 100).toFixed(3)}%"></span>`;
+    };
+    // row one is your own roster when a career exists; row two is the rest of the league
+    const mine = career ? U.shuffle(L.roster(u).slice()).slice(0, 14).map(p => faceAt((p.face ?? p.id) % NF, u.logo)) : [];
+    const rand = n => Array.from({ length: n }, () => faceAt(U.ri(0, NF - 1), U.pick(pal)));
+    const row = (items, cls) => `<div class="mq-row ${cls}"><div class="mq-track">${items.join('')}${items.join('')}</div></div>`;
+    const marquee = `<div class="mq mi" style="--d:.35s">${row(mine.length >= 8 ? mine : rand(14), 'mq-a')}${row(rand(14), 'mq-b')}</div>`;
     let cont = '';
-    if (G && G.teams && G.teams.length) {
-      const u = L.user();
-      cont = `<button class="continue-card" data-a="continue">${logo(u, 50)}<div class="grow"><div class="kicker" style="color:#94a3b8">Continue career</div><div style="font:700 19px/1.1 var(--f-display);text-transform:uppercase;margin-top:4px">${tfull(u)}</div><div class="small" style="color:#cbd5e1;margin-top:2px">${phaseLabel()} · ${L.recStr(u)}</div></div>${I.chev}</button>`;
+    if (career) {
+      cont = `<button class="continue-card mi" style="--d:.45s;--c1:${u.logo.primary};--c2:${u.logo.secondary}" data-a="continue">
+        <span class="cc-stripe"></span>${logo(u, 54)}
+        <div class="grow"><div class="cc-k">Continue career · ${G.year}</div><div class="cc-name">${tfull(u)}</div><div class="cc-sub">${phaseLabel()} · <b>${L.recStr(u)}</b></div></div>
+        <span class="cc-go">${I.chev}</span></button>`;
     }
+    // the field in true perspective, seen from behind the end zone (x = 200 + X·270/z, y = 300/z)
+    const fieldSVG = () => {
+      const px = (X, z) => (200 + X * 270 / z).toFixed(1), py = z => (300 / z).toFixed(1), P = (X, z) => `${px(X, z)},${py(z)}`;
+      const quad = (z1, z2, a = -1, b = 1) => `<polygon points="${P(a, z1)} ${P(b, z1)} ${P(b, z2)} ${P(a, z2)}"`;
+      const GL = 2.5, END = 2.86, D = 0.17, NEAR = 0.72, TOP = py(END + 0.32);
+      let s = `<defs><radialGradient id="mfl" cx="50%" cy="25%" r="60%"><stop offset="0" stop-color="#fffbe6" stop-opacity=".28"/><stop offset="1" stop-color="#fffbe6" stop-opacity="0"/></radialGradient></defs>`;
+      s += `<rect x="-600" y="${TOP}" width="1600" height="600" fill="#0a3a1d"/><rect x="-600" y="${TOP}" width="1600" height="4" style="fill:var(--accent)" opacity=".55"/>`;
+      for (let k = 0, z = GL; z > NEAR; k++, z -= D / 2) s += `${quad(z, Math.max(NEAR, z - D / 2))} fill="${k % 2 ? '#15803d' : '#166534'}"/>`;
+      s += `${quad(GL, END)} style="fill:var(--accent)" opacity=".85"/>`;
+      s += `<text text-anchor="middle" dominant-baseline="central" transform="translate(200 ${py((GL + END) / 2)}) scale(1 .62)" class="ez-t">PRO BLITZ</text>`;
+      const line = (z, w) => `<line x1="${px(-1, z)}" y1="${py(z)}" x2="${px(1, z)}" y2="${py(z)}" stroke="#fff" stroke-opacity=".7" stroke-width="${w.toFixed(2)}"/>`;
+      s += line(END, 1.2 / END * 3) + line(GL, 1.6 / GL * 3);
+      [10, 20, 30, 40, 50, 40, 30, 20, 10].forEach((n, i) => {
+        const z = GL - (i + 1) * D; if (z <= NEAR) return;
+        s += line(z, 2.4 / z);
+        const fs = 32 / z, y = py(z);
+        for (const X of [-0.74, 0.74]) s += `<text font-size="${fs.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="translate(${px(X, z)} ${y}) scale(1 .55)" class="yd-t">${n}</text>`;
+        // hash marks
+        for (let h = 1; h < 5; h++) { const zz = z + h * D / 5; for (const X of [-0.2, 0.2]) s += `<line x1="${px(X - 0.035, zz)}" y1="${py(zz)}" x2="${px(X + 0.035, zz)}" y2="${py(zz)}" stroke="#fff" stroke-opacity=".5" stroke-width="${(1.4 / zz).toFixed(2)}"/>`; }
+      });
+      for (const X of [-1, 1]) s += `<polygon points="${P(X, END)} ${P(X * 1.035, END)} ${P(X * 1.035, NEAR)} ${P(X, NEAR)}" fill="#fff" opacity=".75"/>`;
+      s += `<rect x="-600" y="${TOP}" width="1600" height="600" fill="url(#mfl)"/>`;
+      return `<svg viewBox="0 0 400 420" preserveAspectRatio="xMidYMin slice" aria-hidden="true">${s}</svg>`;
+    };
+    const flashes = Array.from({ length: 9 }, () => `<i style="left:${U.ri(3, 97)}%;top:${U.ri(8, 88)}%;animation-delay:${(Math.random() * 7).toFixed(2)}s;animation-duration:${(5 + Math.random() * 5).toFixed(2)}s"></i>`).join('');
     return `<div class="screen menu">
-      <div class="menu-bg"><div class="lights"></div><div class="turf"></div><div class="fade"></div><div class="glow"></div><img class="ball-hero" src="icon-ball.svg" alt=""></div>
-      <div class="menu-content">
-        <div class="brand"><div class="brand-kicker">Pro Football GM</div><h1 class="wordmark">PRO<span>BLITZ</span></h1><div class="brand-tag">Draft. Trade. Build a dynasty.</div></div>
-        ${cont}
-        <button class="btn btn-primary btn-lg btn-block" data-a="newCareer">${I.play} New Career</button>
-        <button class="btn btn-ghost btn-block" data-a="settings">${I.gear} Settings</button>
+      <div class="menu-bg">
+        <div class="sky"></div>
+        <div class="tower tl"></div><div class="tower tr"></div>
+        <div class="beams"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
+        <div class="crowd"><div class="flashes">${flashes}</div></div>
+        <div class="mfield">${fieldSVG()}</div>
+        <div class="fade"></div>
       </div>
-      <div class="menu-foot">Saves automatically on this device</div>
+      <div class="menu-content">
+        <div class="brand">
+          <div class="glow"></div><img class="ball-hero" src="icon-ball.svg" alt="">
+          <div class="brand-kicker mi" style="--d:.05s"><i></i>Pro Football GM<i></i></div>
+          <h1 class="wordmark"><span class="w1 mi" style="--d:.12s">PRO</span><span class="w2 mi" style="--d:.2s" data-t="BLITZ">BLITZ</span></h1>
+          <div class="brand-bar mi" style="--d:.28s"><i></i><i></i><i></i></div>
+          <div class="brand-tag mi" style="--d:.3s">Draft. Trade. Build a dynasty.</div>
+        </div>
+        ${marquee}
+        ${cont}
+        <button class="btn btn-primary btn-lg btn-block menu-cta mi" style="--d:${career ? .52 : .45}s" data-a="newCareer">${I.play} New Career</button>
+        <button class="btn btn-ghost btn-block mi" style="--d:${career ? .58 : .5}s" data-a="settings">${I.gear} Settings</button>
+      </div>
+      <div class="menu-foot mi" style="--d:.65s">Saves automatically on this device</div>
     </div>`;
   };
 
@@ -572,7 +626,18 @@ const UI = (() => {
     const stats = `<div class="card"><div class="flex between mb8"><div class="flex">${logo(H, 22)}<b>${esc(H.abbr)}</b></div><span class="kicker">Team stats</span><div class="flex"><b>${esc(A.abbr)}</b>${logo(A, 22)}</div></div>
       ${cmp('Total yards', ts[0].yds, ts[1].yds)}${cmp('Passing', ts[0].py, ts[1].py)}${cmp('Rushing', ts[0].ry, ts[1].ry)}${cmp('First downs', ts[0].fd, ts[1].fd)}${cmp('Turnovers', ts[0].to, ts[1].to)}${cmp('Sacks', ts[0].sk, ts[1].sk)}${cmp('Possession', ts[0].top, ts[1].top, v => U.clock(v))}</div>`;
     const tops = `<div class="kicker mb8">Top performers</div><div class="card flush"><div class="list">${b.top.map(x => { const p = G.players[x.pid]; if (!p) return ''; return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 34)}<div class="grow"><div class="r1">${pname(p)} <span class="tiny muted">${esc(L.team(p.teamId).abbr)}</span></div><div class="r2">${x.line}</div></div>${posBadge(p.pos)}</button>`; }).join('')}</div></div>`;
-    return line + stats + tops;
+    // player of the game: face, team colours, the stat line that won it
+    const pg = b.pog && G.players[b.pog.pid] ? G.players[b.pog.pid] : null, pt = pg ? L.team(b.pog.side === 0 ? g.h : g.a) : null;
+    const pogCard = pg ? `<div class="pog-card" style="--c1:${pt.logo.primary};--c2:${pt.logo.secondary}" data-a="player" data-v="${pg.id}">
+        <div class="pog-k">Player of the game</div>
+        <div class="pog-in">${jersey(pg, 72)}<div class="grow"><div class="pog-name">${pname(pg)}</div><div class="small" style="opacity:.85">${DATA.POS_NAME[pg.pos]} · ${esc(pt.abbr)}</div><div class="pog-line">${esc(b.pog.line)}</div></div>${logo(pt, 44)}</div></div>` : '';
+    // scoring summary, drive by drive
+    const QN = q => (q <= 4 ? `Q${q}` : `OT${q > 5 ? q - 4 : ''}`);
+    const sum = (b.scoring || []).length ? `<div class="kicker mb8">Scoring summary</div><div class="card flush"><div class="list">${b.scoring.map(e => {
+      const t = L.team(e.side === 0 ? g.h : g.a), lbl = { td: 'TD', fg: 'FG', sf: 'SAF' }[e.kind];
+      return `<div class="row sc-row" style="--tc:${t.logo.primary}">${logo(t, 28)}<div class="grow"><div class="r2"><b class="sc-k k-${e.kind}">${lbl}</b> ${QN(e.q)} · ${U.clock(e.clk)}</div><div class="sc-t">${esc(e.text.replace(/\s*\[[^\]]*\]/g, ''))}</div></div><div class="sc-s num"><b class="${e.side === 0 ? 'lead' : ''}">${e.sc[0]}</b>–<b class="${e.side === 1 ? 'lead' : ''}">${e.sc[1]}</b></div></div>`;
+    }).join('')}</div></div>` : '';
+    return pogCard + line + stats + sum + tops;
   }
   function boxSheet(gid) {
     let g = null;
