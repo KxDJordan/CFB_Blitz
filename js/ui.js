@@ -43,6 +43,20 @@ const UI = (() => {
     menu: sv('<path d="M4 6h16M4 12h16M4 18h16"/>'),
     flame: sv('<path d="M12 2c1.5 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2-6 1 1.5 1.5 2.5 2 3 .5-2.5 0-4.5 1-7z"/>'),
   };
+  const WXI = {
+    clear: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
+    night: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    cloudy: '<path d="M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.2 4.4 4.4 0 0 0 7 18z"/>',
+    rain: '<path d="M7 14.5h10.5a3.6 3.6 0 0 0 .5-7.15A5.4 5.4 0 0 0 7.6 6.6 4 4 0 0 0 7 14.5z"/><path d="M8.5 17.5l-1 2.5M12.5 17.5l-1 2.5M16.5 17.5l-1 2.5"/>',
+    storm: '<path d="M7 13.5h10.5a3.6 3.6 0 0 0 .5-7.15A5.4 5.4 0 0 0 7.6 5.6 4 4 0 0 0 7 13.5z"/><path d="M12.5 13.5l-2 4h3l-2 4"/>',
+    snow: '<path d="M7 13.5h10.5a3.6 3.6 0 0 0 .5-7.15A5.4 5.4 0 0 0 7.6 5.6 4 4 0 0 0 7 13.5z"/><path d="M8 17.5h.01M12 19h.01M16 17.5h.01M10 21h.01M14 21.5h.01" stroke-width="2.6"/>',
+    fog: '<path d="M4 9h16M3 13h18M5 17h14M8 21h8"/>',
+    wind: '<path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h8"/>',
+    heat: '<path d="M10 14.8V4.5a2 2 0 1 1 4 0v10.3a4 4 0 1 1-4 0z"/><path d="M12 9v7"/>',
+  };
+  const wxIcon = (wx, size = 18) => { const k = wx.time === 'night' && wx.type === 'clear' ? 'night' : wx.type; return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wx-ico wx-${wx.type}">${WXI[k]}</svg>`; };
+  // arrow showing where the wind blows, relative to the offense driving up the screen
+  const windArrow = (wx, poss) => { const th = wx.dir + (poss === 1 ? Math.PI : 0); const deg = 90 - th * 180 / Math.PI; return `<svg viewBox="0 0 24 24" width="12" height="12" style="transform:rotate(${deg}deg)" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V4M6 10l6-6 6 6"/></svg>`; };
   const TROPHY = `<svg class="trophy-svg" viewBox="0 0 64 64"><path fill="currentColor" d="M18 6h28v12c0 9-6 16-14 16s-14-7-14-16z"/><path fill="none" stroke="currentColor" stroke-width="4" d="M18 10H9v5c0 6 4 10 10 10M46 10h9v5c0 6-4 10-10 10"/><path fill="currentColor" d="M28 33h8v10h-8zM20 46h24l2 8H18z"/><path fill="#fff" opacity=".35" d="M24 9h5v13c0 4 1 7 3 9-5-1-8-5-8-11z"/></svg>`;
 
   // ── small components ──
@@ -297,6 +311,7 @@ const UI = (() => {
         <div class="vs">${g.neutral ? 'N' : home ? 'VS' : '@'}</div>
         <div class="mt" data-a="team" data-v="${opp.id}">${logo(opp, 64)}<div class="mt-name">${rk(opp.id)}${tname(opp)}</div><div class="mt-rec">${L.recStr(opp)}</div></div>
       </div>
+      ${(() => { const wx = L.weather(g), W = DATA.WEATHER[wx.type]; return `<div class="wx-row wx-${wx.type}">${wxIcon(wx, 26)}<div class="grow"><div class="wx-t">${W.label} · ${wx.temp}°F · Wind ${wx.wind} mph</div><div class="wx-d">${DATA.WEATHER_TIME[wx.time]} — ${W.desc}</div></div></div>`; })()}
       <div class="wp-bar"><div style="width:${my}%;background:var(--accent);color:var(--on-accent)">${my}%</div><div style="width:${100 - my}%;background:var(--surface-3);justify-content:flex-end">${100 - my}%</div></div>
       <div class="tiny muted center">Projected win chance</div>
       ${vs(ur.off, or.def, 'Your offense', 'their defense')}
@@ -483,7 +498,7 @@ const UI = (() => {
     const H = L.team(g.h), A = L.team(g.a);
     sheet(`<div class="kicker center">${DATA.WEEK_LABEL(g.wk)} · ${esc(L.gameLabel(g))}</div>
       <div class="final-score"><div class="fs-t">${logo(H, 52)}${tname(H)}</div><div class="flex" style="gap:14px"><span class="fs-s ${g.hs < g.as ? 'lose' : ''}">${g.hs}</span><span class="dim">–</span><span class="fs-s ${g.as < g.hs ? 'lose' : ''}">${g.as}</span></div><div class="fs-t">${logo(A, 52)}${tname(A)}</div></div>
-      <div class="center tiny muted mb12">FINAL${g.ot ? ' / OT' : ''}</div>${boxHTML(g)}`);
+      <div class="center tiny muted mb12">FINAL${g.ot ? ' / OT' : ''}${g.wx ? ` · ${DATA.WEATHER[g.wx.type].label}, ${g.wx.temp}°F, wind ${g.wx.wind} mph` : ''}</div>${boxHTML(g)}`);
   }
 
   // ── program ──
@@ -667,7 +682,7 @@ const UI = (() => {
   // ════════════════ LIVE GAME ════════════════
   // Real-time, stat-driven playback: every snap is resolved by player
   // matchups in the engine and animated on the canvas by Live.
-  const CLOCK_SECS = { 1: 15, 2: 10, 4: 6 };
+  const CLOCK_SECS = { 1: 15, 2: 10, 4: 7, 8: 6 };
   function startLiveGame() {
     const g = L.userGame();
     if (!g) return;
@@ -680,23 +695,31 @@ const UI = (() => {
   SCREENS.game = () => {
     const { g } = S.game;
     const H = L.team(g.h), A = L.team(g.a), [c0, c1] = duo(H, A);
-    const sbTeam = (t, side) => `<div class="sb-team ${side ? 'away' : ''}" style="--tc:${t.logo.primary}">${logo(t, 34)}<div><div class="sb-abbr">${rk(t.id)}${esc(t.abbr)}</div><div class="sb-rec">${L.recStr(t)}</div></div><i class="poss-dot" id="pd${side}"></i><div class="sb-score num" id="sc${side}">0</div></div>`;
+    const sbTeam = (t, side) => `<div class="sb-team ${side ? 'away' : ''}" style="--tc:${t.logo.primary}">${logo(t, 30)}<div><div class="sb-abbr">${rk(t.id)}${esc(t.abbr)}</div><div class="sb-rec">${L.recStr(t)}</div></div><i class="poss-dot" id="pd${side}"></i><div class="sb-score num" id="sc${side}">0</div></div>`;
     return `<div class="screen game">
-      <div class="scorebug"><div class="sb-main">${sbTeam(H, 0)}<div class="sb-mid"><div class="sb-q" id="sbq">1ST</div><div class="sb-clock" id="sbc">15:00</div></div>${sbTeam(A, 1)}</div><div class="sb-sit" id="sbsit">Kickoff</div></div>
-      <div class="live-wrap"><canvas id="live"></canvas><div class="live-tag" id="livetag"></div></div>
-      <div class="wp-row"><span>${esc(H.abbr)} <span id="wpv0">50</span>%</span><div class="wpb"><i id="wp0" style="background:${c0}"></i><i id="wp1" style="background:${c1}"></i></div><span><span id="wpv1">50</span>% ${esc(A.abbr)}</span></div>
-      <div class="lastplay" id="lastplay"><span class="dim">${esc(L.gameLabel(g))} · ${esc(L.team(g.h).name)} vs ${esc(L.team(g.a).name)}</span></div>
-      <div class="gpanel" id="gpanel"></div>
-      <div class="dock" id="dock"></div>
+      <div class="scorebug"><div class="sb-main">${sbTeam(H, 0)}<div class="sb-mid"><div class="sb-q" id="sbq">1ST</div><div class="sb-clock" id="sbc">15:00</div></div>${sbTeam(A, 1)}</div>
+        <div class="sb-sit" id="sbsit">Kickoff</div>
+        <div class="sb-wp"><i id="wp0" style="background:${c0}"></i><i id="wp1" style="background:${c1}"></i></div></div>
+      <div class="field-area">
+        <canvas id="live"></canvas>
+        <div class="live-tag" id="livetag"></div>
+        <div class="field-ticker" id="lastplay"></div>
+        <div class="callpanel" id="callpanel"></div>
+        <div class="final-cta" id="finalcta"></div>
+      </div>
+      <nav class="gbar" id="dock"></nav>
     </div>`;
   };
   function dockHTML() {
     const st = S.game;
-    if (st.done) return `<button class="btn btn-primary btn-lg btn-block" data-a="gameFinal">View Final ${I.chev}</button>`;
-    return `<div class="dock-row"><div class="speed"><button class="${st.paused ? 'on' : ''}" data-a="gspeed" data-v="pause" aria-label="Pause">${st.paused ? I.play : I.pause}</button>${[1, 2, 4].map(s => `<button class="${!st.paused && st.speed === s ? 'on' : ''}" data-a="gspeed" data-v="${s}">${s}x</button>`).join('')}</div>
-      <button class="auto-chip ${st.auto ? 'on' : ''}" data-a="gauto"><i></i>${st.auto ? 'Auto-call' : 'You call'}</button>
-      <button class="btn grow" data-a="gplanSheet" aria-label="Game plan">${I.gear}</button>
-      <button class="btn grow" data-a="gsim">${I.ff} Sim</button></div>`;
+    const b = (act, icon, label, extra = '') => `<button class="gbar-btn ${extra}" data-a="${act}">${icon}<span>${label}</span></button>`;
+    const spd = `<b class="gbar-spd">${st.speed}x</b>`;
+    return b('gpbp', I.msg, 'Plays')
+      + b('gpause', st.paused ? I.play : I.pause, st.paused ? 'Play' : 'Pause', st.paused ? 'on' : '')
+      + b('gspeedNext', spd, 'Speed')
+      + b('gplanSheet', I.gear, 'Settings')
+      + b('gsim', I.ff, 'Sim', st.done ? 'off' : '')
+      + b('gmenu', I.menu, 'Menu');
   }
   function gameMount() {
     const st = S.game;
@@ -763,6 +786,7 @@ const UI = (() => {
   function showCall(need) {
     const st = S.game;
     st.need = need; st.mode = 'call';
+    const tk = document.getElementById('lastplay'); if (tk) tk.classList.remove('show');
     renderPanel();
     startClock();
     U.vibrate(10);
@@ -840,7 +864,7 @@ const UI = (() => {
       cards = Engine.DEF_CALLS.map(c => `<button class="call-card k-def ${st.sugg === c.id ? 'sugg' : ''}" data-a="gcall" data-v="${c.id}"><div class="cc-top"><span class="cc-kind">DEFENSE</span>${st.sugg === c.id ? '<span class="cc-pick">DC PICK</span>' : ''}</div><div class="cc-name">${c.label}</div><div class="cc-desc">${c.desc}</div></button>`).join('');
     }
     return `<div class="call-head"><div class="grow"><div class="kicker" style="color:var(--accent)">Your call · ${need === 'off' ? 'Offense' : 'Defense'}</div><div class="call-sit">${sit}</div></div>${clock}</div>
-      <div class="call-intel">${intel}</div><div class="call-grid">${cards}</div>`;
+      <div class="call-intel">${intel}</div><div class="call-scroll">${cards}</div>`;
   }
   function fatiguePanel() {
     const st = S.game, gs = st.gs, us = gs.userSide;
@@ -853,17 +877,20 @@ const UI = (() => {
     }).join('')).join('')).join('') + `<div class="tiny muted" style="padding:8px 4px">Stamina drains every snap and lowers ratings. Starters below 58 rotate out when a fresh backup is available.</div>`;
   }
   function renderPanel() {
-    const st = S.game, el = document.getElementById('gpanel');
+    const st = S.game, el = document.getElementById('callpanel');
     if (!el) return;
-    if (st.mode === 'call') { el.innerHTML = callPanel(); el.classList.add('calling'); return; }
-    el.classList.remove('calling');
-    const tabs = `<div class="gtabs"><button class="${st.tab === 'feed' ? 'on' : ''}" data-a="gtab" data-v="feed">Play-by-play</button><button class="${st.tab === 'fatigue' ? 'on' : ''}" data-a="gtab" data-v="fatigue">Stamina</button><button class="${st.tab === 'box' ? 'on' : ''}" data-a="gtab" data-v="box">Stats</button></div>`;
-    let body = '';
-    if (st.tab === 'feed') body = `<div class="feed" id="feed"></div>`;
-    else if (st.tab === 'fatigue') body = fatiguePanel();
-    else body = liveStats();
-    el.innerHTML = tabs + `<div class="gpanel-body">${body}</div>`;
-    if (st.tab === 'feed') fillFeed();
+    if (st.mode === 'call') { el.innerHTML = callPanel(); el.classList.add('show'); el.querySelector('.call-scroll').scrollLeft = 0; }
+    else el.classList.remove('show');
+  }
+  // Play-by-play / stamina / stats sheet
+  function pbpSheet() {
+    const st = S.game;
+    const tab = st.tab || 'feed';
+    const body = tab === 'feed' ? '<div class="feed sheet-feed" id="feed"></div>' : tab === 'fatigue' ? fatiguePanel() : liveStats();
+    sheet(`<div class="flex between mb12"><div class="h-lg">Game Center</div><button class="icon-btn" data-a="closeSheet">${I.x}</button></div>
+      <div class="gtabs"><button class="${tab === 'feed' ? 'on' : ''}" data-a="gtab" data-v="feed">Play-by-play</button><button class="${tab === 'fatigue' ? 'on' : ''}" data-a="gtab" data-v="fatigue">Stamina</button><button class="${tab === 'box' ? 'on' : ''}" data-a="gtab" data-v="box">Stats</button></div>
+      <div class="gpanel-body pbp-body">${body}</div>`);
+    if (tab === 'feed') fillFeed();
   }
   function liveStats() {
     const gs = S.game.gs, ts = gs.ts;
@@ -897,14 +924,19 @@ const UI = (() => {
     });
     $('sbq').textContent = gs.over ? 'FINAL' : gs.qtr <= 4 ? ['1ST', '2ND', '3RD', '4TH'][gs.qtr - 1] : `OT${gs.qtr - 4}`;
     $('sbc').textContent = gs.over ? (gs.ot ? 'OT' : '0:00') : gs.qtr <= 4 ? U.clock(gs.clock) : '—';
-    $('sbsit').innerHTML = gs.over ? 'Final' : gs.phase === 'kickoff' ? `${esc(gs.abbr[gs.kicker])} kicking off` : `<span class="dd">${Engine.downTxt(gs)}</span><span>${esc(gs.abbr[gs.poss])} ball at ${esc(Engine.spot(gs))}</span>`;
+    const wchip = `<span class="wx-chip">${wxIcon(gs.wx, 14)}${gs.wx.temp}°<span class="wx-w">${windArrow(gs.wx, gs.phase === 'kickoff' ? gs.kicker : gs.poss)}${gs.wx.wind}</span></span>`;
+    $('sbsit').innerHTML = (gs.over ? 'Final' : gs.phase === 'kickoff' ? `${esc(gs.abbr[gs.kicker])} kicking off` : `<span class="dd">${Engine.downTxt(gs)}</span><span>${esc(gs.abbr[gs.poss])} ball at ${esc(Engine.spot(gs))}</span>`) + wchip;
     const wp = Math.round(Engine.winProb(gs) * 100);
     $('wp0').style.width = wp + '%'; $('wp1').style.width = (100 - wp) + '%';
-    $('wpv0').textContent = wp; $('wpv1').textContent = 100 - wp;
     const lastReal = fresh.filter(e => !['info', 'qend'].includes(e.kind)).pop() || fresh[fresh.length - 1];
-    if (lastReal) $('lastplay').innerHTML = `<span class="lp-k k-${lastReal.kind}">${{ td: 'TD', fg: 'FG', to: 'TURNOVER', sack: 'SACK', big: 'BIG PLAY', miss: 'NO GOOD', inj: 'INJURY' }[lastReal.kind] || esc(gs.abbr[lastReal.side])}</span><span class="lp-t">${esc(lastReal.text)}</span>`;
-    if (st.mode === 'feed' && st.tab === 'feed') fillFeed();
-    else if (st.mode === 'feed') renderPanel();
+    if (lastReal) {
+      const tk = $('lastplay');
+      tk.innerHTML = `<span class="lp-k k-${lastReal.kind}">${{ td: 'TD', fg: 'FG', to: 'TURNOVER', sack: 'SACK', big: 'BIG PLAY', miss: 'NO GOOD', inj: 'INJURY' }[lastReal.kind] || esc(gs.abbr[lastReal.side])}</span><span class="lp-t">${esc(lastReal.text)}</span>`;
+      tk.classList.add('show');
+      clearTimeout(st.tickT);
+      st.tickT = setTimeout(() => tk.classList.remove('show'), 4200 / Math.max(1, Math.min(st.speed, 2)));
+    }
+    if (document.getElementById('feed')) fillFeed();
     if (fresh.some(e => e.kind === 'td')) U.vibrate(40);
   }
   function halftimeSheet() {
@@ -924,7 +956,7 @@ const UI = (() => {
     const before = st.gs.log.length;
     let guard = 0;
     while (!st.gs.over && guard++ < 2500) Engine.step(st.gs);
-    st.mode = 'feed';
+    st.mode = 'feed'; st.need = null;
     renderPanel();
     gameUpdate(st.gs.log.slice(before));
     endLiveGame();
@@ -940,6 +972,8 @@ const UI = (() => {
     const dock = document.getElementById('dock');
     if (dock) dock.innerHTML = dockHTML();
     const won = res.W.user;
+    const cta = document.getElementById('finalcta');
+    if (cta) { cta.innerHTML = `<button class="btn btn-primary btn-lg" data-a="gameFinal">${won ? 'Victory' : 'Final'} · ${esc(res.W.abbr)} ${res.ws}–${res.ls} ${I.chev}</button>`; cta.classList.add('show'); }
     Live.bigText(won ? 'VICTORY' : 'FINAL', won ? '#facc15' : '#e2e8f0');
     toast(won ? `${I.trophy.replace('<svg', '<svg style="width:16px;height:16px;color:var(--gold)"')} Victory! ${esc(res.W.abbr)} ${res.ws}–${res.ls}` : `Final: ${esc(res.W.abbr)} ${res.ws}–${res.ls}`);
     U.vibrate(won ? [30, 60, 30] : 20);
@@ -1171,30 +1205,47 @@ const UI = (() => {
   A.gplanSheet = () => {
     const gs = S.game.gs;
     sheet(`<div class="h-lg">Game plan</div><div class="small muted mb12" style="margin-top:4px">Your coordinators call plays from this plan on auto, and their suggestions lean on it when you call.</div><div id="htplan">${planPicker(gs.plan[gs.userSide], 'gplan')}</div>
-      <div class="divider"></div><div class="flex between"><div><div style="font-weight:700">Call every play</div><div class="small muted">Off = coordinators call, you watch (4th downs still ask if enabled)</div></div><button class="toggle ${S.game.auto ? '' : 'on'}" data-a="gauto"></button></div>`);
+      <div class="divider"></div><div class="flex between"><div><div style="font-weight:700">Call every play</div><div class="small muted">Off = coordinators call, you watch (4th downs still ask if enabled)</div></div><button class="toggle ${S.game.auto ? '' : 'on'}" data-a="gauto"></button></div>
+      <div class="divider"></div><div class="flex between"><div><div style="font-weight:700">4th-down decisions</div><div class="small muted">On auto-call, still ask me on 4th down</div></div><button class="toggle ${G.settings.askFourth ? 'on' : ''}" data-a="gfourth"></button></div>`);
   };
   A.gauto = () => {
     const st = S.game;
     st.auto = !st.auto;
     G.settings.callPlays = !st.auto; L.save();
     st.gs.userCalls = !st.auto;
-    document.getElementById('dock').innerHTML = dockHTML();
     const tg = document.querySelector('.sheet [data-a="gauto"]');
     if (tg) tg.classList.toggle('on', !st.auto);
     if (st.auto && st.need) { stopClock(); makeCall(st.sugg || suggestion()); }
     toast(st.auto ? 'Auto-call on — your coordinators have the headset' : 'You have the headset — call every snap');
   };
   A.gcall = v => makeCall(v);
-  A.gtab = v => { S.game.tab = v; renderPanel(); };
+  A.gfourth = () => { G.settings.askFourth = !G.settings.askFourth; S.game.gs.askFourth = G.settings.askFourth; L.save(); const tg = document.querySelector('.sheet [data-a="gfourth"]'); if (tg) tg.classList.toggle('on', G.settings.askFourth); };
+  A.gtab = v => { S.game.tab = v; pbpSheet(); };
+  A.gpbp = () => pbpSheet();
+  A.gpause = () => A.gspeed('pause');
+  A.gspeedNext = () => { const order = [1, 2, 4, 8]; A.gspeed(String(order[(order.indexOf(S.game.speed) + 1) % order.length])); toast(`Game speed ${S.game.speed}x`, 900); };
+  A.gmenu = () => {
+    const st = S.game;
+    sheet(`<div class="h-lg mb12">Game menu</div>
+      <div class="menu-list">
+        <button class="menu-item" data-a="gmenuPause">${st.paused ? I.play : I.pause}<span>${st.paused ? 'Resume game' : 'Pause game'}</span></button>
+        <button class="menu-item" data-a="gpbp">${I.msg}<span>Play-by-play & stats</span></button>
+        <button class="menu-item" data-a="gplanSheet">${I.gear}<span>Game plan & play calling</span></button>
+        <button class="menu-item" data-a="gsim">${I.ff}<span>Sim to the final whistle</span></button>
+        <button class="menu-item danger" data-a="gquit">${I.back}<span>Exit to main menu</span></button>
+      </div>`);
+  };
+  A.gmenuPause = () => { A.gspeed('pause'); closeSheet(); };
+  A.gquit = () => confirmSheet('Leave this game?', 'The game will not count. You can play it again from the Home screen.', 'Leave game', 'toMenu', true);
   A.gspeed = v => {
     const st = S.game;
     if (v === 'pause') st.paused = !st.paused;
     else { st.speed = +v; st.paused = false; }
     Live.setSpeed(st.speed); Live.setPaused(st.paused);
-    document.getElementById('dock').innerHTML = dockHTML();
+    const dk = document.getElementById('dock'); if (dk) dk.innerHTML = dockHTML();
     if (!st.paused && st.resume) { const fn = st.resume; st.resume = null; fn(); }
   };
-  A.gsim = () => simLiveToEnd();
+  A.gsim = () => { if (!S.game.done) simLiveToEnd(); };
   A.secondHalf = () => { closeSheet(); const st = S.game; st.paused = false; Live.setPaused(false); document.getElementById('dock').innerHTML = dockHTML(); later(gNext, 300); };
   A.gameFinal = () => { Live.unmount(); S.game = null; S.screen = 'final'; render(); };
   A.finalContinue = () => {

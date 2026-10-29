@@ -124,13 +124,29 @@ const DATA = (() => {
     ],
   };
 
+  // Weather: gameplay modifiers used by the engine.
+  //  pass/deep = completion logit shift, int = interception logit shift, fum = fumble multiplier,
+  //  fg = field goal probability shift, yac = run-after-catch multiplier,
+  //  runPass = how much coordinators lean away from passing, drain = stamina drain multiplier
+  const WEATHER = {
+    clear:  { label: 'Clear', desc: 'Perfect football weather.', pass: 0, deep: 0, int: 0, fum: 1, fg: 0, yac: 1, runPass: 1, drain: 1 },
+    cloudy: { label: 'Overcast', desc: 'Grey skies, no real impact.', pass: 0, deep: 0, int: 0, fum: 1, fg: 0, yac: 1, runPass: 1, drain: 1 },
+    rain:   { label: 'Rain', desc: 'Wet ball: more fumbles, tougher passing and kicking.', pass: -0.22, deep: -0.15, int: 0.1, fum: 1.8, fg: -0.04, yac: 0.9, runPass: 0.85, drain: 1 },
+    storm:  { label: 'Thunderstorm', desc: 'Downpour: ball security and the deep game suffer badly.', pass: -0.4, deep: -0.3, int: 0.2, fum: 2.4, fg: -0.09, yac: 0.85, runPass: 0.7, drain: 1.05 },
+    snow:   { label: 'Snow', desc: 'Slick footing: slower, sloppier, run-first football.', pass: -0.25, deep: -0.2, int: 0.1, fum: 1.6, fg: -0.07, yac: 0.8, runPass: 0.75, drain: 1.1 },
+    fog:    { label: 'Fog', desc: 'Low visibility: deep shots are a gamble.', pass: -0.05, deep: -0.45, int: 0.15, fum: 1, fg: -0.02, yac: 1, runPass: 0.9, drain: 1 },
+    wind:   { label: 'Windy', desc: 'Gusts affect kicks, punts and the deep ball.', pass: -0.05, deep: 0, int: 0.05, fum: 1, fg: 0, yac: 1, runPass: 0.92, drain: 1 },
+    heat:   { label: 'Heat', desc: 'Scorching: stamina drains fast, rotate your guys.', pass: 0, deep: 0, int: 0, fum: 1.1, fg: 0, yac: 1, runPass: 1, drain: 1.35 },
+  };
+  const WEATHER_TIME = { day: 'Day game', dusk: 'Twilight kickoff', night: 'Night game' };
+
   const WEEK_LABEL = w => (w <= 11 ? `Week ${w}` : w === 12 ? 'Conference Championships' : w === 13 ? 'Playoff Semifinals' : 'National Championship');
   const WEEK_SHORT = w => (w <= 11 ? `Wk ${w}` : w === 12 ? 'CCG' : w === 13 ? 'CFP Semi' : 'Title');
 
   return {
     FIRST, LAST, TOWNS, POSITIONS, POS_NAME, OFFENSE, ROSTER_QUOTA, STARTERS, ROSTER_MAX, CLASS, CLASS_LONG,
     ATTRS, SKILL_LABEL, ATTR_LABEL, ATTR_LONG, OVR_W, NUMBERS, SCHOOLS, COLORS, CONFS, DIFFICULTY,
-    TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
+    WEATHER, WEATHER_TIME, TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
     attrLabel: (pos, a) => (a === 'skl' ? SKILL_LABEL[pos] : ATTR_LABEL[a]),
   };
 })();

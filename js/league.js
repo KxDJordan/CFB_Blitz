@@ -374,6 +374,21 @@ const L = (() => {
     return 'National Championship';
   }
   const winnerOf = g => (g.hs > g.as ? g.h : g.a);
+  // Game-day conditions — seasonal: heat early, snow late.
+  function genWeather(wk) {
+    const early = wk <= 3, late = wk >= 9;
+    const w = { clear: 0.38, cloudy: 0.18, rain: 0.13, storm: 0.05, fog: 0.06, wind: 0.09, snow: late ? 0.14 : 0, heat: early ? 0.12 : 0 };
+    const type = U.wpick(Object.keys(w), k => w[k]);
+    let temp = early ? U.ri(70, 90) : late ? U.ri(30, 55) : U.ri(50, 74);
+    if (type === 'snow') temp = U.ri(16, 31);
+    if (type === 'heat') temp = U.ri(92, 102);
+    if (type === 'rain' || type === 'storm') temp -= 6;
+    const wind = type === 'wind' ? U.ri(16, 28) : type === 'storm' ? U.ri(12, 24) : type === 'snow' ? U.ri(5, 18) : U.ri(0, 11);
+    const time = U.wpick(['day', 'dusk', 'night'], t => ({ day: 0.45, dusk: 0.2, night: 0.35 }[t]));
+    return { type, temp, wind, dir: U.rand(0, Math.PI * 2), time };
+  }
+  function weather(g) { if (!g.wx) g.wx = genWeather(g.wk || 1); return g.wx; }
+  function weatherLine(wx) { return `${DATA.WEATHER[wx.type].label} · ${wx.temp}°F · Wind ${wx.wind} mph · ${DATA.WEATHER_TIME[wx.time]}`; }
 
   // ── polls ──
   function updatePoll() {
@@ -439,7 +454,7 @@ const L = (() => {
 
   function createUserGame(g) {
     return Engine.create(team(g.h), team(g.a), {
-      neutral: g.neutral, userSide: g.h === G.userTeamId ? 0 : 1,
+      neutral: g.neutral, weather: weather(g), userSide: g.h === G.userTeamId ? 0 : 1,
       askFourth: G.settings.askFourth, userCalls: G.settings.callPlays !== false, userPlan: G.plan,
     });
   }
@@ -447,7 +462,7 @@ const L = (() => {
     const wk = G.week, results = userRes ? [userRes] : [];
     for (const g of G.schedule[wk] || []) {
       if (g.done) continue;
-      const gs = Engine.create(team(g.h), team(g.a), { neutral: g.neutral });
+      const gs = Engine.create(team(g.h), team(g.a), { neutral: g.neutral, weather: weather(g) });
       Engine.simToEnd(gs);
       results.push(applyResult(g, gs));
     }
@@ -591,7 +606,7 @@ const L = (() => {
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } G = null; }
 
   return {
-    team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr,
+    weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr,
     calcOvr, posCounts, rebuildDepth, depthHealthy, moveDepth, setAutoDepth, isStarter,
     units, power, powerFromUnits, offRating, defRating, ratings, groupAvg, needs,
     newCareer, draftCur, draftPick, draftAI, bestPickFor, finishDraft, prospectValue,

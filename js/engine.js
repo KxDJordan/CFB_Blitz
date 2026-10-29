@@ -133,6 +133,8 @@ const Engine = (() => {
     if (t.n >= 6 && t.blitz / t.n > 0.3) { mul('screen', 1.6); mul('quick', 1.3); }
     const e = callEdges(gs, side);
     for (const k in w) w[k] *= U.clamp(1 + e[k] * 0.06, 0.5, 1.8);
+    const rp = gs.wxm.runPass;
+    w.deep *= rp * rp; w.pa *= rp; w.quick *= (1 + rp) / 2; w.screen *= (1 + rp) / 2;
     return U.wpick(Object.keys(w), k => w[k]);
   }
   function aiDefCall(gs, side = 1 - gs.poss) {
@@ -157,7 +159,7 @@ const Engine = (() => {
     const inside = av(['LG', 'C', 'RG'], runBlk, side) - av(['DT1', 'DT2'], runDef, d) + (elusR(gs, side, O.RB) - tackleR(gs, d, D.MLB)) * 0.4;
     const outside = av(['LT', 'RT', 'TE'], runBlk, side) - av(['DE1', 'DE2'], runDef, d) + (A(gs, side, O.RB, 'spd') - U.avg([D.LB1, D.LB2].map(p => A(gs, d, p, 'spd')))) * 0.4;
     const quick = av(['WR1', 'WR2', 'WR3'], routeR, side) - av(['CB1', 'CB2', 'S1'], coverR, d) + (qbAcc(gs, side, O.QB) - 70) * 0.3;
-    const deep = U.avg(['WR1', 'WR2'].map(k => A(gs, side, O[k], 'spd'))) - U.avg(['CB1', 'CB2', 'S2'].map(k => A(gs, d, D[k], 'spd'))) + (pb - pr) * 0.5;
+    const deep = U.avg(['WR1', 'WR2'].map(k => A(gs, side, O[k], 'spd'))) - U.avg(['CB1', 'CB2', 'S2'].map(k => A(gs, d, D[k], 'spd'))) + (pb - pr) * 0.5 + (wxPass(gs, 20) - gs.wxm.pass) * 12 + gs.wxm.pass * 6;
     const screen = elusR(gs, side, O.RB) - U.avg(['LB1', 'MLB', 'LB2'].map(k => tackleR(gs, d, D[k]))) + (pr - pb) * 0.4;
     const pa = quick * 0.6 + inside * 0.4 + (gs.tend[side].run > gs.tend[side].pass ? 2 : 0);
     const r = x => Math.round(x * 10) / 10;
@@ -171,6 +173,7 @@ const Engine = (() => {
       lu: [lineupFor(home), lineupFor(away)], out: {}, u: [null, null], stam: {},
       score: [0, 0], qs: [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
       qtr: 1, clock: QLEN, poss: 0, ball: 25, down: 1, togo: 10,
+      wx: opts.weather || { type: 'clear', temp: 65, wind: 0, dir: 0, time: 'day' }, wxm: null,
       plan: [null, null], userSide: opts.userSide ?? -1, askFourth: !!opts.askFourth, userCalls: !!opts.userCalls, neutral: !!opts.neutral,
       log: [], ps: {}, ts: [blankTS(), blankTS()], injuries: [], tend: [{ run: 0, pass: 0, blitz: 0, n: 0, last: null }, { run: 0, pass: 0, blitz: 0, n: 0, last: null }],
       phase: 'kickoff', kicker: U.ri(0, 1), recv1: 0,
@@ -178,6 +181,7 @@ const Engine = (() => {
       drive: { side: 0, start: 25, plays: 0, yds: 0, clk: QLEN, q: 1 }, wpH: [],
     };
     gs.recv1 = 1 - gs.kicker;
+    gs.wxm = DATA.WEATHER[gs.wx.type] || DATA.WEATHER.clear;
     computeUnits(gs, 0); computeUnits(gs, 1);
     gs.pre = (L.powerFromUnits(gs.u[0]) - L.powerFromUnits(gs.u[1])) * 0.55;
     gs.plan = [aiPlan(gs, 0), aiPlan(gs, 1)];
@@ -201,6 +205,18 @@ const Engine = (() => {
   const yd = n => `${n} yd${Math.abs(n) === 1 ? '' : 's'}`;
   function addPts(gs, side, pts) { gs.score[side] += pts; gs.qs[side][Math.min(gs.qtr, 5) - 1] += pts; }
 
+  // ── weather ──
+  // Wind component along the field for the offense (+ = tailwind) and across it.
+  const tailwind = (gs, side = gs.poss) => gs.wx.wind * Math.cos(gs.wx.dir) * (side === 0 ? 1 : -1);
+  const crosswind = gs => Math.abs(gs.wx.wind * Math.sin(gs.wx.dir));
+  function wxPass(gs, depth) {
+    const m = gs.wxm;
+    let z = m.pass;
+    if (depth >= 15) z += m.deep - Math.max(0, gs.wx.wind - 10) * 0.018 + Math.min(0, tailwind(gs)) * 0.006;
+    return z;
+  }
+  const wet = gs => ['rain', 'storm', 'snow'].includes(gs.wx.type);
+
   // ── fatigue ──
   const DRAIN = { QB: 0.6, RB: 1.3, WR: 1.6, TE: 1.5, OL: 1.8, DL: 2.1, LB: 1.8, CB: 1.6, S: 1.5, K: 0 };
   function fatigue(gs, O, D, extra = {}) {
@@ -208,7 +224,7 @@ const Engine = (() => {
     for (const p of [...Object.values(O), ...Object.values(D)]) {
       if (p.id < 0) continue;
       onField.add(p.id);
-      gs.stam[p.id] = Math.max(0, stam(gs, p) - DRAIN[p.pos] - (extra[p.id] || 0) - U.rand(0, 0.6));
+      gs.stam[p.id] = Math.max(0, stam(gs, p) - DRAIN[p.pos] * gs.wxm.drain - (extra[p.id] || 0) - U.rand(0, 0.6));
     }
     for (const side of [0, 1]) for (const pos of DATA.POSITIONS) for (const id of gs.lu[side][pos]) {
       if (!onField.has(id) && gs.stam[id] !== undefined) gs.stam[id] = Math.min(100, gs.stam[id] + 2.4);
@@ -336,7 +352,7 @@ const Engine = (() => {
   }
   function punt(gs) {
     const o = gs.poss, d = 1 - o, k = who(gs, o, 'K') || GHOST('K');
-    const dist = Math.round(U.gauss(41 + (k.ovr - 70) * 0.12, 5));
+    const dist = Math.round(U.gauss(41 + (k.ovr - 70) * 0.12 + tailwind(gs) * 0.28 - (wet(gs) ? 2 : 0), 5));
     const land = gs.ball + dist;
     const ret = who(gs, d, 'WR', 1) || who(gs, d, 'CB', 0) || GHOST('WR');
     const det = { type: 'punt', o, los: gs.ball, land: Math.min(land, 108), returner: ret.id, kicker: k.id };
@@ -366,7 +382,8 @@ const Engine = (() => {
   }
   function fgProb(gs, side = gs.poss) {
     const dist = 100 - gs.ball + 17, k = who(gs, side, 'K');
-    return U.clamp(0.99 - Math.max(0, dist - 22) * 0.017 + ((k ? k.ovr : 60) - 70) * 0.004, 0.03, 0.99);
+    const windAdj = tailwind(gs, side) * (dist > 35 ? 0.005 : 0.002) - crosswind(gs) * (dist > 30 ? 0.004 : 0.0015);
+    return U.clamp(0.99 - Math.max(0, dist - 22) * 0.017 + ((k ? k.ovr : 60) - 70) * 0.004 + gs.wxm.fg + windAdj, 0.03, 0.99);
   }
   function fieldGoal(gs) {
     const o = gs.poss, d = 1 - o, k = who(gs, o, 'K') || GHOST('K'), s = st(gs, k, o);
@@ -474,14 +491,14 @@ const Engine = (() => {
     const blockNote = det.blocks.filter(b => b.m >= 10).map(b => `${nm(O[b.o])} pancakes ${nm(D[b.d])}`)[0];
     const fatX = { [rb.id]: 1.5 };
     // fumble on contact
-    if (!det.td && det.tackler && U.chance(0.011 - (A(gs, o, rb, 'awr') - 70) * 0.0003)) {
+    if (!det.td && det.tackler && U.chance((0.011 - (A(gs, o, rb, 'awr') - 70) * 0.0003) * gs.wxm.fum)) {
       const rec = D[det.tackler];
       const y = U.clamp(yards, -3, 12);
       gs.ball += y; s.ry += y; gs.ts[o].ry += y; gs.ts[o].yds += y; gs.ts[o].plays++; gs.ts[o].to++;
       st(gs, rec, d).tk++;
       det.fumble = true; det.yards = y;
       tick(gs, runoff(gs, 'play'));
-      ev(gs, `${nm(rb)} runs ${dir}... FUMBLE! Forced and recovered by ${nm(rec)}.`, 'to');
+      ev(gs, `${nm(rb)} runs ${dir}... FUMBLE!${wet(gs) ? ' The slick ball squirts loose —' : ''} Recovered by ${nm(rec)}.`, 'to');
       if (gs.ball >= 100) gs.ball = 99;
       fatigue(gs, O, D, fatX);
       changePoss(gs, d, 100 - gs.ball);
@@ -602,8 +619,8 @@ const Engine = (() => {
     const pressured = pressT - det.throwT < 0.35;
     det.pressured = pressured;
     const acc = qbAcc(gs, o, qb), dpt = target.depth;
-    const pC = sig(0.05 + target.sep * 0.12 + (acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0));
-    const pI = sig(-4.4 - target.sep * 0.2 - (acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0));
+    const pC = sig(0.05 + target.sep * 0.12 + (acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt));
+    const pI = sig(-4.4 - target.sep * 0.2 - (acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0) + gs.wxm.int);
     qs.pa++;
     fatX[rec.id] = dpt >= 15 ? 1 : 0;
     const r = Math.random();
@@ -635,7 +652,7 @@ const Engine = (() => {
     }
     if (r < pI + pC * (1 - pI)) {
       // completion + run after catch
-      let yac = oc === 'screen' ? Math.max(0, U.gauss(3, 2.5)) : Math.max(0, target.sep * 0.25 + U.gauss(0.3, 1.2));
+      let yac = (oc === 'screen' ? Math.max(0, U.gauss(3, 2.5)) : Math.max(0, target.sep * 0.25 + U.gauss(0.3, 1.2))) * gs.wxm.yac;
       const chasers = [target.def || 'MLB', dpt >= 15 ? 'S2' : (cov.WR3 === 'S1' ? 'MLB' : 'S1'), dpt >= 15 ? (target.slot === 'WR2' ? 'CB2' : 'CB1') : 'S2'];
       const attempts = [];
       let tackler = null;

@@ -126,6 +126,7 @@ const Forum = (() => {
         const verb = margin >= 28 ? U.pick(['demolish', 'steamroll', 'bury']) : margin <= 3 ? U.pick(['survive', 'edge', 'escape']) : U.pick(['beat', 'take down', 'handle']);
         const body = `FINAL: ${r.W.name} ${r.ws}, ${r.Lo.name} ${r.ls}${r.ot ? ' in overtime' : ''}.\n\nTop performers:\n` +
           r.top.slice(0, 4).map(x => { const p = G.players[x.pid]; return p ? `• ${p.pos} ${pname(p)} (${L.team(p.teamId).abbr}): ${x.line}` : ''; }).join('\n') +
+          `\n\nConditions: ${L.weatherLine(L.weather(r.g))}` +
           `\n\n${u.name} moves to ${L.recStr(u)} on the season.`;
         thread(is, {
           tag: 'GAME THREAD', mine: true, heat: 90, a: fan(u), teams: [r.W.id, r.Lo.id],
