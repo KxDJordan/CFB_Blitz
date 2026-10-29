@@ -22,12 +22,14 @@ const Live = (() => {
 
   // ── formations (x offset from centre, y offset from line of scrimmage) ──
   const OFF_F = { QB: [0, -5], RB: [-1.7, -5.2], WR1: [-13, -0.8], WR2: [13, -0.8], WR3: [-8, -1.2], TE: [5.3, -1.0], LT: [-3.4, -0.9], LG: [-1.7, -0.9], C: [0, -0.7], RG: [1.7, -0.9], RT: [3.4, -0.9] };
+  // Defensive alignments are built over the receivers they cover (WR1 -13, WR3 -8, TE +5.3, WR2 +13).
   const DEF_F = {
-    base: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-4, 4.5], MLB: [0, 5], LB2: [4, 4.5], CB1: [-13, 6], CB2: [13, 6], S1: [-7, 12], S2: [7, 12.5] },
-    blitz: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-4, 3.6], MLB: [0.6, 2.8], LB2: [4, 4], CB1: [-13, 2], CB2: [13, 2], S1: [-8, 7], S2: [3, 12] },
-    cover: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-4.2, 5.5], MLB: [0, 6], LB2: [4.2, 5.5], CB1: [-13, 8.5], CB2: [13, 8.5], S1: [-8, 10], S2: [0, 15.5] },
-    runstop: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-3.6, 3.8], MLB: [0, 3.8], LB2: [3.6, 3.8], CB1: [-13, 5], CB2: [13, 5], S1: [-2.5, 6.5], S2: [2, 13] },
+    base: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-3.6, 4.5], MLB: [0, 5], LB2: [4.8, 4.2], CB1: [-12.4, 3.4], CB2: [12.4, 3.4], S1: [-7.6, 5], S2: [4, 12.5] },
+    blitz: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-3.6, 3.4], MLB: [0.6, 2.8], LB2: [4.8, 3.2], CB1: [-12.6, 1.6], CB2: [12.6, 1.6], S1: [-7.6, 4.5], S2: [2, 12] },
+    cover: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-4, 5.5], MLB: [0, 6], LB2: [4.6, 5.2], CB1: [-12.4, 5.5], CB2: [12.4, 5.5], S1: [-7.8, 6.5], S2: [0, 15] },
+    runstop: { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-7.4, 4], MLB: [0, 3.8], LB2: [4.6, 3.6], CB1: [-12.5, 3], CB2: [12.5, 3], S1: [-2.5, 6.5], S2: [2, 13] },
   };
+
 
   // ── small math ──
   const hyp = Math.hypot;
@@ -153,7 +155,8 @@ const Live = (() => {
   function seek(a, x, y, frac = 1, arrive = 1.6) {
     const dx = x - a.x, dy = y - a.y, d = hyp(dx, dy);
     if (d < 0.04) { a.wx = 0; a.wy = 0; return d; }
-    const sp = Math.min(a.vmax * frac, (d / arrive) * a.vmax * frac + 0.3);
+    const vm = a.vmax * (a.boost ? 1.3 : 1);
+    const sp = Math.min(vm * frac, (d / arrive) * vm * frac + 0.3);
     a.wx = dx / d * sp; a.wy = dy / d * sp;
     return d;
   }
@@ -174,10 +177,10 @@ const Live = (() => {
     }
     return seek(a, px, py, frac, 0.6);
   }
-  function avoid(a, radius = 1.9, k = 3.2) {
+  function avoid(a, radius = 1.9, k = 3.2, only) {
     let ax = 0, ay = 0;
     for (const b of S.list) {
-      if (b === a || b.down > 0) continue;
+      if (b === a || b.down > 0 || (only && !only(b))) continue;
       const dx = a.x - b.x, dy = a.y - b.y, d = hyp(dx, dy);
       if (d < radius && d > 0.01) { const f = (radius - d) / radius * k; ax += dx / d * f; ay += dy / d * f; }
     }
@@ -186,10 +189,17 @@ const Live = (() => {
     if (s > a.vmax) { a.wx *= a.vmax / s; a.wy *= a.vmax / s; }
   }
 
-  // engagements: two bodies locked together, moving as a pair
+  // engagements: two bodies locked together, moving as a pair.
+  // Who drives whom is a strength contest; the engine's verdict decides who
+  // ultimately wins the rep, the ratings decide how violently.
+  const power = a => { const p = a.pid != null ? G.players[a.pid] : null; return p ? p.attrs.str * 0.6 + p.attrs.skl * 0.25 + p.attrs.awr * 0.15 : 50; };
   function engage(blk, def, o = {}) {
     if (blk.eng || def.eng || blk.down > 0 || def.down > 0) return null;
-    const e = { a: blk, d: def, t0: S.t, dir: o.dir || [0, 0], rate: o.rate ?? 0.3, shed: o.shed ?? null, onShed: o.onShed, pancake: o.pancake, gap: (blk.r + def.r) * 0.92, jit: Math.random() * 6 };
+    const sd = power(blk) - power(def) + U.gauss(0, 3); // + = blocker stronger
+    const e = { a: blk, d: def, t0: S.t, dir: o.dir || [0, 0], rate: o.rate ?? 0.3, shed: o.shed ?? null, onShed: o.onShed, pancake: o.pancake, win: o.win ?? null, sd, gap: (blk.r + def.r) * 0.92, jit: Math.random() * 6 };
+    // lopsided matchups end violently
+    if (e.win !== false && sd >= 13 && !e.pancake && e.shed == null) e.pancake = S.t + U.rand(0.7, 1.3);
+    if (e.win === false && sd <= -11) e.bull = true;
     blk.eng = def.eng = e;
     S.engs.push(e);
     burst((blk.x + def.x) / 2, (blk.y + def.y) / 2, 'rgba(255,255,255,.55)', 4, 1.5);
@@ -201,7 +211,8 @@ const Live = (() => {
     e.done = true;
     if (shedDir) {
       e.a.blockT = null; e.a.blockOn = null; e.a.brain = x => chase(x, S.carrier || e.d, 1.5, 0.5);
-      e.a.stumble = 0.55;
+      if (e.bull) { e.a.down = 0.9; e.a.vx = -shedDir[0] * 1.5; e.a.vy = -(S.dirUp || 1) * 2.5; pop(e.d.x, e.d.y, 'BULL RUSH', '#fca5a5'); }
+      else e.a.stumble = 0.55;
       e.d.vx += shedDir[0] * 3.2; e.d.vy += shedDir[1] * 3.2;
     }
   }
@@ -216,17 +227,25 @@ const Live = (() => {
         if (e.onShed) e.onShed(e);
         continue;
       }
-      if (e.pancake && S.t >= e.pancake) { D.down = 1.6; release(e); pop(D.x, D.y, 'PANCAKE', '#86efac'); continue; }
-      const jx = Math.sin(S.t * 5 + e.jit) * 0.25, jy = Math.cos(S.t * 4 + e.jit) * 0.2;
-      const vx = e.dir[0] * e.rate + jx, vy = e.dir[1] * e.rate + jy;
-      const cx = (A.x + D.x) / 2 + vx * DT, cy = (A.y + D.y) / 2 + vy * DT;
+      if (e.pancake && S.t >= e.pancake) { D.down = 1.6; D.vx = A.vx * 1.5; D.vy = A.vy * 1.5 + (S.dirUp || 1) * 1.5; release(e); pop(D.x, D.y, 'PANCAKE', '#86efac'); continue; }
       let nx = D.x - A.x, ny = D.y - A.y;
       const nl = hyp(nx, ny) || 1; nx /= nl; ny /= nl;
+      // the stronger man moves the pile; even matchups rock back and forth
+      const age = S.t - e.t0;
+      const scale = U.clamp(0.7 + Math.abs(e.sd) * 0.03, 0.6, 1.5);
+      let push = U.clamp(e.sd * 0.045, -0.95, 0.95);
+      if (e.win === true) push = Math.max(push, 0.25);
+      if (e.win === false) push = Math.min(push, e.bull ? -1.3 : -0.1);
+      const tug = Math.abs(e.sd) < 7 ? Math.sin(age * 2.6 + e.jit) * 0.5 : 0;
+      const jx = Math.sin(S.t * 5 + e.jit) * 0.15, jy = Math.cos(S.t * 4 + e.jit) * 0.12;
+      const vx = e.dir[0] * e.rate * scale + nx * (push + tug) + jx;
+      const vy = e.dir[1] * e.rate * scale + ny * (push + tug) + jy;
+      const cx = (A.x + D.x) / 2 + vx * DT, cy = (A.y + D.y) / 2 + vy * DT;
       A.x = cx - nx * e.gap / 2; A.y = cy - ny * e.gap / 2;
       D.x = cx + nx * e.gap / 2; D.y = cy + ny * e.gap / 2;
       A.vx = D.vx = vx; A.vy = D.vy = vy;
       A.face = ang(nx, ny); D.face = ang(-nx, -ny);
-      A.phase += DT * 3; D.phase += DT * 3;
+      A.phase += DT * (3 + Math.abs(push) * 4); D.phase += DT * (3 + Math.abs(push) * 4);
     }
   }
 
@@ -234,7 +253,7 @@ const Live = (() => {
     S.t += DT;
     for (const e of S.ev) if (!e.done && S.t >= e.t) { e.done = true; e.fn(); }
     for (const a of S.list) {
-      a.wx = 0; a.wy = 0;
+      a.wx = 0; a.wy = 0; a.boost = false;
       if (a.down > 0 || a.eng) continue;
       if (S.dead) postBrain(a); else if (a.brain) a.brain(a);
     }
@@ -249,11 +268,12 @@ const Live = (() => {
       let wx = a.wx, wy = a.wy;
       if (a.stumble > 0) { a.stumble -= DT; wx *= 0.25; wy *= 0.25; }
       let dvx = wx - a.vx, dvy = wy - a.vy;
-      const dv = hyp(dvx, dvy), am = a.acc * DT * (hyp(wx, wy) < hyp(a.vx, a.vy) ? 1.6 : 1);
+      const vmx = a.vmax * (a.boost ? 1.3 : 1);
+      const dv = hyp(dvx, dvy), am = a.acc * (a.boost ? 1.6 : 1) * DT * (hyp(wx, wy) < hyp(a.vx, a.vy) ? 1.6 : 1);
       if (dv > am) { dvx *= am / dv; dvy *= am / dv; }
       a.vx += dvx; a.vy += dvy;
       const sp = hyp(a.vx, a.vy);
-      if (sp > a.vmax * 1.05) { a.vx *= a.vmax * 1.05 / sp; a.vy *= a.vmax * 1.05 / sp; }
+      if (sp > vmx * 1.05) { a.vx *= vmx * 1.05 / sp; a.vy *= vmx * 1.05 / sp; }
       a.x += a.vx * DT; a.y += a.vy * DT;
       a.x = U.clamp(a.x, -4, FW + 4);
       const target = sp > 0.7 ? ang(a.vx, a.vy) : a.faceT;
@@ -276,7 +296,8 @@ const Live = (() => {
     } else if (S.readyFn) S.readyFn();
   }
   function collide() {
-    const l = S.list;
+    const l = S.list, c = S.ball.mode === 'held' && !S.dead ? S.carrier : null;
+    const scripted = S.tk ? new Set(S.tk.queue.map(q => q.a)) : null;
     for (let i = 0; i < l.length; i++) {
       const a = l[i];
       if (a.down > 0) continue;
@@ -288,7 +309,17 @@ const Live = (() => {
         // a blocker reaching his man starts the engagement
         if (a.blockT === b && !a.eng && !b.eng && a.blockOn) { a.blockOn(a, b); if (a.eng) continue; }
         if (b.blockT === a && !a.eng && !b.eng && b.blockOn) { b.blockOn(b, a); if (b.eng) continue; }
-        const ma = a.mass * (a.eng ? 3 : 1), mb = b.mass * (b.eng ? 3 : 1);
+        if (c && (a === c || b === c) && S.tk) {
+          const o = a === c ? b : a;
+          // the runner squeezes past teammates and through the edges of blocks
+          if (o.side === c.side || o.eng) continue;
+          // a defender who isn't the one the engine picked dives and misses
+          if (!scripted.has(o)) { whiff(c, o); continue; }
+          // the engine's tackler can't end the run early — he rides along until the contact point
+          const head = S.tk.queue[0];
+          if (!head || head.a !== o || !S.tk.gate(head)) continue;
+        }
+        const ma = a.mass * (a.eng ? 1.6 : 1), mb = b.mass * (b.eng ? 1.6 : 1);
         const over = min - d, nx = dx / d, ny = dy / d;
         const wa = mb / (ma + mb), wb = ma / (ma + mb);
         a.x -= nx * over * wa; a.y -= ny * over * wa;
@@ -297,6 +328,14 @@ const Live = (() => {
         if (rv < 0) { a.vx += nx * rv * wa; a.vy += ny * rv * wa; b.vx -= nx * rv * wb; b.vy -= ny * rv * wb; }
       }
     }
+  }
+  function whiff(c, o) {
+    o.down = 0.75; o.stayDown = false;
+    o.face = ang(c.x - o.x, c.y - o.y);
+    o.vx = (c.x - o.x) * 1.5 + c.vx * 0.3; o.vy = (c.y - o.y) * 1.5 + c.vy * 0.3;
+    c.vx *= 0.88; c.vy *= 0.88;
+    c.vx += (Math.sign(c.x - o.x) || 1) * 1.2;
+    if (S.t - (S.lastWhiff || -9) > 1.1) { S.lastWhiff = S.t; pop(o.x, o.y, U.pick(['MISSED TACKLE', 'SHAKEN', 'WHIFF']), '#facc15', { life: 1 }); }
   }
   // after the whistle: slow down, drift toward the ball, get up
   function postBrain(a) {
@@ -383,36 +422,58 @@ const Live = (() => {
     }
     dead(S.onTackle);
   }
-  // Plan a ball-carrier run. Contacts are gated so tackles land where the engine said.
+  // Plan a ball-carrier run. The runner always runs; the engine-picked
+  // defenders come up to meet him where the engine says contact happens.
   function runPlan(carrier, plan) {
     const dir = plan.dir || 1;
     plan.queue = (plan.attempts || []).filter(x => x.a).map(x => ({ a: x.a, at: x.at, win: x.win }));
     if (plan.tackler && !plan.td) plan.queue.push({ a: plan.tackler, at: plan.endY, win: false, final: true });
-    plan.gate = q => (S.carrier.y - q.at) * dir >= -0.7;
+    plan.gate = q => (S.carrier.y - q.at) * dir >= -0.9;
     S.tk = plan;
     const scripted = new Set(plan.queue.map(q => q.a));
     carrier.brain = a => {
       const q = plan.queue[0];
-      const goalY = q && !q.final ? q.at + dir * 2 : plan.td ? plan.endY : plan.endY + dir * 1.2;
-      const passed = (a.y - plan.endY) * dir > -0.3;
-      const frac = passed && !plan.td ? 0.42 : 1;
-      const tx = q && !q.final ? clampX(a.x + (plan.endX - a.x) * 0.35) : plan.endX;
-      seek(a, tx, goalY, frac, 0.5);
-      avoid(a, 1.7, 2.6);
-      if (plan.td && (a.y - plan.goal) * dir > 0.5 && !S.dead) touchdownFx(a);
+      const aheadY = plan.td ? plan.endY : a.y + dir * 9;
+      const tx = clampX(a.x + (plan.endX - a.x) * 0.3);
+      seek(a, tx, aheadY, 1, 0.5);
+      // weave around defenders who aren't the one making this play
+      avoid(a, 1.7, 2.0, b => b.side !== a.side && !b.eng && (!q || b !== q.a));
+      if (plan.td && (a.y - plan.goal) * dir > 0.5 && !S.dead) return touchdownFx(a);
+      // safety net: if the tackler can't physically get there, the nearest defender drags him down
+      if (!plan.td && (a.y - plan.endY) * dir > 3.5 && !S.dead) {
+        let best = null, bd = 6;
+        for (const d of S.list) if (d.side !== a.side && d.down <= 0) { const dd = d2(a, d); if (dd < bd) { bd = dd; best = d; } }
+        if (best) { if (best.eng) release(best.eng); tackle(a, best); }
+        else if ((a.y - plan.endY) * dir > 6) { a.down = 9; a.stayDown = true; dead(() => pop(a.x, a.y, 'DOWN', '#cbd5e1')); }
+      }
     };
     for (const q of plan.queue) {
-      q.a.blockT = null;
+      q.a.blockT = null; q.a.brainLock = true;
       if (q.a.eng) release(q.a.eng);
       q.a.brain = a => {
         if (S.carrier !== carrier) return chase(a, carrier, 2);
-        if (plan.queue[0] === q && plan.gate(q)) return chase(a, carrier, 0, 1);
-        return chase(a, carrier, 1.8);
+        const head = plan.queue[0] === q;
+        const toGo = (q.at - carrier.y) * dir;
+        const behind = (a.y - carrier.y) * dir < -0.5;
+        if (head && toGo < 1.4) { a.boost = true; return chase(a, carrier, 0, 1); }
+        if (behind) { a.boost = head; return chase(a, carrier, head ? 1.0 : 2.4, 1); }
+        // get square in front of the runner at the contact point
+        const tReach = Math.max(0.25, toGo / Math.max(3, Math.abs(carrier.vy)));
+        const mx = clampX(carrier.x + carrier.vx * Math.min(tReach, 1.4)), my = q.at + dir * 1.3;
+        if (!head && d2(a, carrier) < 2.6) return seek(a, a.x + (a.x < carrier.x ? -2 : 2), a.y, 1, 0.5);
+        a.boost = head && hyp(mx - a.x, my - a.y) / a.vmax > tReach;
+        seek(a, mx, my, 1, 0.7);
+        a.faceT = ang(carrier.x - a.x, carrier.y - a.y);
       };
     }
+    // pursuit: defenders take angles from the side or behind — never parked in the runner's path
     for (const a of S.list) {
       if (a.side === carrier.side || scripted.has(a) || a.brainLock) continue;
-      a.brain = b => chase(b, carrier, 2.3, 0.95);
+      a.brain = b => {
+        const cc = carrier, sp = hyp(cc.vx, cc.vy) || 1, side = Math.sign(b.x - cc.x) || 1;
+        if ((b.y - cc.y) * dir > 2) return seek(b, clampX(cc.x + side * 2.8), cc.y + dir * 1.5, 0.97, 0.6);
+        seek(b, cc.x - cc.vx / sp * 2.2 + side * 1.4, cc.y - cc.vy / sp * 2.2, 0.97, 0.6);
+      };
     }
   }
   function touchdownFx(a) {
@@ -559,8 +620,8 @@ const Live = (() => {
         ob.blockT = db;
         ob.brain = a => seek(a, db.x - (db.x - gapX) * 0.15, db.y - 0.4, 1, 0.3);
         ob.blockOn = (a, d) => engage(a, d, b.win
-          ? { dir: [away * 0.7, 0.75], rate: 1.0 + Math.max(0, b.m) * 0.04, pancake: b.m >= 10 ? S.t + 1.1 : null }
-          : { dir: [0, -0.6], rate: 0.7, shed: S.t + (b.m <= -11 ? 0.25 : U.rand(0.5, 0.9)), onShed: e => { e.d.brain = x => chase(x, S.carrier || car, 1.6); pop(e.d.x, e.d.y, 'SHED', '#fca5a5'); } });
+          ? { win: true, dir: [away * 0.7, 0.75], rate: 1.0 + Math.max(0, b.m) * 0.04, pancake: b.m >= 10 ? S.t + 1.1 : null }
+          : { win: false, dir: [0, -0.6], rate: 0.7, shed: S.t + (b.m <= -11 ? 0.25 : U.rand(0.5, 0.9)), onShed: e => { e.d.brain = x => chase(x, S.carrier || car, 1.6); pop(e.d.x, e.d.y, 'SHED', '#fca5a5'); } });
         db.brain = a => seek(a, a.x + (gapX - a.x) * 0.3, L0 - 0.5, 0.6);
       }
       for (const a of sideAgents(o)) if (a !== qb && a !== car && !used.has(a)) blocker(a, scripted, a.pos === 'OL' ? 0.55 : 0.25);
@@ -642,7 +703,7 @@ const Live = (() => {
           };
           const shedAt = r.win && r.t < 9 ? Math.max(0.5, T(r.t) - 0.95) : null;
           ba.blockOn = (a, d) => engage(a, d, {
-            dir: [0, -1], rate: r.win ? 0.9 : 0.35,
+            win: r.win && r.t < 3.6 ? false : null, dir: [0, -1], rate: r.win ? 0.9 : 0.35,
             shed: shedAt != null ? S.snapT + shedAt : (throwT != null ? S.snapT + throwT + U.rand(0.3, 0.8) : null),
             onShed: e => { if (shedAt != null && (r.r === det.presser || r.r === det.sacker) && r.t < 3.6) pop(e.d.x, e.d.y, r.b ? `BEAT ${r.b}` : 'FREE', '#fca5a5'); },
           });
@@ -660,13 +721,20 @@ const Live = (() => {
         const d = r.def ? A('d' + r.def) : null;
         if (!d) continue;
         d.brainLock = true;
-        const lag = U.clamp(0.7 + r.sep * 0.33, -0.6, 4.2), lev = a.x < CX ? 0.6 : -0.6;
+        const cush0 = Math.max(1, d.y - a.y);
+        const lag = U.clamp(0.45 + Math.tanh(r.sep / 6) * 1.25, -0.6, 1.8), lev = a.x < CX ? 0.55 : -0.55;
+        d.vmax = Math.max(d.vmax, a.vmax * (1.03 - U.clamp(r.sep, -6, 8) * 0.006)); d.acc = Math.max(d.acc, a.acc * 0.97);
         const zone = det.dcall === 'cover';
         const zoneSpot = [d.x * 0.85 + CX * 0.15, L0 + (d.pos === 'CB' || d.key === 'dS2' ? 13 : 7.5)];
         d.brain = b => {
-          if (zone && pt() < 1.0 && hyp(a.x - zoneSpot[0], a.y - zoneSpot[1]) > 5) return seek(b, zoneSpot[0], zoneSpot[1], 0.9, 1);
-          const sp = hyp(a.vx, a.vy) || 1;
-          seek(b, a.x - a.vx / sp * lag + lev, a.y - a.vy / sp * lag + (pt() < 0.6 ? 1.6 : 0.4), 1, 0.35);
+          if (zone && pt() < 0.7 && hyp(a.x - zoneSpot[0], a.y - zoneSpot[1]) > 6) return seek(b, zoneSpot[0], zoneSpot[1], 0.9, 1);
+          // backpedal over the top early, close the cushion as the route develops, then
+          // run in phase with the receiver — trailing only by the ratings-based margin
+          const sp = hyp(a.vx, a.vy) || 1, t = pt();
+          const cush = Math.max(0, cush0 - t * 5.5);
+          const k = U.clamp((t - 0.35) / 0.9, 0, 1);
+          const px = a.x + a.vx * 0.22, py = a.y + a.vy * 0.22;
+          seek(b, px - a.vx / sp * lag * k + lev, py + cush - (a.vy / sp) * lag * k, 1, 0.25);
         };
       }
       for (const a of sideAgents(o)) if (!a.brainLock && !assigned.has(a)) {

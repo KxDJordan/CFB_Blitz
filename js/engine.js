@@ -559,7 +559,7 @@ const Engine = (() => {
       let sep;
       if (!dk) sep = 9 + U.gauss(0, 3);
       else {
-        sep = (routeR(gs, o, rec) - coverR(gs, d, D[dk])) * 0.6 + U.gauss(0, 7);
+        sep = (routeR(gs, o, rec) - coverR(gs, d, D[dk])) * 0.5 + U.gauss(0, 4.8);
         if (depth >= 15) sep += { base: -3, cover: -5, blitz: 2, runstop: 3 }[dc];
         else if (depth < 10) sep += { base: 0, cover: 2.5, blitz: 0, runstop: 1 }[dc];
         if (oc === 'pa' && dc !== 'cover') sep += 3;
@@ -619,7 +619,7 @@ const Engine = (() => {
     const pressured = pressT - det.throwT < 0.35;
     det.pressured = pressured;
     const acc = qbAcc(gs, o, qb), dpt = target.depth;
-    const pC = sig(0.05 + target.sep * 0.12 + (acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt));
+    const pC = sig(0.1 + target.sep * 0.15 + (acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt));
     const pI = sig(-4.4 - target.sep * 0.2 - (acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0) + gs.wxm.int);
     qs.pa++;
     fatX[rec.id] = dpt >= 15 ? 1 : 0;
