@@ -72,6 +72,8 @@ svg { display: block; }
   body { overflow: hidden; background: var(--bg); }
   #stage { min-height: 0; }
   #app { height: 100%; max-width: none; }
+  /* home-screen app: no toolbars, and it starts below the opaque status bar, so the viewport is exactly the space to fill */
+  html.standalone body, html.standalone #stage { height: 100%; }
 }
 @media (min-width: 620px) {
   #stage { align-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 14%, var(--stage)), var(--stage) 70%); }

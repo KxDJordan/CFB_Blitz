@@ -6,12 +6,9 @@
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
   if (standalone) document.documentElement.classList.add('standalone');
   const set = () => {
-    let h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
-    // home-screen apps fill the whole screen, but iOS may report innerHeight short by the status bar / home indicator
-    if (standalone && screen.width && screen.height) {
-      const portrait = window.innerHeight >= window.innerWidth;
-      h = Math.max(h, portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height));
-    }
+    // home-screen apps sit below the opaque status bar (status-bar-style "black"), so the reported height is the real one;
+    // sizing past it to the full screen would only push the bottom of the app off the display
+    const h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
     document.documentElement.style.setProperty('--app-h', `${h}px`);
   };
   set();
@@ -34,7 +31,7 @@
   const show = () => {
     const app = document.getElementById('app'), r = app ? app.getBoundingClientRect() : { top: 0, bottom: 0 };
     const ps = getComputedStyle(probe);
-    box.textContent = `build 4\ninnerH ${innerHeight}  clientH ${document.documentElement.clientHeight}\n` +
+    box.textContent = `build 5\ninnerH ${innerHeight}  clientH ${document.documentElement.clientHeight}\n` +
       `vv ${window.visualViewport ? Math.round(visualViewport.height) : '-'}  screen ${screen.width}x${screen.height}\n` +
       `--app-h ${getComputedStyle(document.documentElement).getPropertyValue('--app-h')}\n` +
       `safe top ${ps.paddingTop} bot ${ps.paddingBottom}\napp ${Math.round(r.top)}..${Math.round(r.bottom)}`;
