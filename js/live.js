@@ -228,7 +228,7 @@ const Live = (() => {
       if (A.down > 0 || D.down > 0) { release(e); continue; }
       if (e.free) {
         const age = S.t - e.t0, F = S.fp, c = S.carrier;
-        let lam = e.mode === 'pass' ? 0.1 * Math.exp(-e.m / 13) * (1 + age * 1.2) : 0.3 * Math.exp(-e.m / 18) * (1 + age * 0.35);
+        let lam = e.mode === 'pass' ? 0.1 * Math.exp(-e.m / 13) * (1 + age * 1.2) : 0.25 * Math.exp(-e.m / 18) * (1 + age * 0.35);
         if (e.mode !== 'pass' && c && F && c.side === A.side && (c.y - D.y) * F.cdir > 1.5) lam *= 2.5; // he's past — fight off to chase
         if (e.mode === 'pass' && F && F.mode !== 'pass') lam *= 4;
         if (Math.random() < lam * DT) {
@@ -290,6 +290,8 @@ const Live = (() => {
       const dv = hyp(dvx, dvy), am = a.acc * (a.boost ? 1.6 : 1) * DT * (hyp(wx, wy) < hyp(a.vx, a.vy) ? 1.6 : 1);
       if (dv > am) { dvx *= am / dv; dvy *= am / dv; }
       a.vx += dvx; a.vy += dvy;
+      // end-line awareness: everyone but the ball carrier pulls up before running out the back
+      if (S.free && S.fp && S.fp.L0 != null && a !== S.carrier && a.y > 104 && a.vy > 0) a.vy = Math.min(a.vy, Math.sqrt(2 * 18 * Math.max(0, 109.6 - a.y)));
       const sp = hyp(a.vx, a.vy);
       if (sp > vmx * 1.05) { a.vx *= vmx * 1.05 / sp; a.vy *= vmx * 1.05 / sp; }
       a.x += a.vx * DT; a.y += a.vy * DT;
@@ -327,6 +329,8 @@ const Live = (() => {
       for (let j = i + 1; j < l.length; j++) {
         const b = l[j];
         if (b.down > 0 || (a.eng && a.eng === b.eng)) continue;
+        // before the snap teammates weave past each other on the way to their spots
+        if (S.snapT == null && a.side === b.side) continue;
         const dx = b.x - a.x, dy = b.y - a.y, d = hyp(dx, dy), min = a.r + b.r;
         if (d >= min || d < 1e-4) continue;
         // a blocker reaching his man starts the engagement
@@ -717,16 +721,10 @@ const Live = (() => {
       defs.forEach((a, i) => { a.x = CX + (i % 6 - 2.5) * 2.1; a.y = los + 7 + Math.floor(i / 6) * 2.1; a.face = -Math.PI / 2; });
     }
   }
-  function marksBrain(delay, frac) {
-    return a => {
-      if (S.t < delay) { a.faceT = a.side === S.o ? ang(CX - a.x, S.los - 9 - a.y) : -Math.PI / 2; return stop(a); }
-      seek(a, a.mark[0], a.mark[1], frac, 1.1);
-      if (hyp(a.x - a.mark[0], a.y - a.mark[1]) < 0.4) a.faceT = a.side === S.o ? Math.PI / 2 : -Math.PI / 2;
-    };
-  }
   const allSet = () => S.list.every(a => hyp(a.x - a.mark[0], a.y - a.mark[1]) < 0.6 && hyp(a.vx, a.vy) < 0.9);
 
-  // Next-play setup: cut to the huddle, break, walk up to the line (or line up for a kickoff).
+  // Next-play setup: cut to the huddles. Both teams stay huddled until the call is in,
+  // then break straight into the called formation (or line up for a kickoff).
   function lineup() {
     if (!gs || gs.over) return;
     startCut(() => {
@@ -735,10 +733,11 @@ const Live = (() => {
       const ids = X => { const r = {}; for (const k in X) r[k] = X[k].id; return r; };
       newScene(o, gs.ball, gs.ball + gs.togo, 'lineup');
       placeFormation(o, gs.ball, ids(O), ids(D), 'base', true);
-      for (const a of S.list) a.brain = marksBrain(a.side === o ? 0.6 : 0.35, 0.85);
+      const hy = { [o]: gs.ball - 9, [1 - o]: gs.ball + 7.8 };
+      for (const a of S.list) a.brain = b => { stop(b); b.faceT = ang(CX - b.x, hy[b.side] - b.y); };
       S.ball = { mode: 'spot', x: CX, y: gs.ball, z: 0.15 };
-      S.focus = () => [CX, S.los + 3];
-      S.readyFn = () => { if (!S.ready && ((S.t > 1.2 && allSet()) || S.t > 6)) S.ready = true; };
+      S.focus = () => [CX, S.los - 1];
+      S.readyFn = () => { if (!S.ready && S.t > 0.8) S.ready = true; };
       cam.y = S.los + 3; cam.x = CX;
     });
   }
@@ -764,18 +763,28 @@ const Live = (() => {
     const DA = Playbook.defAlign(dplay, F);
     for (const [k, [x, y]] of Object.entries(F)) { const a = S.ag['o' + k]; if (a) a.mark = [CX + x, det.los + y]; }
     for (const [k, [x, y]] of Object.entries(DA)) { const a = S.ag['d' + k]; if (a) a.mark = [clampX(CX + x), det.los + y]; }
-    for (const a of S.list) a.brain = b => { seek(b, b.mark[0], b.mark[1], 0.75, 0.8); b.faceT = b.side === det.o ? Math.PI / 2 : -Math.PI / 2; };
     S.ball = { mode: 'spot', x: CX, y: det.los, z: 0.15 };
     S.focus = () => [CX, S.los + 4];
-    const t0 = S.t;
-    const setT = () => S.list.every(a => hyp(a.x - a.mark[0], a.y - a.mark[1]) < 0.5) || S.t - t0 > 2.6;
-    let called = false;
-    S.readyFn = () => {
-      if (called || S.t - t0 < 0.5 || !setT()) return;
-      called = true;
-      for (const a of S.list) { a.x = a.x * 0.5 + a.mark[0] * 0.5; a.y = a.y * 0.5 + a.mark[1] * 0.5; }
+    breakHuddle(det.o, () => {
       pop(S.ag.oQB.x, S.ag.oQB.y, 'SET...', '#e2e8f0', { life: 0.6 });
       at(S.t + 0.5, () => { S.snapT = S.t; pop(S.ag.oQB.x, S.ag.oQB.y, 'HUT!', '#ffffff', { life: 0.7 }); start(play, dplay); });
+    });
+  }
+  // Out of the huddle and up to the marks; set() fires once all 22 are on their spots and still.
+  function breakHuddle(o, set) {
+    for (const a of S.list) a.brain = b => {
+      const d = seek(b, b.mark[0], b.mark[1], d2(b, { x: b.mark[0], y: b.mark[1] }) > 4 ? 0.9 : 0.6, 0.9);
+      b.faceT = d < 1.5 || b.side !== o ? (b.side === o ? Math.PI / 2 : -Math.PI / 2) : null;
+    };
+    const t0 = S.t;
+    let done = false;
+    S.readyFn = () => {
+      if (done || S.t - t0 < 0.4) return;
+      const late = S.t - t0 > 7;
+      if (!late && !S.list.every(a => hyp(a.x - a.mark[0], a.y - a.mark[1]) < 0.45 && hyp(a.vx, a.vy) < 0.8)) return;
+      done = true;
+      for (const a of S.list) { a.x = a.mark[0]; a.y = a.mark[1]; a.vx = 0; a.vy = 0; a.wx = 0; a.wy = 0; a.face = a.side === o ? Math.PI / 2 : -Math.PI / 2; a.brain = b => { stop(b); }; }
+      set();
     };
   }
   function rateAgent(a) {
@@ -807,13 +816,16 @@ const Live = (() => {
     for (const a of S.list) {
       if (a.side === S.o) continue;
       const j = a.job ? a.job.type : 'rush';
-      const jd = j === 'rush' ? 0.05 : j === 'blitz' ? 0.05 : j === 'box' ? 0.15 : j === 'man' ? 0.5 : a.job && a.job.kd === 'deep' ? 0.45 : 0.3;
+      // second-level players key the line during their read step; deep and man-cover DBs read late
+      const lb = a.pos === 'LB';
+      const jd = j === 'rush' ? 0.05 : j === 'blitz' ? 0.05 : j === 'box' ? 0.15 : j === 'man' ? (lb ? 0.4 : 0.5) : a.job && a.job.kd === 'deep' ? 0.45 : 0.3;
       a.readT = Math.min(a.readT, S.t + base + jd + Math.max(0, (85 - a.R.awr)) * 0.008 + U.rand(0, 0.12) + (extra[a.key] || 0));
     }
   }
   // ── defense ──
   function assignDefense(dplay, F) {
-    const zoneAbs = z => { const [x, y] = Playbook.ZONES[z]; return [clampX(CX + x), F.L0 + y]; };
+    // in the red zone everything compresses: deep zones sit on the end line, underneath zones shrink with them
+    const zoneAbs = z => { const [x, y] = Playbook.ZONES[z], room = 108 - F.L0; return [clampX(CX + x), F.L0 + Math.min(y, Math.max(2, room * (y / 19)))]; };
     for (const [k, asg] of Object.entries(dplay.a)) {
       if (k[0] === '_') continue;
       const a = S.ag['d' + k];
@@ -834,6 +846,10 @@ const Live = (() => {
         a.job = { type: 'zone', z: asg[1], L: zoneAbs(asg[1]), kd, w, tau };
       } else a.job = { type: 'rush' };
       a.ballReact = U.clamp(0.26 - (a.R.awr - 70) * 0.006 + U.gauss(0, 0.05), 0.1, 0.5);
+      // read step: linebackers, box players and underneath safeties shuffle half a step downhill while they read
+      const keyer = a.job.type === 'box' || (a.pos === 'LB' && a.job.type !== 'rush' && a.job.type !== 'blitz') || (a.pos === 'S' && a.job.type === 'zone' && a.job.kd !== 'deep');
+      a.readStep = keyer ? U.clamp(0.1 + (85 - a.R.awr) * 0.004 + U.rand(0, 0.05), 0.08, 0.28) : 0;
+      a.stepPt = [a.x + (CX - a.x) * 0.04, a.y - 0.35];
       a.brain = defBrain;
     }
   }
@@ -848,10 +864,16 @@ const Live = (() => {
     }
     // the play is a run (or the QB took off): pursue once he's read it
     if (c && (c !== F.qb || F.mode === 'scramble') && S.t >= a.readT) return pursue(a);
+    // read step: hold and shuffle downhill until he's read it (on a run, until he's keyed run)
+    if (a.readStep) {
+      const t = S.t - S.snapT;
+      if (t < a.readStep || (F.kind === 'run' && S.t < a.readT && t < 1.0)) { seek(a, a.stepPt[0], a.stepPt[1], 0.3, 0.5); a.faceT = -Math.PI / 2; return; }
+    }
     // read run before the handoff: flow downhill to the hole, deep men come up under control
     if (F.kind === 'run' && S.t >= a.readT && j.type !== 'rush' && j.type !== 'blitz') {
       const hx = F.hole ?? CX, deep = a.y - F.L0 > 9;
-      return seek(a, clampX(hx + (a.x - hx) * (deep ? 0.6 : 0.45)), Math.max(F.L0 + (deep ? 6 : 2.2), Math.min(a.y, F.L0 + 4.5)), deep ? 0.55 : 0.7, 0.6);
+      // shuffle to mirror the play at depth; fit downhill only once the back has the ball (pursuit above)
+      return seek(a, clampX(hx + (a.x - hx) * (deep ? 0.6 : 0.55)), Math.max(F.L0 + (deep ? 6 : 3.6), Math.min(a.y, F.L0 + 4.8)), deep ? 0.55 : 0.55, 0.6);
     }
     // play-action: the second level steps up to the fake
     if (F.fakeUntil && S.t < F.fakeUntil && (a.pos === 'LB' || j.type === 'box') && S.t - S.snapT < (a.biteT || 0)) return seek(a, a.x, F.L0 + 2, 0.6);
@@ -887,7 +909,7 @@ const Live = (() => {
     const ant = U.clamp(0.55 + (a.R.cover - 60) * 0.012, 0.4, 1.1);
     const px = hx + r.vx * j.tau * ant, py = hy + r.vy * j.tau * ant;
     const cush = Math.max(0.9, j.cush - t * 1.5) * (r.vy > 1 ? 1 : 0.6);
-    seek(a, clampX(px + j.lev * U.clamp(1 - (r.y - F.L0) / 14, 0, 1)), py + cush, 1, 0.22);
+    seek(a, clampX(px + j.lev * U.clamp(1 - (r.y - F.L0) / 14, 0, 1)), Math.min(py + cush, 109.3), 1, 0.22);
     a.faceT = ang(r.x - a.x, r.y - a.y);
   }
   function zoneBrain(a, j) {
@@ -908,7 +930,7 @@ const Live = (() => {
       else { tx = hx * 0.7 + L[0] * 0.3; ty = U.clamp(hy - 0.4, F.L0 + 1.5, L[1] + 3.5); }
     }
     if (j.kd === 'deep' && !thr) ty = Math.max(ty, deepY + 2.5);
-    seek(a, clampX(tx), ty, S.t - S.snapT < 0.5 ? 0.85 : 1, 0.4);
+    seek(a, clampX(tx), Math.min(ty, 109.3), S.t - S.snapT < 0.5 ? 0.85 : 1, 0.4);
     a.faceT = ang(F.qb.x - a.x, F.qb.y - a.y);
   }
   // in the air: go get the ball if he can, otherwise get to the receiver to make the tackle
@@ -935,14 +957,15 @@ const Live = (() => {
       a.faceT = ang(F.qb.x - a.x, F.qb.y - a.y);
       return seek(a, x, y, 0.4, 1.2);
     }
-    seek(a, clampX(x), y, 1, 0.2);
+    // a route that ends on the back line is run under control so he can stop in time
+    seek(a, clampX(x), y, 1, a.wp === pts.length - 1 && y >= BACK - 0.1 ? 2.6 : 0.2);
   }
   // adjust stride to arrive at the catch point with the ball
   function trackBall(a) {
     // he runs to where the throw was meant to go, and only reads the real flight late
     const b = S.ball, left = Math.max(0.05, b.t0 + b.dur - S.t), F = S.fp;
     const late = left < 0.55 || !F.aimPt;
-    const gx = late ? b.tx : F.aimPt[0], gy = late ? b.ty : F.aimPt[1];
+    const gx = late ? b.tx : F.aimPt[0], gy = Math.min(late ? b.ty : F.aimPt[1], 109.4);
     const dx = gx - a.x, dy = gy - a.y, d = hyp(dx, dy);
     if (d < 0.15) { a.wx = 0; a.wy = 0; return; }
     const sp = Math.min(a.vmax, d / left * 1.05 + 0.4);
@@ -950,6 +973,17 @@ const Live = (() => {
     a.faceT = ang(F_qbx() - a.x, 0);
   }
   const F_qbx = () => (S.fp && S.fp.qb ? S.fp.qb.x : CX);
+  const BACK = 108.5; // deepest a route or a drop goes: just inside the end line (110)
+  // fit a route inside the end zone: anything past the back line runs to it, then settles there
+  function fitRoute(pts) {
+    const out = [];
+    for (const [x, y] of pts) {
+      const p = [x, Math.min(y, BACK)], q = out[out.length - 1];
+      if (q && q[1] >= BACK - 0.01 && p[1] >= BACK - 0.01) { if (Math.abs(p[0] - q[0]) > 3) q[0] = q[0] + (p[0] - q[0]) * 0.5; continue; }
+      out.push(p);
+    }
+    return out;
+  }
   const flightT = (qb, dist) => dist / ballSpeed(qb) * (dist > 25 ? 1.1 : 1) + 0.1;
   // where a receiver will be in tf seconds if he keeps running his route
   // (runs the same steering + acceleration limits as the real body, so cuts cost time)
@@ -1065,7 +1099,7 @@ const Live = (() => {
     const depth = op.P[1] - F.L0;
     const qbS = stkM(qb, 'dime', depth >= 15) + stkM(qb, 'iceveins', Engine.stk.clutch(gs)) + stkM(qb, 'trigger', F.play.cat === 'quick' || F.play.cat === 'screen') * 0.6 + (pressured ? stkM(qb, 'pocket') * 2.5 : 0);
     const wxp = Math.max(0, -Engine.stk.wxPass(gs, depth));
-    let sig2 = (0.22 + op.dist * 0.028 + Math.max(0, op.dist - 18) * 0.035) * (1 + (72 - qb.R.acc) * 0.03) * (pressured ? 1.65 : 1) * (1 + wxp * 1.8) * (1 - soft(qbS, 0.35));
+    let sig2 = (0.27 + op.dist * 0.029 + Math.max(0, op.dist - 18) * 0.035) * (1 + (72 - qb.R.acc) * 0.03) * (pressured ? 1.65 : 1) * (1 + wxp * 1.8) * (1 - soft(qbS, 0.35));
     sig2 = Math.max(0.08, sig2);
     // throw away from the nearest defender
     let nd = null, ndd = 99;
@@ -1169,7 +1203,7 @@ const Live = (() => {
       if (kind === 'block' || play.prot.includes(slot)) { setBlocker(a, 'pass', [a.x + (a.x < CX ? -0.5 : 0.5), L0 - 3]); a.blocking = true; continue; }
       if (kind === 'stalk') { setBlocker(a, 'run'); a.blocking = true; continue; }
       const sx = a.x - CX, inn = Playbook.inward(sx, slot);
-      a.route = Playbook.routePts(kind, d, sx, inn).map(([x, y]) => [clampX(CX + x), L0 + y]);
+      a.route = fitRoute(Playbook.routePts(kind, d, sx, inn).map(([x, y]) => [clampX(CX + x), L0 + y]));
       a.wp = 0; a.readyT = null;
       if (kind === 'go' || kind === 'seam') a.readyT = null;
       F.routers.push(a);
@@ -1323,10 +1357,10 @@ const Live = (() => {
     }
     S.kind = 'play'; S.ready = false; S.readyFn = null;
     S.ball = { mode: 'spot', x: CX, y: det.los, z: 0.15 };
-    for (const a of S.list) a.brain = b => seek(b, b.mark[0], b.mark[1], 0.5, 1);
-    const t0 = S.t;
-    at(t0 + 0.55, () => pop(S.ag.oQB.x, S.ag.oQB.y, 'SET...', '#e2e8f0', { life: 0.6 }));
-    at(t0 + 1.0, () => { S.snapT = S.t; start(); });
+    breakHuddle(det.o, () => {
+      pop(S.ag.oQB.x, S.ag.oQB.y, 'SET...', '#e2e8f0', { life: 0.6 });
+      at(S.t + 0.45, () => { S.snapT = S.t; start(); });
+    });
   }
 
   // ── special teams ──
@@ -1572,6 +1606,7 @@ const Live = (() => {
   function initVisuals() {
     wx = gs.wx || { type: 'clear', temp: 65, wind: 0, dir: 0, time: 'day' };
     turf = makeTurf('#2b8a4b', '#226f3c', '#35a058');
+    crowdTile = makeCrowd();
     // deterministic per-game decals: worn turf, puddles, snow drifts
     const rnd = (() => { let s = (gs.t[0] * 131 + gs.t[1] * 17 + 7) % 2147483647; return () => (s = s * 16807 % 2147483647) / 2147483647; })();
     decals = { wear: [], puddles: [], drifts: [] };
@@ -1585,6 +1620,71 @@ const Live = (() => {
     if (wx.type === 'wind' || wx.wind >= 14) for (let i = 0; i < 34; i++) wxp.streaks.push({ x: Math.random(), y: Math.random(), l: U.rand(30, 80), v: U.rand(0.5, 1.1) });
     if (wx.type === 'wind') for (let i = 0; i < 14; i++) wxp.leaves.push({ x: Math.random(), y: Math.random(), r: U.rand(0, 6), s: U.rand(2, 4), c: U.pick(['#b45309', '#d97706', '#a16207', '#92400e']) });
     if (wx.type === 'fog') for (let i = 0; i < 9; i++) wxp.fog.push({ x: Math.random(), y: Math.random(), r: U.rand(0.25, 0.55), v: U.rand(0.008, 0.02) });
+  }
+  // A tile of stadium seating seen from above: stepped rows, fans in both teams' colours (home-heavy).
+  // 12 px per yard; one row per yard so the tile repeats seamlessly.
+  let crowdTile = null;
+  function makeCrowd() {
+    const PX = 12, c = document.createElement('canvas');
+    c.width = 24 * PX; c.height = 12 * PX;
+    const g = c.getContext('2d');
+    const h = L.team(gs.t[0]).logo, v = L.team(gs.t[1]).logo;
+    const shirts = [h.primary, h.primary, h.primary, h.secondary, h.secondary, v.primary, v.secondary, '#e5e7eb', '#475569', '#1f2937'];
+    const skin = ['#f3cfb1', '#e0ac85', '#c48a5f', '#9a6440', '#6e4428', '#4a2d1b'];
+    for (let r = 0; r < 12; r++) {
+      const y = r * PX;
+      g.fillStyle = r % 2 ? '#2a3240' : '#222935'; g.fillRect(0, y, c.width, PX);
+      g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(0, y + PX - 2, c.width, 2);          // step riser
+      g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(0, y, c.width, 1);
+      for (let x = 5; x < c.width; x += 0.8 * PX) {
+        if (Math.random() < 0.1) continue;                                          // empty seat
+        const cx = x + U.rand(-1.2, 1.2), cy = y + PX * 0.5 + U.rand(-0.8, 0.8);
+        g.fillStyle = U.pick(shirts); g.beginPath(); g.ellipse(cx, cy + 1.6, 3.7, 2.7, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = U.pick(skin); g.beginPath(); g.arc(cx, cy - 0.6, 2, 0, Math.PI * 2); g.fill();
+      }
+    }
+    return c;
+  }
+  // Behind each end line: apron, padded wall in home colours, then the stands rising away from the field.
+  function drawEnds(yBot, yTop) {
+    if (!crowdTile) return;
+    const x0 = -18, x1 = FW + 18, home = L.team(gs.t[0]);
+    for (const dir of [1, -1]) {
+      const line = dir > 0 ? 110 : -10, wall = line + dir * 3.5, front = wall + dir * 0.9, far = line + dir * 45;
+      if (dir > 0 ? wall > yTop : wall < yBot) continue;
+      const lo = (a, b) => Math.min(a, b), hi = (a, b) => Math.max(a, b);
+      // stands
+      ctx.save();
+      ctx.beginPath(); ctx.rect(SX(x0), SY(hi(front, far)), (x1 - x0) * sc, Math.abs(far - front) * sc); ctx.clip();
+      ctx.translate(SX(x0), SY(front)); ctx.scale(sc / 12, sc / 12);
+      ctx.fillStyle = ctx.createPattern(crowdTile, 'repeat');
+      const hpx = Math.abs(far - front) * 12;
+      ctx.fillRect(0, dir > 0 ? -hpx : 0, (x1 - x0) * 12, hpx);
+      ctx.restore();
+      // aisles with steps
+      for (let ax = x0 + 6; ax < x1; ax += 15) {
+        fieldRect(ax, lo(front, far), ax + 1.2, hi(front, far), '#4b5466');
+        ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
+        for (let y = front; dir > 0 ? y < far : y > far; y += dir) { ctx.beginPath(); ctx.moveTo(SX(ax), SY(y)); ctx.lineTo(SX(ax + 1.2), SY(y)); ctx.stroke(); }
+      }
+      // upper rows recede into shadow
+      const g = ctx.createLinearGradient(0, SY(front), 0, SY(far));
+      g.addColorStop(0, 'rgba(5,8,14,0)'); g.addColorStop(1, 'rgba(5,8,14,.6)');
+      ctx.fillStyle = g; ctx.fillRect(SX(x0), SY(hi(front, far)), (x1 - x0) * sc, Math.abs(far - front) * sc);
+      // apron between the end line and the wall
+      fieldRect(x0, lo(line + dir * 2.2, wall), x1, hi(line + dir * 2.2, wall), 'rgba(40,46,58,.55)');
+      // padded wall: home colours with a white trim line and the home abbreviation
+      fieldRect(x0, lo(wall, front), x1, hi(wall, front), U.mix(home.logo.primary, '#000000', 0.15));
+      fieldRect(x0, lo(wall, wall + dir * 0.12), x1, hi(wall, wall + dir * 0.12), 'rgba(255,255,255,.85)');
+      ctx.fillStyle = U.onColor(home.logo.primary) === '#ffffff' ? 'rgba(255,255,255,.85)' : 'rgba(10,15,23,.8)';
+      ctx.font = `700 ${Math.max(8, Math.round(sc * 0.62))}px Oswald, Impact, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let tx = x0 + 4; tx < x1; tx += 9) ctx.fillText(home.abbr, SX(tx), SY(wall + dir * 0.5));
+      // shadow the wall casts onto the apron
+      const sg = ctx.createLinearGradient(0, SY(wall), 0, SY(wall - dir * 1.2));
+      sg.addColorStop(0, 'rgba(0,0,0,.35)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sg; ctx.fillRect(SX(x0), SY(hi(wall, wall - dir * 1.2)), (x1 - x0) * sc, 1.2 * sc);
+    }
   }
   function makeTurf(base, dark, light) {
     const c = document.createElement('canvas');
@@ -1652,6 +1752,8 @@ const Live = (() => {
     ctx.fillStyle = turf;
     ctx.fillRect(-12 * sc, -(yTop + 2) * sc, (FW + 24) * sc, (yTop - yBot + 4) * sc);
     ctx.restore();
+    // the stadium behind each end zone
+    drawEnds(yBot, yTop);
     // mowed stripes
     for (let y = Math.floor(Math.max(-10, yBot) / 5) * 5; y < Math.min(110, yTop); y += 5) {
       if (y < 0 || y >= 100) continue;

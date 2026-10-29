@@ -67,7 +67,18 @@ const UI = (() => {
   const stars = n => `<span class="stars">${'★'.repeat(n)}<span class="off">${'★'.repeat(Math.max(0, 5 - n))}</span></span>`;
   const posCls = pos => (pos === 'K' ? 'pos-st' : DATA.OFFENSE.includes(pos) ? 'pos-off' : 'pos-def');
   const posBadge = pos => `<span class="pos-badge ${posCls(pos)}">${pos}</span>`;
-  const jersey = (p, size = 40) => { const t = p.teamId != null ? L.team(p.teamId) : null; return `<span class="jersey">${Logo.jersey(p.num, t ? t.logo.primary : '#334155', t ? t.logo.secondary : '#94a3b8', size)}</span>`; };
+  // player face from the portrait sprite (12 x 10 grid), ringed in team colours, jersey number tag
+  const FACE_COLS = 12, FACE_ROWS = 10;
+  const jersey = (p, size = 40) => {
+    const t = p.teamId != null ? L.team(p.teamId) : null;
+    const f = p.face ?? p.id % 120, c = f % FACE_COLS, r = Math.floor(f / FACE_COLS);
+    const ring = t ? t.logo.primary : '#64748b', ring2 = t ? t.logo.secondary : '#cbd5e1';
+    const num = p.num != null && size >= 34 ? `<b class="face-num" style="background:${ring};color:${U.onColor(ring)};border-color:${ring2}">${p.num}</b>` : '';
+    return `<span class="face" style="--fs:${size}px;--ring:${ring};--ring2:${ring2};background-position:${(c / (FACE_COLS - 1) * 100).toFixed(3)}% ${(r / (FACE_ROWS - 1) * 100).toFixed(3)}%">${num}</span>`;
+  };
+  // ratings gained since the season kicked off
+  const seasonGain = p => (p.ovr0 != null ? p.ovr - p.ovr0 : 0);
+  const gainTag = p => { const g = seasonGain(p); return g > 0 ? `<span class="tag t-good gain-tag">▲${g}</span>` : ''; };
   const pname = p => `${esc(p.first)} ${esc(p.last)}`;
   const tname = t => esc(t.name);
   const tfull = t => esc(`${t.name} ${t.mascot}`);
@@ -141,9 +152,16 @@ const UI = (() => {
   }
   function sheet(html, opts = {}) {
     const root = document.getElementById('sheet-root');
-    root.innerHTML = `<div class="sheet-bg ${opts.center ? 'center' : ''}" data-sheetbg="${opts.locked ? 'locked' : ''}"><div class="sheet" role="dialog">${opts.center ? '' : '<div class="grabber"></div>'}${html}</div></div>`;
+    root.innerHTML = `<div class="sheet-bg ${opts.center ? 'center' : ''}" data-sheetbg="${opts.locked ? 'locked' : ''}"><div class="sheet" role="dialog" aria-modal="true">${opts.center ? '' : '<div class="grabber"></div>'}${html}</div></div>`;
+    lockBehindSheet(true);
   }
-  function closeSheet() { document.getElementById('sheet-root').innerHTML = ''; }
+  function closeSheet() { document.getElementById('sheet-root').innerHTML = ''; lockBehindSheet(false); }
+  // while a sheet is up, the screen underneath must not receive taps or swipes
+  function lockBehindSheet(on) {
+    document.body.classList.toggle('sheet-open', on);
+    const app = document.getElementById('app');
+    if (app) app.inert = on;
+  }
   function confirmSheet(title, body, okLabel, okAct, danger) {
     sheet(`<div class="h-lg mb8">${title}</div><p class="muted" style="margin:0 0 16px">${body}</p><div class="btn-row"><button class="btn" data-a="closeSheet">Cancel</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-a="${okAct}">${okLabel}</button></div>`, { center: true });
   }
@@ -339,7 +357,7 @@ const UI = (() => {
     return `<div class="card"><div class="card-h"><span class="kicker">${I.dumbbell.replace('<svg', '<svg style="width:15px;height:15px"')} Weekly practice focus</span><button class="link" data-a="practiceSheet">Change</button></div>
       <div class="flex"><div class="gc-ico" style="width:46px;height:46px;border-radius:13px;display:grid;place-items:center;background:var(--surface-3);font:700 13px/1 var(--f-display)">${g.id === 'WRTE' ? 'WR' : g.id === 'BACKS' ? 'LB' : g.id}</div>
       <div class="grow"><div style="font-weight:700">${g.label} <span class="tag ${side === 'offense' ? 'pos-off' : 'pos-def'}">${side}</span></div><div class="small muted">${g.sub} · avg ${ga.avg} OVR</div></div></div>
-      ${lp ? `<div class="small muted mt12">Last week: ${DATA.groupById(lp.groupId).label} gained <b class="good">+${lp.gain}</b> total OVR across ${lp.n} players.</div>` : ''}
+      ${lp ? `<div class="small muted mt12">Last week: ${DATA.groupById(lp.groupId).label} added <b class="good">+${lp.attrs ?? lp.gain}</b> attribute points${lp.improved != null ? ` · <b class="good">${lp.improved}</b> of ${lp.n} players moved up in OVR` : ''}.</div>${(lp.top || []).length ? `<div class="flex mt8" style="gap:10px;flex-wrap:wrap">${lp.top.map(x => { const q = L.player(x.pid); return q ? `<button class="chip-btn" data-a="player" data-v="${q.id}">${jersey(q, 26)}<span class="small">${esc(q.last)} <b class="good">+${x.d}</b></span></button>` : ''; }).join('')}</div>` : ''}` : ''}
     </div>`;
   }
   function forumTeaser() {
@@ -376,7 +394,7 @@ const UI = (() => {
       const header = `<div class="flex between" style="padding:12px 14px 6px"><span class="kicker">${DATA.POS_NAME[pos]}s · ${ids.length}</span><span class="tiny ${u.manual[pos] ? 'accent' : 'dim'}">${u.manual[pos] ? 'Manual depth' : 'Auto depth'}</span></div>`;
       return `<div class="card flush">${header}<div class="list">${ids.map((id, i) => {
         const p = G.players[id], st = healthy.includes(p);
-        return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 40)}<div class="grow"><div class="r1">${pname(p)} ${st ? '<span class="tag t-accent">ST</span>' : ''}${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${p.walkOn ? '<span class="tag">Walk-on</span>' : ''}${stkRow(p)}</div><div class="r2">${pos}${i + 1} · ${DATA.CLASS[p.cls]} · ${stars(p.stars)} · POT ${U.potGrade(p.pot)}</div></div>${ovr(p.ovr)}</button>`;
+        return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 40)}<div class="grow"><div class="r1">${pname(p)} ${st ? '<span class="tag t-accent">ST</span>' : ''}${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${p.walkOn ? '<span class="tag">Walk-on</span>' : ''}${gainTag(p)}${stkRow(p)}</div><div class="r2">${pos}${i + 1} · ${DATA.CLASS[p.cls]} · ${stars(p.stars)} · POT ${U.potGrade(p.pot)}</div></div>${ovr(p.ovr)}</button>`;
       }).join('')}</div></div>`;
     }).join('');
     return `<div class="card"><div class="rings">${ring(rt.off, 'OFF', '#60a5fa')}${ring(rt.ovr, 'OVR', 'var(--accent)')}${ring(rt.def, 'DEF', '#f87171')}</div>
@@ -408,6 +426,7 @@ const UI = (() => {
     };
     const hasCar = c && Object.values(c).some(v => v > 0);
     sheet(`<div class="pc-head" style="${t ? teamVars(t) : '--team-1:#334155;--team-2:#64748b'}">${jersey(p, 64)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]} · #${p.num} · ${DATA.CLASS_LONG[p.cls]}</div><div class="tiny" style="opacity:.7;margin-top:2px">${esc(p.home)}${t ? ` · ${tname(t)}` : ''}</div></div><div class="pc-ovr"><b>${p.ovr}</b><span>OVR</span></div></div>
+      ${G.phase === 'season' || G.phase === 'post' ? `<div class="small mb8" style="margin-top:-2px">${seasonGain(p) > 0 ? `<b class="good">+${seasonGain(p)} OVR</b> this season` : '<span class="muted">No OVR change yet this season</span>'}<span class="muted"> · started at ${p.ovr0 ?? p.ovr}</span></div>` : ''}
       <div class="kv mb12"><div><b>${U.potGrade(p.pot)}</b><span>Potential</span></div><div><b style="font-size:13px;line-height:18px">${stars(p.stars)}</b><span>Recruit</span></div><div><b>${DATA.CLASS[p.cls]}</b><span>Class</span></div><div><b style="font-size:14px;line-height:18px">${status}</b><span>Status</span></div></div>
       <div class="card" style="padding:12px 14px">${DATA.ATTRS.map(a => { const lbl = DATA.attrLabel(p.pos, a); const v = p.attrs[a]; return `<div class="attr"><span class="muted">${DATA.ATTR_LONG[a === 'skl' ? lbl : a]}</span><div class="bar"><i style="width:${v}%"></i></div><b class="${U.ovrClass(v)}">${v}</b></div>`; }).join('')}</div>
       <div class="kicker mb8">Helmet Stickers</div>${stkList(p)}
@@ -613,7 +632,7 @@ const UI = (() => {
     if (S.draft.view === 'board') {
       const pool = d.pool.map(id => G.players[id]).filter(p => S.draft.pos === 'ALL' || p.pos === S.draft.pos).slice(0, 70);
       body = `<div class="chips">${['ALL', ...DATA.POSITIONS].map(p => `<button class="chip ${S.draft.pos === p ? 'on' : ''}" data-a="draftPos" data-v="${p}">${p}</button>`).join('')}</div>
-        <div class="card flush"><div class="list">${pool.map(p => `<div class="row prospect tap" data-a="prospect" data-v="${p.id}"><span class="tiny dim num" style="width:20px;font-weight:700">${d.pool.indexOf(p.id) + 1}</span>${posBadge(p.pos)}<div class="grow"><div class="r1">${pname(p)} ${stkRow(p)}</div><div class="r2">${stars(p.stars)} · POT ${U.potGrade(p.pot)} · ${esc(p.home)}</div></div>${ovr(p.ovr)}${mine ? `<button class="btn btn-primary pick-btn" data-a="draftPick" data-v="${p.id}">Draft</button>` : ''}</div>`).join('') || '<div class="empty">No prospects left at this position.</div>'}</div></div>`;
+        <div class="card flush"><div class="list">${pool.map(p => `<div class="row prospect tap" data-a="prospect" data-v="${p.id}"><span class="tiny dim num" style="width:20px;font-weight:700">${d.pool.indexOf(p.id) + 1}</span>${jersey(p, 38)}<div class="grow"><div class="r1">${pname(p)} ${stkRow(p)}</div><div class="r2">${posBadge(p.pos)} ${stars(p.stars)} · POT ${U.potGrade(p.pot)} · ${esc(p.home)}</div></div>${ovr(p.ovr)}${mine ? `<button class="btn btn-primary pick-btn" data-a="draftPick" data-v="${p.id}">Draft</button>` : ''}</div>`).join('') || '<div class="empty">No prospects left at this position.</div>'}</div></div>`;
     } else if (S.draft.view === 'mine') {
       body = myPicks.length ? `<div class="card flush"><div class="list">${myPicks.map(e => { const p = G.players[e.pid]; return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 38)}<div class="grow"><div class="r1">${pname(p)}</div><div class="r2">Rd ${e.round} · #${e.overall} · ${stars(p.stars)} · POT ${U.potGrade(p.pot)}</div></div>${posBadge(p.pos)}${ovr(p.ovr)}</button>`; }).join('')}</div></div>` : `<div class="empty">${I.roster}You haven't made a pick yet.</div>`;
     } else {
@@ -1338,6 +1357,18 @@ const UI = (() => {
       if (fn) { e.preventDefault(); fn(el.dataset.v, el, e); }
     });
     document.addEventListener('input', e => { const el = e.target.closest('[data-bind]'); if (el) A.bind(el); });
+    // iOS: stop swipes from leaking past an open sheet (backdrop, or the sheet already at its scroll limit)
+    let touchY = 0;
+    document.addEventListener('touchstart', e => { touchY = e.touches[0] ? e.touches[0].clientY : 0; }, { passive: true });
+    document.addEventListener('touchmove', e => {
+      if (!document.body.classList.contains('sheet-open') || !e.touches[0]) return;
+      const sh = e.target.closest && e.target.closest('.sheet');
+      if (!sh) { if (e.cancelable) e.preventDefault(); return; }
+      const dy = e.touches[0].clientY - touchY;
+      const atTop = sh.scrollTop <= 0, atBottom = sh.scrollTop + sh.clientHeight >= sh.scrollHeight - 1;
+      const sideways = e.target.closest('.gtabs, .pb-tabs, .call-scroll, .stk-row');
+      if (!sideways && ((dy > 0 && atTop) || (dy < 0 && atBottom)) && e.cancelable) e.preventDefault();
+    }, { passive: false });
     window.addEventListener('resize', () => { if (S.screen === 'game') Live.resize(); });
     const persist = () => { if (G) L.save(); };
     window.addEventListener('pagehide', persist);

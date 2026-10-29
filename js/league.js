@@ -39,6 +39,27 @@ const L = (() => {
     for (let n = 1; n < 100; n++) if (!used.has(n)) return n;
     return U.ri(1, 99);
   }
+  // ── development ──
+  // Hidden growth rate: how fast a player turns reps into ratings. Higher potential
+  // players tend to develop faster, but every potential band spans a range.
+  function rollGrowth(pot) {
+    return +U.clamp(U.gauss(0.75 + (pot - 60) / 40 * 0.55, 0.22), 0.4, 1.75).toFixed(2);
+  }
+  // Training adds fractional progress per attribute; it carries over until it adds up to a point.
+  function grow(p, a, amt) {
+    p.xp = p.xp || {};
+    let x = (p.xp[a] || 0) + amt, d = 0;
+    while (x >= 1 && p.attrs[a] < 99) { p.attrs[a]++; x--; d++; }
+    p.xp[a] = Math.round(Math.min(x, 0.99) * 100) / 100;
+    return d;
+  }
+  const FACES = 120;
+  function pickFace(t) {
+    const used = new Set(t ? roster(t).map(p => p.face) : []);
+    const free = [];
+    for (let i = 0; i < FACES; i++) if (!used.has(i)) free.push(i);
+    return free.length ? U.pick(free) : U.ri(0, FACES - 1);
+  }
   function mkPlayer(pos, target, cls, t, extra = {}) {
     const id = G.nextPid++;
     const w = DATA.OVR_W[pos];
@@ -53,6 +74,7 @@ const L = (() => {
     p.pot = extra.pot ? Math.max(p.ovr + 2, extra.pot) : U.clamp(Math.round(p.ovr + U.rand(3, 20) - cls * 4), p.ovr, 99);
     if (!p.stars) p.stars = starsFor(p.ovr - cls * 3);
     if (extra.walkOn) p.walkOn = true;
+    p.gr = rollGrowth(p.pot); p.xp = {}; p.ovr0 = p.ovr; p.face = pickFace(t);
     rollStickers(p);
     G.players[id] = p;
     if (t) t.roster.push(id);
@@ -241,6 +263,7 @@ const L = (() => {
       const cap = STAR_OVR[stars][1] + 1;
       while (p.ovr > cap) { for (const a of DATA.ATTRS) p.attrs[a]--; p.ovr = calcOvr(p); }
       p.pot = Math.max(p.pot, p.ovr + 2);
+      p.gr = rollGrowth(p.pot); p.ovr0 = p.ovr;
       rollStickers(p);
       ids.push(p.id);
     }
@@ -344,12 +367,13 @@ const L = (() => {
     for (const p of roster(t)) {
       if (!g.pos.includes(p.pos) || p.inj > 0) continue;
       const youth = [1.25, 1.1, 0.95, 0.8][p.cls];
-      const potF = U.clamp((p.pot - p.ovr) / 12, 0.25, 1.4);
-      const pts = U.rand(1.2, 3.4) * I.mult * youth * potF * scale;
+      // room to grow shrinks as he approaches his potential
+      const room = U.clamp((p.pot - p.ovr) / 10, 0.08, 1.4);
+      const pts = U.rand(1.2, 3.4) * I.mult * youth * room * (p.gr || 1) * scale;
       const before = p.ovr, deltas = {};
       g.attrs.forEach((a, i) => {
-        const d = Math.max(0, Math.round(pts * shares[i] * 1.6 + U.gauss(0, 0.5) * scale));
-        if (d) { p.attrs[a] = Math.min(99, p.attrs[a] + d); deltas[a] = d; }
+        const d = grow(p, a, Math.max(0, pts * shares[i] * 1.6 + U.gauss(0, 0.3) * scale));
+        if (d) deltas[a] = d;
       });
       p.ovr = calcOvr(p);
       let injured = 0, stkUp = null;
@@ -372,9 +396,24 @@ const L = (() => {
     return res;
   }
   function weeklyPractice() {
-    const res = trainGroup(user(), G.practice, 'standard', 0.28, false);
-    G.lastPractice = { groupId: G.practice, gain: U.sum(res.map(r => r.after - r.before)), n: res.length };
-    for (const t of G.teams) if (!t.user) trainGroup(t, U.pick(DATA.ALL_GROUPS).id, 'standard', 0.28, false);
+    // everyone gets a little from team reps; the focus group gets the extra work
+    for (const t of G.teams) teamReps(t);
+    const res = trainGroup(user(), G.practice, 'standard', 0.4, false);
+    const up = res.filter(r => r.after > r.before);
+    G.lastPractice = {
+      groupId: G.practice, gain: U.sum(res.map(r => r.after - r.before)), n: res.length, improved: up.length,
+      attrs: U.sum(res.map(r => U.sum(Object.values(r.deltas)))), top: up.slice(0, 3).map(r => ({ pid: r.pid, d: r.after - r.before })),
+    };
+    for (const t of G.teams) if (!t.user) trainGroup(t, U.pick(DATA.ALL_GROUPS).id, 'standard', 0.4, false);
+  }
+  function teamReps(t) {
+    for (const p of roster(t)) {
+      if (p.inj > 0) continue;
+      const w = DATA.OVR_W[p.pos], top = DATA.ATTRS.slice().sort((a, b) => w[b] - w[a]).slice(0, 2);
+      const room = U.clamp((p.pot - p.ovr) / 10, 0.08, 1.4), youth = [1.25, 1.1, 0.95, 0.8][p.cls];
+      for (const a of top) grow(p, a, U.rand(0.04, 0.14) * (p.gr || 1) * room * youth);
+      p.ovr = calcOvr(p);
+    }
   }
 
   // ── schedule ──
@@ -585,8 +624,9 @@ const L = (() => {
 
   function progress(p) {
     const gap = p.pot - p.ovr;
-    let g = gap > 0 ? gap * U.rand(0.12, 0.3) : U.rand(-2, 0.5);
-    g += [1.5, 1, 0.5, 0][p.cls] || 0;
+    const gr = p.gr || 1;
+    let g = gap > 0 ? gap * U.rand(0.12, 0.3) * gr : U.rand(-2, 0.5);
+    g += ([1.5, 1, 0.5, 0][p.cls] || 0) * gr;
     g += (Math.min(p.starts, 14) / 14) * 1.5;
     return addOvr(p, g);
   }
@@ -626,6 +666,7 @@ const L = (() => {
   function startSeason() {
     if (G.camp) Forum.campReport(G.camp.log);
     for (const t of G.teams) { t.rec = { w: 0, l: 0, cw: 0, cl: 0, pf: 0, pa: 0, streak: 0 }; t.qw = 0; }
+    for (const p of Object.values(G.players)) p.ovr0 = p.ovr;
     G.week = 1; G.champion = null; G.confChamps = []; G.awards = null; G.camp = null; G.draft = null;
     buildSchedule();
     G.poll = [];
@@ -652,7 +693,12 @@ const L = (() => {
       const s = localStorage.getItem(SAVE_KEY);
       if (!s) return false;
       G = JSON.parse(s);
-      for (const p of Object.values(G.players)) if (!p.stk) rollStickers(p);
+      for (const p of Object.values(G.players)) {
+        if (!p.stk) rollStickers(p);
+        if (p.gr == null) { p.gr = rollGrowth(p.pot); p.xp = {}; }
+        if (p.ovr0 == null) p.ovr0 = p.ovr;
+        if (p.face == null) p.face = p.id % FACES;
+      }
       return true;
     } catch (e) { return false; }
   }
