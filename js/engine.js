@@ -76,7 +76,7 @@ const Engine = (() => {
   const sig = z => 1 / (1 + Math.exp(-z));
   // diminishing returns on rating gaps: typical edges (±8) count almost fully, a 30-point mismatch counts like ~13,
   // so elite-vs-weak matchups stay lopsided without turning every snap into a sure thing
-  const GAPK = Number(globalThis.__GAPK) || 14;
+  const GAPK = Number(globalThis.__GAPK) || 10;
   const gap = d => GAPK * Math.tanh(d / GAPK);
 
   function unitAvg(gs, side, pos, n) {
@@ -182,7 +182,7 @@ const Engine = (() => {
       plan: [null, null], userSide: opts.userSide ?? -1, askFourth: !!opts.askFourth, userCalls: !!opts.userCalls, neutral: !!opts.neutral,
       log: [], ps: {}, ts: [blankTS(), blankTS()], injuries: [], tend: [{ run: 0, pass: 0, blitz: 0, n: 0, last: null }, { run: 0, pass: 0, blitz: 0, n: 0, last: null }],
       phase: 'kickoff', kicker: U.ri(0, 1), recv1: 0,
-      ot: 0, otPoss: 0, otFirst: 0, otSide: 0, over: false, n: 0, lastPlay: null,
+      ot: 0, otPoss: 0, otFirst: 0, otSide: 0, over: false, n: 0, lastPlay: null, tos: [3, 3],
       drive: { side: 0, start: 25, plays: 0, yds: 0, clk: QLEN, q: 1 }, wpH: [],
     };
     gs.recv1 = 1 - gs.kicker;
@@ -313,6 +313,15 @@ const Engine = (() => {
     const o = gs.poss, diff = gs.score[o] - gs.score[1 - o];
     // NFL pace: the clock keeps running after first downs, so a normal snap burns ~36 seconds (about 63 plays a side)
     if (kind === 'inc') return U.ri(6, 9);
+    // timeouts: three a half. A trailing offense stops the clock late in each half;
+    // a defense down one score stops it when the leader tries to run it out.
+    const tos = gs.tos || (gs.tos = [3, 3]), late2 = gs.qtr === 2 && gs.clock < 120, late4 = gs.qtr === 4 && gs.clock < 300;
+    if (!gs.ot && gs.clock > 6 && (late2 || (late4 && diff < 0)) && tos[o] > 0 && U.chance(0.5)) {
+      tos[o]--; ev(gs, `Timeout, ${gs.abbr[o]} (${tos[o]} left).`, 'info'); return U.ri(4, 7);
+    }
+    if (!gs.ot && gs.qtr === 4 && gs.clock < 200 && gs.clock > 6 && diff > 0 && diff <= 8 && tos[1 - o] > 0) {
+      tos[1 - o]--; ev(gs, `Timeout, ${gs.abbr[1 - o]} (${tos[1 - o]} left).`, 'info'); return U.ri(4, 7);
+    }
     if ((gs.qtr === 2 && gs.clock < 120) || (gs.qtr === 4 && gs.clock < 300 && diff < 0)) return U.ri(13, 21);
     if (gs.qtr === 4 && diff > 0 && gs.clock < 480) return U.ri(40, 45);
     return U.ri(31, 42);
@@ -335,7 +344,7 @@ const Engine = (() => {
     }
     if (gs.qtr === 2) {
       ev(gs, 'HALFTIME', 'half');
-      gs.qtr = 3; gs.clock = QLEN; gs.phase = 'kickoff'; gs.kicker = gs.recv1;
+      gs.qtr = 3; gs.clock = QLEN; gs.phase = 'kickoff'; gs.kicker = gs.recv1; gs.tos = [3, 3];
       for (const id in gs.stam) gs.stam[id] = Math.min(100, gs.stam[id] + 35);
       aiAdjust(gs, 0); aiAdjust(gs, 1);
     } else if (gs.qtr === 4) {
@@ -507,7 +516,7 @@ const Engine = (() => {
       const def = db.pos === 'DL' ? runDef(gs, d, db) : tackleR(gs, d, db);
       const stkO = sm(gs, det, ob, 'grader', side === 'M') + sm(gs, det, ob, 'puller', side !== 'M' && ob.pos === 'OL') + sm(gs, det, ob, 'anchor', db.pos === 'DL') * 0.5;
       const stkD = sm(gs, det, db, 'stuffer');
-      const m = gap(off - def) * 0.7 + U.gauss(0, 9) + mod + soft(stkO, 2.5) - soft(stkD, 2.5);
+      const m = gap(off - def) * 0.58 + U.gauss(0, 9) + mod + soft(stkO, 2.5) - soft(stkD, 2.5);
       det.blocks.push({ o: ok, d: dk, m: Math.round(m), win: m >= 0 });
       sum += m;
       if (m < -11 && !tfl) tfl = dk;
@@ -520,10 +529,10 @@ const Engine = (() => {
       yards = -U.ri(1, 3); tackler = tfl;
       levels.push({ d: tfl, win: false, y: yards });
     } else {
-      const g1 = Math.round(U.clamp(1.5 + laneQ * 2.4 + U.gauss(0, 1.4) + (side !== 'M' ? U.gauss(0.3, 1.8) : 0) + sm(gs, det, rb, 'hammer', shortYd(gs)), -1, 7));
+      const g1 = Math.round(U.clamp(3.0 + laneQ * 2.4 + U.gauss(0, 1.4) + (side !== 'M' ? U.gauss(0.3, 1.8) : 0) + sm(gs, det, rb, 'hammer', shortYd(gs)), -1, 7));
       const l2k = side === 'M' ? (dc === 'blitz' ? 'LB2' : 'MLB') : side === 'L' ? (det.blocks[1].win ? 'MLB' : 'LB1') : (det.blocks[1].win ? 'MLB' : 'LB2');
       const l2 = D[l2k];
-      const m2 = gap(elusR(gs, o, rb) - tackleR(gs, d, l2)) * 0.6 + U.gauss(0, 10) + laneQ * 4 + ({ cover: 3, runstop: -3, blitz: 1, base: 0 }[dc]) + (side !== 'M' ? gap(A(gs, o, rb, 'spd') - A(gs, d, l2, 'spd')) * 0.3 : 0) + (l2k === 'MLB' && side !== 'M' ? 3 : 0)
+      const m2 = gap(elusR(gs, o, rb) - tackleR(gs, d, l2)) * 0.5 + U.gauss(0, 10) + laneQ * 4 + ({ cover: 3, runstop: -3, blitz: 1, base: 0 }[dc]) + (side !== 'M' ? gap(A(gs, o, rb, 'spd') - A(gs, d, l2, 'spd')) * 0.3 : 0) + (l2k === 'MLB' && side !== 'M' ? 3 : 0)
         + soft(sm(gs, det, rb, 'wrecking'), 3) - soft(sm(gs, det, l2, 'thumper') + sm(gs, det, l2, 'sideline', side !== 'M'), 3);
       const juke = m2 < 8 && sp(gs, det, rb, 'jukebox', true, 0.35);
       levels.push({ d: l2k, win: m2 >= 8 || juke, y: g1 });
@@ -531,7 +540,7 @@ const Engine = (() => {
       else {
         const g2 = g1 + U.ri(2, 6);
         const l3k = dc === 'runstop' ? 'S2' : side === 'R' ? 'S2' : 'S1';
-        const m3 = gap(elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.6 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) + sm(gs, det, rb, 'wrecking') * 0.4 - sm(gs, det, D[l3k], 'suretackle') * 0.6;
+        const m3 = gap(elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.5 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) + sm(gs, det, rb, 'wrecking') * 0.4 - sm(gs, det, D[l3k], 'suretackle') * 0.6;
         levels.push({ d: l3k, win: m3 >= 0, y: g2 });
         if (m3 < 0) { yards = g2 + U.ri(0, 4); tackler = l3k; }
         else { yards = g2 + U.ri(8, 40) + Math.round(sm(gs, det, rb, 'homerun') * U.rand(0.5, 1.5)); tackler = side === 'R' ? 'CB2' : 'CB1'; }
@@ -599,7 +608,7 @@ const Engine = (() => {
     const rushStkRaw = (rp, bp) => sm(gs, det, rp, 'bender', rp.pos === 'DL' && (rp === D.DE1 || rp === D.DE2)) + sm(gs, det, rp, 'bullrush') * (bp && tierOf(bp, 'anchor') >= 0 ? 0.3 : 1)
       + sm(gs, det, rp, 'closer', lead) + sm(gs, det, rp, 'blitzer', dc === 'blitz' && rp.pos !== 'DL')
       - (bp ? sm(gs, det, bp, 'brickwall') + sm(gs, det, bp, 'anchor') * 0.5 : 0);
-    const rushRes = pairs.map(([r, b]) => ({ r, b, m: gap(passRush(gs, d, D[r]) - passBlk(gs, o, O[b])) * 0.7 + U.gauss(0, 9) - (dc === 'cover' ? 2 : 0) + rushStk(D[r], O[b]) }));
+    const rushRes = pairs.map(([r, b]) => ({ r, b, m: gap(passRush(gs, d, D[r]) - passBlk(gs, o, O[b])) * 0.6 + U.gauss(0, 9) - (dc === 'cover' ? 2 : 0) + rushStk(D[r], O[b]) }));
     const weakest = rushRes.filter(x => x.r.startsWith('DT')).sort((a, b) => b.m - a.m)[0];
     weakest.m -= 6; weakest.help = help;
     blitzers.forEach((bz, i) => {
@@ -625,7 +634,7 @@ const Engine = (() => {
       let sep;
       if (!dk) sep = 9 + U.gauss(0, 3);
       else {
-        sep = gap(routeR(gs, o, rec) - coverR(gs, d, D[dk])) * 0.5 + U.gauss(0, 4.8);
+        sep = gap(routeR(gs, o, rec) - coverR(gs, d, D[dk])) * 0.42 + 1.6 + U.gauss(0, 4.8);
         if (depth >= 15) sep += { base: -3, cover: -5, blitz: 2, runstop: 3 }[dc];
         else if (depth < 10) sep += { base: 0, cover: 2.5, blitz: 0, runstop: 1 }[dc];
         if (oc === 'pa' && dc !== 'cover') sep += 3;
@@ -696,7 +705,7 @@ const Engine = (() => {
     const qbStk = sm(gs, det, qb, 'dime', dpt >= 15) + sm(gs, det, qb, 'iceveins', clutch(gs)) + sm(gs, det, qb, 'trigger', oc === 'quick' || oc === 'screen') * 0.6
       + (pressured ? sm(gs, det, qb, 'pocket') * 2.5 : 0);
     const recStk = sm(gs, det, O[target.slot], 'gluehands', target.sep < 0) + sm(gs, det, O[target.slot], 'redzone', redZone(gs)) * 0.2;
-    const pC = sig(-0.04 + target.sep * 0.15 + gap(acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt) + soft(qbStk + recStk, 0.32));
+    const pC = sig(0.1 + target.sep * 0.15 + gap(acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt) + soft(qbStk + recStk, 0.32));
     const hawk = cov0 && target.sep < 1 && sp(gs, det, cov0, 'ballhawk', true, 0.5) ? 1.1 : 0;
     const pI = sig(-4.4 - target.sep * 0.2 - gap(acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0) + gs.wxm.int + hawk);
     // Moss'd: a contested deep ball the receiver simply goes up and takes
@@ -738,7 +747,7 @@ const Engine = (() => {
       let tackler = null;
       for (let i = 0; i < 3; i++) {
         const dk = chasers[i], df = D[dk];
-        const m = gap(elusR(gs, o, rec) - tackleR(gs, d, df)) * 0.6 + U.gauss(0, 11) + (i === 0 && target.sep > 4 ? 5 : 0) - i * 2 + soft(sm(gs, det, rec, 'yac'), 3) - soft(sm(gs, det, df, 'suretackle') + sm(gs, det, df, 'sideline', oc === 'screen'), 3);
+        const m = gap(elusR(gs, o, rec) - tackleR(gs, d, df)) * 0.5 + U.gauss(0, 11) + (i === 0 && target.sep > 4 ? 5 : 0) - i * 2 + soft(sm(gs, det, rec, 'yac'), 3) - soft(sm(gs, det, df, 'suretackle') + sm(gs, det, df, 'sideline', oc === 'screen'), 3);
         attempts.push({ d: dk, at: Math.round(dpt + yac), win: m > 9 });
         if (m > 9) { yac += U.ri(2, 6); if (i === 2) yac += U.ri(6, 35); }
         else { tackler = dk; yac += m > 0 ? U.ri(1, 3) : 0; break; }

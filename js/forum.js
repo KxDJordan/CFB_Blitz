@@ -50,6 +50,8 @@ const Forum = (() => {
     tradeWin: ['Front office just won the offseason. LETS GO.', 'Finally a GM who goes and gets guys.', 'That\'s a fleecing. Somebody check on the other side.', 'Instant upgrade. This changes our ceiling.', 'Love it. Win-now move.'],
     tradeLose: ['Hated that guy leaving, but I get it.', 'We better have a plan for those picks.', 'What did we just do?', 'Selling at the deadline... rebuild confirmed.', 'This trade will age badly. Mark my words.'],
     tradeN: ['Both sides can talk themselves into this one.', 'Picks are lottery tickets. Proven talent wins.', 'Winner of this trade gets decided in three years.', 'Interesting price. Didn\'t think he\'d go that cheap.', 'Contender move. I respect it.'],
+    fa: ['Finally spending money. About time.', 'Overpaid. Mark it down.', 'That contract is a bargain for what he brings.', 'Front office is going all in this year.', 'Love the signing, hate the years.', 'Fit matters more than the name. This fits.'],
+    combine: ['Tape > 40 times. Every year people forget.', 'That 40 time just made somebody a lot of money.', 'Bench reps are overrated for a corner.', 'The football IQ score is the one I actually care about.', 'Workout warrior alert.'],
     retire: ['Hall of Fame career. Thank you for everything.', 'One of the best to ever do it here.', 'Enjoy retirement, legend.', 'Feels like he played forever. End of an era.', 'Never got the ring he deserved.'],
   };
 
@@ -447,11 +449,44 @@ const Forum = (() => {
         replies: replies(4, [{ w: 1, lines: R.retire }], {}),
       });
     }
+    if ((o.walked || []).length) {
+      thread(is, {
+        tag: 'FREE AGENCY', heat: 76, a: insider(),
+        title: `${o.walked.length} players set to hit free agency after their teams pass on new deals`,
+        body: o.walked.sort((a, b) => b.ovr - a.ovr).slice(0, 10).map(p => `• ${p.pos} ${p.name} (${p.ovr} OVR, age ${p.age}) — formerly ${L.team(p.teamId).abbr}`).join('\n'),
+        replies: replies(4, [{ w: 1, lines: R.fa }], {}),
+      });
+    }
+    const cls = (G.nextClass || []).map(id => G.players[id]).filter(Boolean);
+    if (cls.length) {
+      const fast = cls.slice().sort((a, b) => a.comb.forty - b.comb.forty).slice(0, 3), strong = cls.slice().sort((a, b) => b.comb.bench - a.comb.bench)[0], smart = cls.slice().sort((a, b) => b.comb.iq - a.comb.iq)[0];
+      thread(is, {
+        tag: 'COMBINE', heat: 72, a: insider(),
+        title: `Combine standouts: ${fast[0].pos} ${pname(fast[0])} blazes a ${fast[0].comb.forty} forty`,
+        body: 'Fastest 40s:\n' + fast.map(p => `• ${p.pos} ${pname(p)}, ${p.college} — ${p.comb.forty}s`).join('\n') + `\n\nMost bench reps: ${strong.pos} ${pname(strong)} (${strong.comb.bench})\nTop football IQ: ${smart.pos} ${pname(smart)} (${smart.comb.iq})\n\nScouts have ${DATA.SCOUT_PTS.annual} visits to spend before the draft.`,
+        replies: replies(4, [{ w: 1, lines: R.combine }], {}),
+      });
+    }
     thread(is, {
       tag: 'DISCUSSION', heat: 84, mine: true, a: fan(u), teams: [u.id],
       title: o.retired.length ? `${u.name} lose ${o.retired.length} veteran${o.retired.length > 1 ? 's' : ''} to retirement — who steps up in ${G.year}?` : `No retirements in ${u.name} this year — is this roster ready to contend?`,
       body: (o.retired.length ? o.retired.sort((a, b) => b.ovr - a.ovr).slice(0, 8).map(p => `• ${p.pos} ${p.name} (${p.ovr}, age ${p.age})`).join('\n') + '\n\n' : '') + 'The draft is next. Trade up, trade down, or stand pat?',
       replies: replies(6, [{ w: 3, team: u, lines: R.draft }, { w: 1, lines: R.neutral }], { M: u.mascot, W: u.name, L: 'rivals', WM: u.mascot }),
+    });
+    sortIssue(is);
+  }
+
+  // ── free agency ──
+  function freeAgency(signed, day) {
+    const is = issue(`fa-${G.year}`, `Free Agency ${G.year}`, 'offseason');
+    if (!signed.length) return;
+    const u = L.user(), top = signed.slice().sort((a, b) => b.sal - a.sal);
+    const big = top[0], bt = L.team(big.team);
+    thread(is, {
+      tag: 'FREE AGENCY', heat: 70 + Math.max(0, big.ovr - 70) + (signed.some(x => x.team === u.id) ? 15 : 0), a: insider(), teams: [...new Set(signed.map(x => x.team))],
+      title: `Free agency Day ${day}: ${big.pos} ${big.name} signs with ${bt.name} (${big.yrs} yr${big.yrs > 1 ? 's' : ''}, $${big.sal}M/yr)`,
+      body: top.slice(0, 12).map(x => `• ${L.team(x.team).abbr}: ${x.pos} ${x.name} (${x.ovr}, age ${x.age}) — ${x.yrs} yr${x.yrs > 1 ? 's' : ''}, $${x.sal}M/yr`).join('\n'),
+      replies: replies(5, [{ w: 2, team: bt, lines: R.fa }, { w: 2, lines: R.fa }], {}),
     });
     sortIssue(is);
   }
@@ -473,5 +508,5 @@ const Forum = (() => {
     sortIssue(is);
   }
 
-  return { weekly, preseason, draftOpen, draftRecap, campReport, seasonEnd, offseason, trade };
+  return { weekly, preseason, draftOpen, draftRecap, campReport, seasonEnd, offseason, trade, freeAgency };
 })();

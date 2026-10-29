@@ -14,6 +14,8 @@ const DATA = (() => {
   const ROSTER_MAX = 53, OFF_ROSTER_MAX = 60; // 53 in season; extra camp bodies are allowed until cut-down day
   // league calendar: 14-week regular season, then a 4-team bracket in each conference and the title game
   const SEASON = { REG: 14, WC: 15, CC: 16, FINAL: 17, DEADLINE: 9, ROUNDS: 7, PLAYOFF: 4 };
+  // salary cap ($M per league year), free agency length, scouting budgets
+  const CAP = 200, FA_DAYS = 4, SCOUT_PTS = { founding: 30, annual: 24 };
   const expLabel = p => (p.exp > 0 ? `${p.exp} yr${p.exp > 1 ? 's' : ''}` : 'Rookie');
   // draft prospects carry a scouting grade (1-5) instead of recruiting stars
   const GRADE = { 5: '1st-round grade', 4: '2nd-round grade', 3: 'Day 2 grade', 2: 'Day 3 grade', 1: 'Priority FA' };
@@ -242,7 +244,7 @@ const DATA = (() => {
   const WEEK_SHORT = w => (w <= SEASON.REG ? `Wk ${w}` : w === SEASON.WC ? 'WC' : w === SEASON.CC ? 'CONF' : 'BOWL');
 
   return {
-    FIRST, LAST, TOWNS, POSITIONS, POS_NAME, OFFENSE, ROSTER_QUOTA, STARTERS, ROSTER_MAX, OFF_ROSTER_MAX, SEASON, expLabel, GRADE, GRADE_SHORT,
+    FIRST, LAST, TOWNS, POSITIONS, POS_NAME, OFFENSE, ROSTER_QUOTA, STARTERS, ROSTER_MAX, OFF_ROSTER_MAX, SEASON, CAP, FA_DAYS, SCOUT_PTS, expLabel, GRADE, GRADE_SHORT,
     ATTRS, SKILL_LABEL, ATTR_LABEL, ATTR_LONG, OVR_W, NUMBERS, FRANCHISES, SCHOOLS, COLLEGES, COLORS, CONFS, DIVS, DIFFICULTY,
     STICKER_TIERS, STICKERS, stickersFor, WEATHER, WEATHER_TIME, TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
     attrLabel: (pos, a) => (a === 'skl' ? SKILL_LABEL[pos] : ATTR_LABEL[a]),
