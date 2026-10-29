@@ -106,7 +106,7 @@ const Engine = (() => {
     if (O.dl > D.ol + 4) def = 'blitz';
     else if (oppPass - oppRun > 4) def = 'cover';
     else if (oppRun - oppPass > 4) def = 'runstop';
-    return { off, def };
+    return { off, def, book: off === 'air' ? 'spread' : off === 'ground' ? 'pro' : 'multiple' };
   }
   function aiAdjust(gs, side) {
     if (side === gs.userSide) return;
@@ -854,7 +854,7 @@ const Engine = (() => {
     if (oc === 'punt' && !gs.ot) return prepPunt(gs);
     if (oc === 'punt') oc = aiOffCall(gs);
     if (!userOff && oc === 'screen' && U.chance(0.45)) oc = 'quick';
-    const play = Playbook.offById(oc) || Playbook.pickOff(oc);
+    const play = Playbook.offById(oc) || Playbook.pickOff(oc, gs.plan[o] && gs.plan[o].book);
     const flip = userOff && input.flip != null ? !!input.flip : U.chance(0.5);
     const dplay = (userDef && Playbook.defById(input.def)) || Playbook.pickDef(userDef ? input.def : aiDefCall(gs), gs);
     const cat = play.cat, dc = dplay.cat;

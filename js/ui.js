@@ -316,9 +316,11 @@ const UI = (() => {
     </div>`;
   }
   function planPicker(cur, act) {
-    return `<div class="kicker mb8">Offense</div><div class="plan-chips c3 mb12">${DATA.PLANS.off.map(p => `<button class="plan-chip ${cur.off === p.id ? 'on' : ''}" data-a="${act}" data-v="off:${p.id}">${p.label}</button>`).join('')}</div>
+    const book = cur.book || 'multiple';
+    return `<div class="kicker mb8">Playbook</div><div class="plan-chips c3 mb12">${Object.entries(Playbook.BOOKS).map(([id, b]) => `<button class="plan-chip ${book === id ? 'on' : ''}" data-a="${act}" data-v="book:${id}">${b.name}</button>`).join('')}</div>
+      <div class="kicker mb8">Offense</div><div class="plan-chips c3 mb12">${DATA.PLANS.off.map(p => `<button class="plan-chip ${cur.off === p.id ? 'on' : ''}" data-a="${act}" data-v="off:${p.id}">${p.label}</button>`).join('')}</div>
       <div class="kicker mb8">Defense</div><div class="plan-chips c4">${DATA.PLANS.def.map(p => `<button class="plan-chip ${cur.def === p.id ? 'on' : ''}" data-a="${act}" data-v="def:${p.id}">${p.short}</button>`).join('')}</div>
-      <div class="tiny muted mt8">${DATA.PLANS.off.find(p => p.id === cur.off).desc} ${DATA.PLANS.def.find(p => p.id === cur.def).desc}</div>`;
+      <div class="tiny muted mt8">${Playbook.BOOKS[book].name}: ${Playbook.BOOKS[book].desc} ${DATA.PLANS.off.find(p => p.id === cur.off).desc} ${DATA.PLANS.def.find(p => p.id === cur.def).desc}</div>`;
   }
   function nextGameCard() {
     const u = L.user(), g = L.userGame(), wk = G.week;
@@ -850,11 +852,12 @@ const UI = (() => {
     const st = S.game, gs = st.gs, key = `${st.need}:${gs.n}:${gs.down}:${gs.ball}`;
     if (st.suggKey === key && st.sugg) return st.sugg;
     let v;
-    if (st.need === 'off') { const c = Engine.suggestOff(gs); v = ['punt', 'fg', 'kneel'].includes(c) ? c : bestOf(Playbook.OFF.filter(p => p.cat === c && p.run?.scheme !== 'sneak'), gs).id; }
+    if (st.need === 'off') { const c = Engine.suggestOff(gs), bk = myBook(); v = ['punt', 'fg', 'kneel'].includes(c) ? c : bestOf(Playbook.OFF.filter(p => p.cat === c && p.run?.scheme !== 'sneak' && Playbook.inBook(p, bk)), gs).id; }
     else v = Playbook.pickDef(Engine.aiDefCall(gs, gs.userSide), gs).id;
     st.suggKey = key; st.sugg = v;
     return v;
   }
+  const myBook = () => { const gs = S.game.gs; return (gs.plan[gs.userSide] && gs.plan[gs.userSide].book) || 'multiple'; };
   // within a call family, prefer short-yardage plays when it's short and shots when it's long
   function bestOf(list, gs) {
     const sc = p => (p.kind === 'run' && gs.togo <= 2 ? (p.run.scheme === 'zone' || p.run.scheme === 'power' ? 2 : 0) : 0) + (p.kind === 'pass' && gs.togo >= 8 ? (p.cat === 'deep' ? 1 : 0) : 0) + Math.random();
@@ -906,14 +909,15 @@ const UI = (() => {
         if (f.canPunt && gs.down === 4) special.push({ id: 'punt', label: 'Punt', desc: 'Flip the field.' });
         if (Engine.canKneel(gs)) special.push({ id: 'kneel', label: 'Victory Formation', desc: 'Take a knee, burn clock.' });
       }
-      tabs = tabBtn('picks', 'OC Picks') + (special.length ? tabBtn('st', 'Special') : '') + Object.entries(Playbook.FORMS).map(([id, f]) => tabBtn(id, f.name.replace('Shotgun ', 'Gun '))).join('');
+      const bk = myBook(), forms = Playbook.BOOKS[bk].forms || Object.keys(Playbook.FORMS);
+      tabs = tabBtn('picks', 'OC Picks') + (special.length ? tabBtn('st', 'Special') : '') + forms.map(id => tabBtn(id, Playbook.FORMS[id].name.replace('Shotgun ', 'Gun ').replace('Singleback ', 'Single '))).join('');
       let list;
       if (tab === 'st' && special.length) list = null;
       else if (tab === 'picks') {
         // the coordinator's pick plus the best-looking play from each other family
         if (st.picksKey !== st.suggKey) {
           const fam = {};
-          for (const p of U.shuffle(Playbook.OFF.slice())) { if (p.run?.scheme === 'sneak' && gs.togo > 2) continue; if (!fam[p.cat]) fam[p.cat] = p; }
+          for (const p of U.shuffle(Playbook.OFF.filter(q => Playbook.inBook(q, bk)))) { if (p.run?.scheme === 'sneak' && gs.togo > 2) continue; if (!fam[p.cat]) fam[p.cat] = p; }
           const sp0 = Playbook.offById(st.sugg);
           st.picks = Object.values(fam).filter(p => !sp0 || p.cat !== sp0.cat).sort((a, b) => e[b.cat] - e[a.cat]).slice(0, 4).map(p => p.id);
           st.picksKey = st.suggKey;
@@ -933,7 +937,7 @@ const UI = (() => {
       const O = Engine.slots(gs, 1 - us, true);
       const threat = ['WR1', 'WR2', 'RB', 'TE', 'QB'].map(k => O[k]).filter(p => p.id >= 0).sort((a, b) => b.ovr - a.ovr)[0];
       intel = `Offense: pass ${pr}% · run ${100 - pr}%${t.last ? ` · last: ${CAT[t.last] || callName(t.last)}` : ''}${threat ? ` · top threat ${threat.pos} ${esc(threat.last)} (${threat.ovr})` : ''}`;
-      const groups = { picks: null, zone: ['c2', 'c3', 'c4', 'prevent'], man: ['c1', 'box'], blitz: ['mike', 'c0', 'fire'] };
+      const groups = { picks: null, zone: ['c2', 'c3', 'c4', 'c6', 'tampa', 'buzz', 'prevent'], man: ['c1', 'c2man', 'box', 'goal'], blitz: ['mike', 'c0', 'fire', 'sblitz', 'cfire'] };
       tabs = tabBtn('picks', 'DC Picks') + tabBtn('zone', 'Zone') + tabBtn('man', 'Man') + tabBtn('blitz', 'Blitz');
       const ids = groups[tab] || null;
       let list = ids ? ids.map(Playbook.defById) : Playbook.DEF.slice();

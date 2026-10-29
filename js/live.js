@@ -598,7 +598,7 @@ const Live = (() => {
       if (d.side === a.side || d.down > 0 || d.eng) continue;
       if (mode === 'pass' && !d.rushing) continue;
       const dd = d2(a, d);
-      if (dd > (mode === 'pass' ? 4.8 : 7)) continue;
+      if (dd > (mode === 'pass' ? 4.8 : F.kind === 'ret' ? 30 : 7)) continue;
       if (mode !== 'pass' && (d.y - ref.y) * (F.cdir || 1) < -1.5) continue; // already behind the ball
       let claimed = false;
       for (const b of S.list) if (b !== a && b.side === a.side && b.blockT === d && d2(b, d) < dd) { claimed = true; break; }
@@ -612,7 +612,7 @@ const Live = (() => {
       const F = S.fp, c = S.carrier;
       if ((a.blockCD || 0) > S.t) { if (c && mode !== 'pass') seek(a, a.x, a.y + F.cdir * 0.5, 0.4); return; }
       let t = a.blockT;
-      if (!t || t.down > 0 || (t.eng && t.eng.a !== a) || d2(a, t) > 8 || (mode === 'pass' && !t.rushing)) a.blockT = t = pickBlock(a, mode);
+      if (!t || t.down > 0 || (t.eng && t.eng.a !== a) || d2(a, t) > (F.kind === 'ret' ? 30 : 8) || (mode === 'pass' && !t.rushing)) a.blockT = t = pickBlock(a, mode);
       if (!t) {
         if (mode === 'pass' && home) { seek(a, home[0], home[1], 0.7, 0.5); a.faceT = Math.PI / 2; }
         else if (c && c.side === a.side) seek(a, clampX(c.x + (a.x - c.x) * 0.4), c.y + F.cdir * 3.5, 0.85, 0.6);
@@ -620,7 +620,7 @@ const Live = (() => {
         return;
       }
       const ref = mode === 'pass' ? F.qb : (c && c.side === a.side ? c : F.qb || a);
-      const k = mode === 'pass' ? 0.62 : 0.78;
+      const k = mode === 'pass' ? 0.62 : F.kind === 'ret' && d2(a, t) > 4 ? 0.95 : 0.78;
       seek(a, clampX(t.x * k + ref.x * (1 - k)), t.y * k + ref.y * (1 - k), 1, 0.3);
       a.faceT = ang(t.x - a.x, t.y - a.y);
     };
@@ -1296,6 +1296,12 @@ const Live = (() => {
       const a = A('o' + k);
       if (!a || a === car) continue;
       setBlocker(a, 'run');
+      if (k === 'TE' && a.y < L0 - 3) {
+        // fullback: lead up through the hole, then take the first defender who shows
+        const lead = blockBrain('run');
+        a.brain = b => (S.t - S.snapT < 0.9 && !b.eng && b.y < L0 + 0.5 ? seek(b, holeX - side * 0.4, L0 + 0.6, 1, 0.3) : lead(b));
+        continue;
+      }
       if (k !== 'RB') { let best = null, bd = 99; for (const d of S.list) if (d.side !== S.o && !taken.has(d)) { const dd = d2(a, d); if (dd < bd) { bd = dd; best = d; } } if (best && bd < 8) { a.blockT = best; taken.add(best); } }
       else a.brain = b => (S.t - S.snapT < 0.8 ? seek(b, holeX - side * 1.5, L0 - 1.5, 0.9) : blockBrain('run')(b));
     }
@@ -1398,7 +1404,8 @@ const Live = (() => {
     S.snapT = S.t;
     kicker.brain = a => (pt() < 1.0 ? seek(a, CX - 0.2, 34.6, 0.75, 0.3) : seek(a, CX, 55, 0.6));
     for (const a of cover) a.brain = b => (pt() < 0.6 ? stop(b) : seek(b, b.x * 0.75 + landX * 0.25, Math.min(land, 100) - 12, 0.8, 2.5));
-    for (const a of recv) if (a !== ret) a.brain = b => (pt() < 1.1 ? stop(b) : seek(b, b.mark[0] * 0.7 + landX * 0.3, Math.max(b.mark[1], land - 20), 0.7));
+    // the return unit drops back early and settles facing upfield, so it can attack the coverage at the catch
+    for (const a of recv) if (a !== ret) a.brain = b => { if (pt() < 0.25) return stop(b); seek(b, b.mark[0] * 0.75 + landX * 0.25, Math.max(b.mark[1], land - (b.mark[1] < 55 ? 25 : 15)), 0.9, 2.2); b.faceT = -Math.PI / 2; };
     ret.brain = a => seek(a, landX, Math.min(land, 108), 0.85, 1);
     S.focus = () => { const p = ballPos(); if (S.ball.mode !== 'air') return [p.x, Math.min(p.y + 3, 106)]; const cy = U.avg(cover.map(c => c.y)); return [p.x * 0.5 + CX * 0.5, Math.min(p.y, land - 12, cy + 13) + 3]; };
     at(S.t + 1.0, () => {
@@ -1479,8 +1486,13 @@ const Live = (() => {
     S.fp = F; S.free = true; S.dirUp = -1;
     ret.brain = runnerBrain; ret.lane = null;
     for (const c of cover) { if (c.eng) release(c.eng); c.readT = 0; c.brain = pursue; }
-    const targets = cover.slice().sort((a, b) => d2(a, ret) - d2(b, ret)).slice(1);
-    blockers.forEach((b, i) => { if (b.eng) release(b.eng); setBlocker(b, 'run'); b.blockT = targets[i % Math.max(1, targets.length)] || null; });
+    // each blocker takes the nearest coverage man in his lane (greedy closest pairs); the kicker is usually left over
+    for (const b of blockers) { if (b.eng) release(b.eng); setBlocker(b, 'run'); b.blockT = null; }
+    const pairs = [];
+    for (const b of blockers) for (const c of cover) pairs.push([Math.abs(b.x - c.x) * 1.4 + Math.abs(b.y - c.y) * 0.6, b, c]);
+    pairs.sort((p, q) => p[0] - q[0]);
+    const takenC = new Set();
+    for (const [, b, c] of pairs) if (!b.blockT && !takenC.has(c)) { b.blockT = c; takenC.add(c); }
     S.onTackle = () => pop(ret.x, ret.y, `${Math.max(0, Math.round(land - spotOf(ret)))} YD RETURN`, '#ffffff');
     S.result = () => {
       const y = F.spotY != null ? F.spotY : spotOf(ret);
