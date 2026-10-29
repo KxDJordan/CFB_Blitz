@@ -36,6 +36,11 @@ body[data-theme="day"] {
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; margin: 0; }
+/* the page canvas (what iOS shows under the home indicator, behind the toolbar and on overscroll)
+   takes the theme colour, not white; the theme variables live on body, so the colours are literal here */
+html { background: #090e19; color-scheme: dark; }
+html[data-theme="turf"] { background: #06140d; }
+html[data-theme="day"] { background: #eef2f7; color-scheme: light; }
 body {
   background: var(--stage); color: var(--text); font-family: var(--f-body); font-size: 15px; line-height: 1.4;
   -webkit-font-smoothing: antialiased; overscroll-behavior: none; transition: background .3s;
@@ -56,9 +61,11 @@ svg { display: block; }
 /* phones: pin the app to the screen edges so it always fills the display (no gap under the
    browser toolbar, in home-screen mode, or where dvh isn't supported) */
 @media (max-width: 619px) {
-  html, body { background: var(--bg); }
+  body { background: var(--bg); }
   #stage { position: fixed; inset: 0; min-height: 0; }
   #app { height: 100%; max-width: none; }
+  /* launched from the home screen, iOS can report a viewport shorter than the screen; size to the real screen */
+  html.standalone #stage { bottom: auto; height: var(--app-h, 100lvh); }
 }
 @media (min-width: 620px) {
   #stage { align-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 14%, var(--stage)), var(--stage) 70%); }

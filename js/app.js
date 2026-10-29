@@ -3,7 +3,17 @@
 
 // the real visible height, kept current (rotation, toolbars, returning to a home-screen app)
 (function fitViewport() {
-  const set = () => document.documentElement.style.setProperty('--app-h', `${window.innerHeight}px`);
+  const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  if (standalone) document.documentElement.classList.add('standalone');
+  const set = () => {
+    let h = window.innerHeight;
+    // home-screen apps fill the whole screen, but iOS may report innerHeight short by the status bar / home indicator
+    if (standalone && screen.width && screen.height) {
+      const portrait = window.innerHeight >= window.innerWidth;
+      h = Math.max(h, portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height));
+    }
+    document.documentElement.style.setProperty('--app-h', `${h}px`);
+  };
   set();
   window.addEventListener('resize', set);
   window.addEventListener('orientationchange', () => setTimeout(set, 250));

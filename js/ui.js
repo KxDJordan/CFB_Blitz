@@ -144,7 +144,8 @@ const UI = (() => {
   }
   function applyTheme() {
     const theme = (G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night';
-    document.body.dataset.theme = theme;
+    document.body.dataset.theme = theme; document.documentElement.dataset.theme = theme;
+    document.documentElement.style.background = theme === 'day' ? '#eef2f7' : theme === 'turf' ? '#06140d' : '#090e19';
     const root = document.documentElement.style;
     let a = '#f97316', a2 = '#fbbf24';
     if (G && G.teams && G.teams.length && S.screen !== 'menu' && S.screen !== 'create') {
