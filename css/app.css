@@ -61,11 +61,15 @@ svg { display: block; }
 /* phones: pin the app to the screen edges so it always fills the display (no gap under the
    browser toolbar, in home-screen mode, or where dvh isn't supported) */
 @media (max-width: 619px) {
-  body { background: var(--bg); }
-  #stage { position: fixed; inset: 0; min-height: 0; }
+  /* the document itself never scrolls or rubber-bands (iOS would drag the page canvas over the app);
+     all scrolling happens inside the app's own panels */
+  html { overflow: hidden; overscroll-behavior: none; }
+  body { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
+  #stage { position: fixed; top: 0; left: 0; right: 0; bottom: 0; min-height: 0; }
   #app { height: 100%; max-width: none; }
   /* launched from the home screen, iOS can report a viewport shorter than the screen; size to the real screen */
-  html.standalone #stage { bottom: auto; height: var(--app-h, 100lvh); }
+  html.standalone body { bottom: auto; height: max(100%, var(--app-h, 100lvh)); }
+  html.standalone #stage { bottom: auto; height: max(100%, var(--app-h, 100lvh)); }
 }
 @media (min-width: 620px) {
   #stage { align-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 14%, var(--stage)), var(--stage) 70%); }

@@ -1403,7 +1403,15 @@ const UI = (() => {
     A.confirmNew();
   };
   A.confirmNew = () => { closeSheet(); initCreate(); S.screen = 'create'; render(); };
-  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div>`);
+  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div>${displayInfo()}`);
+  // screen-fit readout, so a layout gap on a particular phone can be diagnosed from real numbers
+  const displayInfo = () => {
+    const de = document.documentElement, st = document.getElementById('stage').getBoundingClientRect(), cs = getComputedStyle(de);
+    const probe = document.createElement('div'); probe.style.cssText = 'position:fixed;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom);visibility:hidden';
+    document.body.appendChild(probe); const pc = getComputedStyle(probe), safe = `${parseInt(pc.top)}/${parseInt(pc.bottom)}`; probe.remove();
+    const vv = window.visualViewport ? Math.round(visualViewport.height) : '–';
+    return `<div class="kicker mb8 mt16">Display</div><div class="small muted num">screen ${screen.width}×${screen.height} · window ${innerWidth}×${innerHeight} · visual ${vv} · doc ${de.clientHeight} · app ${Math.round(st.top)}–${Math.round(st.bottom)} · fit ${cs.getPropertyValue('--app-h').trim() || '–'} · safe ${safe} · ${de.classList.contains('standalone') ? 'home screen' : 'browser'}</div>`;
+  };
   A.theme = v => {
     localStorage.setItem('cfbblitz.theme', v);
     if (G && G.settings) { G.settings.theme = v; L.save(); }

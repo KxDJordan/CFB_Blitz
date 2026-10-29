@@ -6,7 +6,7 @@
   const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
   if (standalone) document.documentElement.classList.add('standalone');
   const set = () => {
-    let h = window.innerHeight;
+    let h = Math.max(window.innerHeight, document.documentElement.clientHeight || 0);
     // home-screen apps fill the whole screen, but iOS may report innerHeight short by the status bar / home indicator
     if (standalone && screen.width && screen.height) {
       const portrait = window.innerHeight >= window.innerWidth;
@@ -18,6 +18,9 @@
   window.addEventListener('resize', set);
   window.addEventListener('orientationchange', () => setTimeout(set, 250));
   window.addEventListener('pageshow', set);
+  if (window.visualViewport) visualViewport.addEventListener('resize', set);
+  // nudge the page back to the top if iOS scrolled the document (it can't scroll on purpose)
+  window.addEventListener('scroll', () => { if (window.scrollY) window.scrollTo(0, 0); }, { passive: true });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') set(); });
 })();
 
