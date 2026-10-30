@@ -386,13 +386,14 @@ const Engine = (() => {
   }
 
   // ── special teams ──
-  function kickoff(gs) {
+  // forceTB: the caller already decided it's a touchback (live games roll that before calling)
+  function kickoff(gs, forceTB) {
     const k = gs.kicker, r = 1 - k;
     const ret = who(gs, r, U.pick(['RB', 'WR', 'CB']), 1) || who(gs, r, 'WR', 0) || GHOST('WR');
     const det = { type: 'kickoff', o: r, kickSide: k, returner: ret.id, land: U.ri(-6, 4) };
     gs.lastPlay = det;
     gs.poss = r;
-    if (U.chance(0.62)) {
+    if (forceTB || U.chance(0.62)) {
       gs.ball = 35; det.touchback = true; det.land = U.ri(-8, -2);
       ev(gs, `${gs.abbr[k]} kicks off — touchback. ${gs.abbr[r]} ball at the 35.`, 'kick');
     } else if (U.chance(0.006)) {
@@ -887,7 +888,8 @@ const Engine = (() => {
   }
   function prepKickoff(gs) {
     const k = gs.kicker, r = 1 - k;
-    if (U.chance(0.62)) { kickoff(gs); gs.lastPlay.touchback = true; gs.lastPlay.live = false; gs.wpH.push(winProb(gs)); return gs.lastPlay; }
+    // one roll decides it: a touchback is booked as one (and lands deep in the end zone), never a return relabelled as a touchback
+    if (U.chance(0.62)) { kickoff(gs, true); gs.lastPlay.live = false; gs.wpH.push(winProb(gs)); return gs.lastPlay; }
     const ret = who(gs, r, U.pick(['RB', 'WR', 'CB']), 1) || who(gs, r, 'WR', 0) || GHOST('WR');
     const det = { type: 'kickoff', live: true, o: r, kickSide: k, returner: ret.id, land: U.ri(-4, 7) };
     gs.lastPlay = det;

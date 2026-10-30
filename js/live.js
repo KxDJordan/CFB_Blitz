@@ -1005,14 +1005,25 @@ const Live = (() => {
     seek(a, clampX(tx), Math.min(ty, 109.3), S.t - S.snapT < 0.5 ? 0.85 : 1, 0.4);
     a.faceT = ang(F.qb.x - a.x, F.qb.y - a.y);
   }
-  // in the air: go get the ball if he can, otherwise get to the receiver to make the tackle
-  function playBall(a) {
-    const F = S.fp, b = S.ball, left = Math.max(0, b.t0 + b.dur - S.t);
-    const dd = hyp(b.tx - a.x, b.ty - a.y);
-    if (dd / a.vmax < left + 0.35 || dd < 6) seek(a, b.tx, b.ty, 1, 0.15);
-    else pursueSpot(a, b.tx, b.ty);
+  // run to a spot the ball is coming down on: paced to get there as it lands (arriving `early` seconds
+  // ahead), and never faster than he can still stop on it, so he doesn't run straight past the catch point
+  function meetSpot(a, x, y, left, early = 0) {
+    const gx = clampX(x), gy = Math.min(y, 109.4);
+    const dx = gx - a.x, dy = gy - a.y, d = hyp(dx, dy);
+    if (d < 0.15) { a.wx = 0; a.wy = 0; return d; }
+    const brake = a.acc * 1.6; // the step's deceleration limit
+    const sp = Math.min(a.vmax, Math.sqrt(2 * brake * d), d / Math.max(0.05, left - early) * 1.05 + 0.3);
+    a.wx = dx / d * sp; a.wy = dy / d * sp;
+    return d;
   }
-  function pursueSpot(a, x, y) { seek(a, clampX(x), y, 1, 0.4); }
+  // in the air: go get the ball if he can (getting there a beat early to contest it), otherwise
+  // sprint to the spot to make the tackle — either way pulling up on it rather than overrunning it
+  function playBall(a) {
+    const b = S.ball, left = Math.max(0, b.t0 + b.dur - S.t);
+    const dd = hyp(b.tx - a.x, b.ty - a.y);
+    meetSpot(a, b.tx, b.ty, dd / a.vmax < left + 0.35 || dd < 6 ? left : 0, 0.12);
+    a.faceT = ang(b.tx - a.x, b.ty - a.y);
+  }
 
   // ── offense ──
   function routeBrain(a) {
@@ -1034,17 +1045,15 @@ const Live = (() => {
   }
   // adjust stride to arrive at the catch point with the ball
   function trackBall(a) {
-    // he runs to where the throw was meant to go, and only reads the real flight late
-    const b = S.ball, left = Math.max(0.05, b.t0 + b.dur - S.t), F = S.fp;
-    const late = left < 0.55 || !F.aimPt;
-    const gx = late ? b.tx : F.aimPt[0], gy = Math.min(late ? b.ty : F.aimPt[1], 109.4);
-    const dx = gx - a.x, dy = gy - a.y, d = hyp(dx, dy);
-    if (d < 0.15) { a.wx = 0; a.wy = 0; return; }
-    const sp = Math.min(a.vmax, d / left * 1.05 + 0.4);
-    a.wx = dx / d * sp; a.wy = dy / d * sp;
-    a.faceT = ang(F_qbx() - a.x, 0);
+    // off the release he runs to where the throw was meant to go, then reads the real flight as it develops:
+    // his target slides from the aiming point to the landing spot (sharper receivers read it sooner),
+    // so an under- or overthrow is a gradual adjustment instead of a late U-turn
+    const b = S.ball, F = S.fp, left = Math.max(0.05, b.t0 + b.dur - S.t);
+    const read = U.clamp((S.t - b.t0 - 0.12) / Math.max(0.25, b.dur * (0.62 - (a.R.awr - 70) * 0.006)), 0, 1);
+    const ax = F.aimPt ? F.aimPt[0] : b.tx, ay = F.aimPt ? F.aimPt[1] : b.ty;
+    meetSpot(a, ax + (b.tx - ax) * read, ay + (b.ty - ay) * read, left);
+    a.faceT = ang(b.fx - a.x, b.fy - a.y);
   }
-  const F_qbx = () => (S.fp && S.fp.qb ? S.fp.qb.x : CX);
   const BACK = 108.5; // deepest a route or a drop goes: just inside the end line (110)
   // fit a route inside the end zone: anything past the back line runs to it, then settles there
   function fitRoute(pts) {
