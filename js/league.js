@@ -248,7 +248,7 @@ const L = (() => {
   // ── career creation ──
   function newCareer(cfg) {
     G = {
-      v: 1, league: 'pro', year: 2026, season: 1, phase: 'draft', week: 0, userTeamId: 0,
+      v: 1, league: 'pro', year: 2026, season: 1, phase: 'draft', week: 0, userTeamId: 0, payIdx: 1,
       teams: [], players: {}, nextPid: 1, schedule: [], poll: [], prevPoll: [],
       forum: [], forumUnread: 0, history: [], confChamps: [], champion: null, seeds: null,
       plan: { off: 'balanced', def: 'base' }, practice: 'OL', lastPractice: null,
@@ -323,15 +323,27 @@ const L = (() => {
   const STAR_OVR = { 5: [72, 79], 4: [65, 72], 3: [57, 66], 2: [50, 58] };
   // pro potentials: a first-round talent can become a star; most late picks top out as solid backups
   const STAR_POT = { 5: [77, 90], 4: [68, 82], 3: [58, 74], 2: [50, 66] };
+  // annual classes are deeper at the top than the founding one, so a team picking high can rebuild around them
+  const STAR_OVR_ANNUAL = { 5: [72, 80], 4: [65, 73], 3: [57, 66], 2: [50, 58] };
+  const STAR_POT_ANNUAL = { 5: [79, 93], 4: [70, 85], 3: [59, 75], 2: [50, 66] };
   const prospectValue = p => p.ovr + (p.pot - p.ovr) * 0.35;
-  function genProspects(n) {
-    const ids = [];
+  // annual classes follow half of how far the league's starters have climbed since the founding league (median 70):
+  // enough to keep top picks ready to start, without the classes feeding the climb
+  function classLift() {
+    const so = [];
+    for (const t of G.teams) for (const p of roster(t)) if (isStarter(t, p)) so.push(p.ovr);
+    if (!so.length) return 0;
+    so.sort((a, b) => a - b);
+    return Math.round(U.clamp((so[so.length >> 1] - 70) * 0.5, 0, 6));
+  }
+  function genProspects(n, annual) {
+    const ids = [], lift = annual ? classLift() : 0, OVR = annual ? STAR_OVR_ANNUAL : STAR_OVR, POTR = annual ? STAR_POT_ANNUAL : STAR_POT;
     for (let i = 0; i < n; i++) {
       const pos = U.wpick(POS, p => (p === 'K' ? 0.5 : DATA.ROSTER_QUOTA[p]));
       const r = Math.random();
-      const stars = r < 0.05 ? 5 : r < 0.25 ? 4 : r < 0.68 ? 3 : 2;
-      const p = mkPlayer(pos, U.ri(...STAR_OVR[stars]), U.ri(21, 23), null, { stars, pot: U.ri(...STAR_POT[stars]), exp: 0 });
-      const cap = STAR_OVR[stars][1] + 1;
+      const stars = annual ? (r < 0.07 ? 5 : r < 0.27 ? 4 : r < 0.68 ? 3 : 2) : (r < 0.05 ? 5 : r < 0.25 ? 4 : r < 0.68 ? 3 : 2);
+      const p = mkPlayer(pos, U.ri(...OVR[stars]) + lift, U.ri(21, 23), null, { stars, pot: Math.min(99, U.ri(...POTR[stars]) + lift), exp: 0 });
+      const cap = OVR[stars][1] + lift + 1;
       while (p.ovr > cap) { for (const a of DATA.ATTRS) p.attrs[a]--; p.ovr = calcOvr(p); }
       p.pot = Math.max(p.pot, p.ovr + 2);
       p.gr = rollGrowth(p.pot); p.ovr0 = p.ovr;
@@ -388,7 +400,7 @@ const L = (() => {
         order.push(pk ? pk.own : id); orig.push(id);
       }
     }
-    const pool = kind === 'annual' && G.nextClass && G.nextClass.length ? G.nextClass.filter(id => G.players[id]) : genProspects(n * rounds + 40);
+    const pool = kind === 'annual' && G.nextClass && G.nextClass.length ? G.nextClass.filter(id => G.players[id]) : genProspects(n * rounds + 40, kind === 'annual');
     G.nextClass = null;
     G.draft = { kind, year: G.year, rounds, order, orig, idx: 0, pool, log: [] };
   }
@@ -416,16 +428,25 @@ const L = (() => {
     const h = depthHealthy(t, pos).slice(0, DATA.STARTERS[pos]);
     return h.length < DATA.STARTERS[pos] ? 0 : U.avg(h.map(p => p.ovr));
   }
+  // an AI front office's read on a prospect: it leans on the media consensus and adds its own scouts' misread
+  // (the same misread every time it looks at him), so AI teams reach, miss steals and draft their share of busts —
+  // about as sharp as your own read before you scout him, so scouting is where you beat them
+  function aiRead(t, p) {
+    const h = k => { const x = Math.sin(p.id * 12.9898 + t.id * 78.233 + k * 37.719) * 43758.5453; return x - Math.floor(x); };
+    const err = (h(1) + h(2) + h(3) + h(4) - 2) * 6; // ≈ gauss(0, 3.5)
+    const tv = prospectValue(p), v = tv + 0.7 * ((p.cons ?? tv) - tv) + err;
+    return { v, ovr: p.ovr + (v - tv) };
+  }
   function bestPickFor(t, noise = 5) {
     const counts = posCounts(t);
     let best = null, bv = -1e9;
     for (const pid of G.draft.pool.slice(0, 60)) {
-      const p = G.players[pid];
-      let v = (t.user ? perceivedValue(p) : prospectValue(p)) + U.rand(0, noise);
+      const p = G.players[pid], rd = t.user ? null : aiRead(t, p);
+      let v = (t.user ? perceivedValue(p) : rd.v) + U.rand(0, noise);
       const c = counts[p.pos] || 0, q = DATA.ROSTER_QUOTA[p.pos];
       if (c < q) v += 6;
-      const sa = startersAvg(t, p.pos);
-      if (p.ovr > sa) v += (p.ovr - sa) * 0.5;
+      const sa = startersAvg(t, p.pos), ovr = t.user ? scoutView(p).mid : rd.ovr;
+      if (ovr > sa) v += (ovr - sa) * 0.5;
       if (p.pos === 'K' && c >= 1) v -= 25;
       if (c >= q + 2) v -= 10;
       if (v > bv) { bv = v; best = pid; }
@@ -516,12 +537,21 @@ const L = (() => {
   const MIN_SAL = 0.8;
   const SALPOS = { QB: 1.9, RB: 0.75, WR: 1.05, TE: 0.8, OL: 0.95, DL: 1.05, LB: 0.85, CB: 0.95, S: 0.8, K: 0.35 };
   // market salary ($M/yr): driven by rating, with a premium for young upside and a discount for age
-  function marketSalary(p) {
+  function marketSalary(p, idx = G.payIdx || 1) {
     const youth = U.clamp((26 - p.age) / 8, 0, 0.4);
     const eff = p.ovr + (p.pot - p.ovr) * youth - Math.max(0, p.age - 30) * 2;
-    return +U.clamp(MIN_SAL + SAL_K * Math.pow(2, (eff - 62) / SAL_D) * SALPOS[p.pos], MIN_SAL, 50).toFixed(1);
+    return +U.clamp(MIN_SAL + SAL_K * idx * Math.pow(2, (eff - 62) / SAL_D) * SALPOS[p.pos], MIN_SAL, 50).toFixed(1);
   }
   const SAL_K = Number(globalThis.__SALK) || 1.6, SAL_D = Number(globalThis.__SALD) || 6;
+  // the market re-prices every league year: as the league's talent grows, a rating is worth less, so a typical
+  // roster's market value stays near PAY_TARGET of the cap and teams can still afford a full roster
+  const PAY_TARGET = 0.88;
+  function repriceMarket() {
+    const ps = Object.values(G.players).filter(p => p.teamId != null);
+    const raw = ps.reduce((s, p) => s + marketSalary(p, 1) - MIN_SAL, 0);
+    const room = DATA.CAP * PAY_TARGET * G.teams.length - ps.length * MIN_SAL;
+    G.payIdx = +U.clamp(room / Math.max(1, raw), 0.2, 1.1).toFixed(3);
+  }
   const askYears = p => (p.age <= 26 ? U.ri(3, 5) : p.age <= 29 ? U.ri(2, 4) : p.age <= 32 ? U.ri(1, 2) : 1);
   // rookie scale: slotted by draft position
   const rookieDeal = (overall, round) => ({ sal: +(MIN_SAL + 7 * Math.exp(-(overall - 1) / 12)).toFixed(1), yrs: round === 1 ? 4 : 3 });
@@ -1161,12 +1191,14 @@ const L = (() => {
     // unsigned free agents get a year older (and the old ones retire)
     for (const p of freeAgents()) {
       if (retires(p) || p.age >= 33) { G.fa = G.fa.filter(id => id !== p.id); delete G.players[p.id]; continue; }
-      progress(p); p.age++; p.exp++; p.st = blankStats(); p.inj = 0; setAsk(p);
+      progress(p); p.age++; p.exp++; p.st = blankStats(); p.inj = 0;
     }
     G.year++; G.season++;
+    repriceMarket();
+    for (const p of freeAgents()) setAsk(p);
     const walked = rollContracts();
     // next spring's prospects: the combine is run now and scouting starts before the draft
-    G.nextClass = genProspects(G.teams.length * SEA.ROUNDS + 40);
+    G.nextClass = genProspects(G.teams.length * SEA.ROUNDS + 40, true);
     G.scoutPts = DATA.SCOUT_PTS.annual;
     G.off = { stickers, retired, risers: risers.sort((a, b) => b.d - a.d).slice(0, 8), decliners: decliners.sort((a, b) => a.d - b.d).slice(0, 6), leagueRetired: leagueRetired.sort((a, b) => b.ovr - a.ovr), walked };
     G.teams.forEach(rebuildDepth);
@@ -1244,6 +1276,11 @@ const L = (() => {
     for (const p of Object.values(G.players)) if (p.face >= FACES) p.face = p.face % FACES;
     G.picks = G.picks || []; G.trades = G.trades || []; G.fa = G.fa || []; G.faLog = G.faLog || [];
     if (G.scoutPts == null) G.scoutPts = 0;
+    // saves from before the market re-priced each year: price it now, and refresh the asks still open
+    if (G.payIdx == null) {
+      repriceMarket();
+      for (const p of Object.values(G.players)) if (p.ask && (p.fa || p.expiring)) setAsk(p, p.expiring ? U.rand(0.95, 1.15) : undefined);
+    }
     for (const p of Object.values(G.players)) if (p.teamId != null && !p.contract) p.contract = { sal: +(marketSalary(p) * U.rand(0.8, 1.2)).toFixed(1), yrs: U.ri(1, 4) };
     for (const t of G.teams) if (payroll(t) > DATA.CAP) fitUnderCap(t, true);
     Career.ensure();

@@ -583,18 +583,23 @@ const Live = (() => {
 
   // ── pursuit: take an angle to where the carrier will be ──
   function interceptPt(a, t) {
-    const vx = t.vx || 0, vy = t.vy || 0;
+    const vx = t.vx || 0, vy = t.vy || 0, sp = hyp(vx, vy);
+    // from behind, run him down directly with only a short lead: angling for a spot further down the field
+    // carries the pursuer up alongside and out in front of the ball instead of onto the carrier's back
+    if (sp < 0.5 || ((a.x - t.x) * vx + (a.y - t.y) * vy) / sp < 0) return lead(a, t, 0.25);
+    const v = a.vmax * (a.vk || 1);
     for (let tau = 0; tau <= 2.4; tau += 0.1) {
       const px = t.x + vx * tau, py = t.y + vy * tau;
-      if (hyp(px - a.x, py - a.y) <= a.vmax * tau * 0.95 + 0.5) return [px, py];
+      if (hyp(px - a.x, py - a.y) <= v * tau + 0.5) return [px, py];
     }
-    return [t.x + vx * 2.4, t.y + vy * 2.4];
+    // can't head him off from here: close on him rather than racing to a spot he's long past
+    return lead(a, t, 0.6);
   }
   function pursue(a) {
     const c = S.carrier;
     if (!c || c.side === a.side) return stop(a);
-    const [px, py] = interceptPt(a, c);
     a.vk = 1.05; // no ball to carry: pursuers close a little
+    const [px, py] = interceptPt(a, c);
     seek(a, clampX(px), py, 1, 0.25);
     a.faceT = ang(c.x - a.x, c.y - a.y);
   }
