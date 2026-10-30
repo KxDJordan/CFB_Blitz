@@ -83,6 +83,7 @@ const Tutorial = (() => {
     { id: 'callDef', when: () => calling('def'), steps: [
       { target: '.call-intel', title: 'Your call: defense', text: 'Their run/pass split so far, their last play, and their most dangerous player. Use it to guess what\'s coming.' },
       { target: '.pb-tabs', title: 'Zone, man or blitz', text: 'Zone keeps everything in front of you and stops big plays. Man coverage sticks to receivers but can get beaten deep. Blitzes send extra rushers for sacks but leave holes behind them. The DC\'s pick is a solid default.' },
+      { target: '[data-a="gdefBy"]', title: 'Formations and personnel', text: 'Tap here to browse by formation instead of play type. Each package puts different players on the field: Nickel and Dime swap linebackers for extra corners and safeties to stop the pass, a 3-4 stands a fourth linebacker up on the edge, and Goal Line loads up five linemen. Defenders on the play art are colored by position: red line, gold backers, blue DBs.' },
     ] },
     { id: 'fourth', when: () => calling('off') && S().game.gs.down === 4 && !!document.querySelector('[data-a="gcall"][data-v="fg"], [data-a="gcall"][data-v="punt"]'), steps: [
       { target: '[data-a="gcall"][data-v="fg"], [data-a="gcall"][data-v="punt"]', title: 'Fourth down', text: 'Kick a field goal (the make chance is on the card), punt to pin them deep, or go for it with any offensive play. Turning it over on downs hands them the ball right there.' },

@@ -206,6 +206,7 @@ const DATA = (() => {
     irongrip: { name: 'Iron Grip', pos: ['RB'], kind: 'mag', base: 0.18, glyph: 'IG', desc: 'Protects the football — fumbles way down, even in the rain.' },
     hammer: { name: 'Goal-Line Hammer', pos: ['RB'], kind: 'mag', base: 0.9, glyph: 'GH', desc: 'Extra push inside the 5 and on 3rd/4th & short.' },
     bellcow: { name: 'Bell Cow', pos: ['RB'], kind: 'mag', base: 0.08, glyph: 'BC', desc: 'Handles a heavy workload — tires much more slowly.' },
+    truck: { name: 'Truck Stick', pos: ['RB'], kind: 'proc', base: 1, glyph: 'TS', desc: 'Lowers the shoulder and runs straight through a tackler, knocking him flat. Stronger backs truck more often.' },
     stiffarm: { name: 'Stiff Arm', pos: ['RB'], kind: 'proc', base: 1, glyph: 'SA', desc: 'Chance to shove a would-be tackler to the turf once he\'s past the line.' },
     spin: { name: 'Spin Move', pos: ['RB'], kind: 'proc', base: 1, glyph: 'SP', desc: 'Chance to spin out of first contact in the backfield.' },
     cutback: { name: 'Cutback', pos: ['RB'], kind: 'mag', base: 0.8, glyph: 'CU', desc: 'Patient vision: finds the backside lane when the play side clogs.' },
@@ -282,7 +283,7 @@ const DATA = (() => {
       { id: 'qb_dual', bias: 1.8, name: 'Dual Threat', desc: 'Extends plays with his legs and hurts you as a runner.', fit: { spd: 0.75, skl: 0.25 }, focus: ['spd', 'skl'], badges: ['escape', 'scramble', 'ontherun', 'jukebox', 'trigger'] },
     ],
     RB: [
-      { id: 'rb_power', name: 'Power Back', desc: 'Runs through contact and closes out games.', fit: { str: 0.7, awr: 0.3 }, focus: ['str', 'awr'], badges: ['wrecking', 'hammer', 'stiffarm', 'irongrip', 'bellcow'] },
+      { id: 'rb_power', name: 'Power Back', desc: 'Runs through contact and closes out games.', fit: { str: 0.7, awr: 0.3 }, focus: ['str', 'awr'], badges: ['wrecking', 'truck', 'hammer', 'stiffarm', 'irongrip', 'bellcow'] },
       { id: 'rb_elusive', bias: -2.1, name: 'Elusive Back', desc: 'Makes people miss and turns small creases into long runs.', fit: { spd: 0.5, skl: 0.5 }, focus: ['spd', 'skl'], badges: ['jukebox', 'spin', 'cutback', 'homerun', 'yac'] },
       { id: 'rb_receiving', bias: 2.1, name: 'Receiving Back', desc: 'A weapon in the passing game and a reliable protector.', fit: { awr: 0.55, skl: 0.45 }, focus: ['awr', 'skl'], badges: ['gluehands', 'routetech', 'screenpro', 'blitzpickup', 'yac'] },
     ],

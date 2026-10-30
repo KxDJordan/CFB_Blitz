@@ -1365,12 +1365,17 @@ const UI = (() => {
       const O = Engine.slots(gs, 1 - us, true);
       const threat = ['WR1', 'WR2', 'RB', 'TE', 'QB'].map(k => O[k]).filter(p => p.id >= 0).sort((a, b) => b.ovr - a.ovr)[0];
       intel = `Offense: pass ${pr}% · run ${100 - pr}%${t.last ? ` · last: ${CAT[t.last] || callName(t.last)}` : ''}${threat ? ` · top threat ${threat.pos} ${esc(threat.last)} (${threat.ovr})` : ''}`;
-      const groups = { picks: null, zone: ['c2', 'c3', 'c4', 'c6', 'tampa', 'buzz', 'prevent'], man: ['c1', 'c2man', 'box', 'goal'], blitz: ['mike', 'c0', 'fire', 'sblitz', 'cfire'] };
-      tabs = tabBtn('picks', 'DC Picks') + tabBtn('zone', 'Zone') + tabBtn('man', 'Man') + tabBtn('blitz', 'Blitz');
-      const ids = groups[tab] || null;
-      let list = ids ? ids.map(Playbook.defById) : Playbook.DEF.slice();
-      if (!ids) { const sp = Playbook.defById(st.sugg); list = [sp, ...list.filter(p => p !== sp)]; }
-      cards = list.map(p => `<button class="call-card pb-card k-def ${st.sugg === p.id ? 'sugg' : ''}" data-a="gcall" data-v="${p.id}">${Playbook.svgDef(p)}<div class="cc-top"><span class="cc-kind">${CAT[p.cat]}</span>${st.sugg === p.id ? '<span class="cc-pick">DC PICK</span>' : ''}</div><div class="cc-name">${esc(p.name)}</div><div class="cc-form">${esc(p.desc)}</div></button>`).join('');
+      // browse by play type or by formation (personnel), then pick the call
+      const by = st.defBy || 'type', DF = Playbook.DFORMS;
+      const TYPES = { zone: 'Zone', man: 'Man', blitz: 'Blitz', runstop: 'Run Stop' };
+      tabs = tabBtn('picks', 'DC Picks') + (by === 'type' ? Object.entries(TYPES).map(([id, l]) => tabBtn('t:' + id, l)).join('') : Playbook.DFORM_ORDER.map(id => tabBtn('f:' + id, DF[id].short)).join(''));
+      let list;
+      if (tab.startsWith('t:')) list = Playbook.DEF.filter(p => Playbook.defType(p) === tab.slice(2));
+      else if (tab.startsWith('f:')) list = Playbook.DEF.filter(p => p.form === tab.slice(2));
+      else { const sp = Playbook.defById(st.sugg); list = [sp, ...Playbook.DEF.filter(p => p !== sp)]; }
+      if (tab.startsWith('f:') && DF[tab.slice(2)]) intel = `${esc(DF[tab.slice(2)].name)} personnel: ${DF[tab.slice(2)].desc}`;
+      cards = list.map(p => `<button class="call-card pb-card k-def ${st.sugg === p.id ? 'sugg' : ''}" data-a="gcall" data-v="${p.id}" title="${esc(p.desc)}">${Playbook.svgDef(p)}<div class="cc-top"><span class="cc-kind">${CAT[p.cat]}</span>${st.sugg === p.id ? '<span class="cc-pick">DC PICK</span>' : ''}</div><div class="cc-name">${esc(p.name)}</div><div class="cc-form">${esc(DF[p.form].short)} · ${esc(p.desc)}</div></button>`).join('');
+      extra = `<button class="pb-flip on" data-a="gdefBy">${by === 'type' ? 'By Type' : 'By Formation'} ⇄</button>`;
     }
     const minBtn = `<button class="pb-min" data-a="gpanelMin" aria-label="${st.panelMin ? 'Expand' : 'Collapse'} play calls">${st.panelMin ? '▴' : '▾'}</button>`;
     const help = need === 'off' && !st.panelMin ? '<button class="pb-help" data-a="tutHelp" data-v="edge" aria-label="What do the Edge numbers mean?">?</button>' : '';
@@ -1966,6 +1971,7 @@ const UI = (() => {
   A.gpanelMin = () => { S.game.panelMin = !S.game.panelMin; renderPanel(); };
   A.gpbTab = v => { const st = S.game; st.pbTab = v; renderPanel(); };
   A.gflip = () => { const st = S.game; st.flip = !st.flip; renderPanel(); };
+  A.gdefBy = () => { const st = S.game; st.defBy = st.defBy === 'form' ? 'type' : 'form'; st.pbTab = st.defBy === 'form' ? 'f:43' : 't:zone'; renderPanel(); };
   A.gfourth = () => { G.settings.askFourth = !G.settings.askFourth; S.game.gs.askFourth = G.settings.askFourth; L.save(); const tg = document.querySelector('.sheet [data-a="gfourth"]'); if (tg) tg.classList.toggle('on', G.settings.askFourth); };
   A.gtab = v => { S.game.tab = v; pbpSheet(); };
   A.gpbp = () => pbpSheet();

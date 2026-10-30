@@ -501,7 +501,13 @@ const Live = (() => {
     // Spin Move: once, at first contact in the backfield. Stiff Arm: once, past the line
     if (z > -9 && !beyond && F.kind === 'run' && !F.spun) { F.spun = true; if (stkP(c, 'spin', true, 0.6)) z = -9; }
     if (z > -9 && beyond && (F.kind === 'run' || F.mode === 'scramble') && !F.stiffed) { F.stiffed = true; if (stkP(c, 'stiffarm', true, 0.5)) z = -9; }
+    // Truck Stick: once a run, square up the man in front of him and go straight through
+    let trucked = false;
+    if (z > -9 && beyond && rb && !fromBehind && !F.trucked && (F.kind === 'run' || F.caught)) { F.trucked = true; if (stkP(c, 'truck', true, Engine.stk.truckOdds(c.R.str))) { z = -9; trucked = true; } }
     if (Math.random() < sig(z)) { tackle(c, d); return true; }
+    // a power back who wins head-on runs through the man instead of around him
+    const powerRole = rp && (rp.role === 'rb_power' || hasBadge(c, 'wrecking'));
+    if (trucked || (powerRole && rb && !fromBehind && beyond)) return runThrough(c, d, nx, ny, trucked, mod);
     // broken tackle
     d.down = 0.3 + Math.random() * 0.3; d.stayDown = false;
     d.vx = -nx * 1.2 + c.vx * 0.25; d.vy = -ny * 1.2 + c.vy * 0.25;
@@ -513,6 +519,35 @@ const Live = (() => {
     burst(c.x, c.y, 'rgba(250,204,21,.8)', 6);
     ring(c.x, c.y, '#facc15', 0.7, 0);
     addMom(c.side, 0.03);
+    return false;
+  }
+  // A power back meets the tackler square and keeps going. A plain broken tackle moves everyone exactly as
+  // any broken tackle does, with the impact drawn on top; a Truck Stick flattens the tackler (he's down longer,
+  // shoved back along the runner's path) and the back barely breaks stride.
+  function runThrough(c, d, nx, ny, trucked, mod) {
+    const F = S.fp;
+    if (trucked) {
+      const sp = hyp(c.vx, c.vy) || 1, ux = c.vx / sp, uy = c.vy / sp;
+      d.down = 1.3 + Math.random() * 0.4; d.stayDown = false;
+      d.vx = ux * 3; d.vy = uy * 3; d.kvx = ux * 6; d.kvy = uy * 6;
+      d.spin = (Math.random() < 0.5 ? -1 : 1) * U.rand(4, 8);
+      c.vx *= 0.9; c.vy *= 0.9;
+    } else {
+      d.down = 0.3 + Math.random() * 0.3; d.stayDown = false;
+      d.vx = -nx * 1.2 + c.vx * 0.25; d.vy = -ny * 1.2 + c.vy * 0.25;
+      c.vx *= 0.74; c.vy *= 0.74;
+      c.vx += (Math.sign(c.x - d.x) || 1) * 1.3;
+    }
+    F.broke = (F.broke || 0) + (mod <= -0.6 ? 0 : 1);
+    const mx = (c.x + d.x) / 2, my = (c.y + d.y) / 2;
+    hitStop(trucked ? 0.11 : 0.06);
+    shake = Math.max(shake, trucked ? 1.1 : 0.7);
+    ring(mx, my, trucked ? '#fb923c' : '#ffffff', trucked ? 2 : 1.3, trucked ? 12 : 7);
+    burst(mx, my, 'rgba(255,255,255,.9)', trucked ? 18 : 10, trucked ? 5 : 3);
+    if (trucked) { for (let i = 0; i < 8; i++) { const a = Math.random() * Math.PI * 2, v = U.rand(1, 3.5); parts.push({ x: d.x, y: d.y, z: 0.2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: U.rand(2, 5), age: 0, life: U.rand(0.5, 0.9), s: U.rand(5, 8), c: U.pick(['#3f7d3a', '#2f6b2e', '#6b4f2a']) }); } excite = Math.max(excite, 0.6); }
+    if (!trucked) stkPop(c, 'wrecking', 2);
+    addMom(c.side, trucked ? 0.08 : 0.04);
+    if (S.t - (S.lastWhiff || -9) > 0.8) { S.lastWhiff = S.t; pop(c.x, c.y, trucked ? 'TRUCKED!' : 'RUNS THROUGH HIM', trucked ? '#fb923c' : '#facc15', { big: trucked, life: 1.2 }); }
     return false;
   }
   const hasBadge = (a, id) => a.pid != null && Engine.stk.tierOf(P(a.pid), id) >= 0;
@@ -858,10 +893,11 @@ const Live = (() => {
     S.los = det.los; S.ltg = det.los + (gs._togoAtSnap || 10);
     S.det = det; S.stkPops = 0;
     for (const [k, id] of Object.entries(det.O || {})) { const a = S.ag['o' + k], p = P(id); if (a && p && a.pid !== id) { a.pid = id; a.num = p.num; a.pos = p.pos; } }
-    for (const [k, id] of Object.entries(det.D || {})) { const a = S.ag['d' + k], p = P(id); if (a && p && a.pid !== id) { a.pid = id; a.num = p.num; a.pos = p.pos; } }
+    // the called package can put a different position in a slot (a corner for a backer): he gets that body too
+    for (const [k, id] of Object.entries(det.D || {})) { const a = S.ag['d' + k], p = P(id); if (a && p && a.pid !== id) { a.pid = id; a.num = p.num; a.pos = p.pos; bodyOf(a); } }
     for (const a of S.list) rateAgent(a);
     const play = Playbook.offById(det.play), dplay = Playbook.defById(det.dplay);
-    const F = Playbook.formPos(play.form, det.flip);
+    const F = Playbook.playPos(play, det.flip);
     const DA = Playbook.defAlign(dplay, F);
     for (const [k, [x, y]] of Object.entries(F)) { const a = S.ag['o' + k]; if (a) a.mark = [CX + x, det.los + y]; }
     for (const [k, [x, y]] of Object.entries(DA)) { const a = S.ag['d' + k]; if (a) a.mark = [clampX(CX + x), det.los + y]; }
@@ -888,6 +924,11 @@ const Live = (() => {
       for (const a of S.list) { a.x = a.mark[0]; a.y = a.mark[1]; a.vx = 0; a.vy = 0; a.wx = 0; a.wy = 0; a.face = a.side === o ? Math.PI / 2 : -Math.PI / 2; a.brain = b => { stop(b); }; }
       set();
     };
+  }
+  function bodyOf(a) {
+    const big = a.pos === 'OL' || a.pos === 'DL';
+    a.r = big ? 0.52 : 0.43;
+    a.mass = big ? 1.55 : (a.pos === 'LB' || a.pos === 'TE' || a.pos === 'RB') ? 1.15 : 1;
   }
   function rateAgent(a) {
     const p = P(a.pid);
@@ -932,7 +973,8 @@ const Live = (() => {
       if (k[0] === '_') continue;
       const a = S.ag['d' + k];
       if (!a) continue;
-      if (asg === 'rush') { a.job = { type: 'rush', edge: k === 'DE1' ? -1 : k === 'DE2' ? 1 : 0 }; a.rushing = true; }
+      // edge rushers: the ends, plus anyone a package stands up outside the tackles (a 3-4 OLB, a goal-line end)
+      if (asg === 'rush') { a.job = { type: 'rush', edge: k === 'DE1' ? -1 : k === 'DE2' ? 1 : Math.abs(a.mark[0] - CX) > 4.2 ? Math.sign(a.mark[0] - CX) : 0 }; a.rushing = true; }
       else if (asg[0] === 'blitz') { a.job = { type: 'blitz', gap: CX + asg[1] }; a.rushing = true; a.blitz = true; }
       else if (asg[0] === 'box') a.job = { type: 'box', x: CX + asg[1] };
       else if (asg[0] === 'man') {
@@ -1363,7 +1405,13 @@ const Live = (() => {
       const a = A('o' + slot);
       if (!a) continue;
       if (kind === 'block' || play.prot.includes(slot)) { setBlocker(a, 'pass', [a.x + (a.x < CX ? -0.5 : 0.5), L0 - 3]); a.blocking = true; continue; }
-      if (kind === 'stalk') { setBlocker(a, 'run'); a.blocking = true; continue; }
+      // stalk: climb straight upfield first (out of the screen's path behind him), then block whoever's there
+      if (kind === 'stalk') {
+        setBlocker(a, 'run'); a.blocking = true;
+        const blk = a.brain, ox = Math.sign(a.x - CX) * 0.5;
+        a.brain = b => (S.t - S.snapT < 0.7 && !b.eng ? seek(b, clampX(b.mark[0] + ox), L0 + 3.2, 1, 0.4) : blk(b));
+        continue;
+      }
       const sx = a.x - CX, inn = Playbook.inward(sx, slot);
       a.route = fitRoute(Playbook.routePts(kind, d, sx, inn).map(([x, y]) => [clampX(CX + x), L0 + y]));
       a.wp = 0; a.readyT = null;
@@ -1677,11 +1725,24 @@ const Live = (() => {
         const line = S.list.filter(a => a.key[0] === 'l'), rush = S.list.filter(a => a.key[0] === 'x' && a.key !== 'x6');
         line.forEach((b, i) => { const t = rush[i % rush.length]; b.blockT = t; b.brain = x => seek(x, t.x, t.y - 0.5, 0.8, 0.3); b.blockOn = (x, y) => engage(x, y, { dir: [0, -0.5], rate: 0.4, shed: S.snapT + 1.7 + Math.random() * 0.3 }); });
         for (const r of rush) r.brain = x => seek(x, CX, L0 - 12, 0.9);
+        // the wings jam their gunner at the line, then turn and run with him all the way to the returner (a vice),
+        // staying between the gunner and the catch and getting a hand on him whenever he closes
+        const vice = (j, g) => {
+          j.blockT = g;
+          j.brain = x => {
+            const tx = S.ball.mode === 'air' ? S.ball.tx : ret.x, ty = S.ball.mode === 'air' ? S.ball.ty : ret.y;
+            const dx = tx - g.x, dy = ty - g.y, dl = hyp(dx, dy) || 1, k = Math.min(1.8, dl * 0.4);
+            seek(x, clampX(g.x + dx / dl * k), g.y + dy / dl * k, 1, 0.4);
+            x.faceT = ang(g.x - x.x, g.y - x.y);
+          };
+          j.blockOn = (x, y) => engage(x, y, { dir: [0, 0.5], rate: 0.5, shed: S.t + U.rand(0.5, 0.9), onShed: () => { vice(j, g); j.blockCD = S.t + 1.0; } });
+        };
         for (const [j, g] of [[S.ag.j0, S.ag.g0], [S.ag.j1, S.ag.g1]]) {
           j.blockT = g; j.brain = x => seek(x, g.x, g.y + 0.3, 1, 0.3);
-          j.blockOn = (x, y) => engage(x, y, { dir: [0, 0.6], rate: 0.6, shed: S.snapT + U.rand(0.6, 1.1) });
+          j.blockOn = (x, y) => engage(x, y, { dir: [0, 0.6], rate: 0.6, shed: S.snapT + U.rand(0.6, 1.1), onShed: () => { vice(j, g); j.blockCD = S.t + 0.8; } });
           g.brain = x => seek(x, x.x * 0.8 + landX * 0.2, land - 6, 1);
         }
+        S.vice = vice;
         S.ag.pp.brain = x => seek(x, CX, L0 - 8, 0.5);
         ret.brain = x => seek(x, landX, land, 0.8, 1);
       });
@@ -1696,6 +1757,8 @@ const Live = (() => {
           b.brain = x => { seek(x, clampX(landX * 0.6 + CX * 0.4 + lane), Math.max(L0 + 4, land - 14 - Math.abs(lane) * 0.4), 1, 1.5); x.faceT = -Math.PI / 2; };
         });
         S.ag.x6.brain = x => { seek(x, clampX(landX + (landX < CX ? 2.5 : -2.5)), land - 6, 0.9, 1.2); x.faceT = -Math.PI / 2; };
+        // a wing whose jam already ended turns and runs with his gunner (one still locked up follows when he sheds)
+        for (const [j, g] of [[S.ag.j0, S.ag.g0], [S.ag.j1, S.ag.g1]]) if (!j.eng) S.vice(j, g);
         throwBall({ x: punter.x, y: punter.y }, [landX, land], 3.6 + stkQ(punter, 'hangtime') * 0.15, 19, () => {
           const coverTeam = S.list.filter(a => a.side === o && a !== punter);
           if (det.touchback) { const b = S.ball; b.vx = 0; b.vy = 4; b.vz = 3; pop(landX, land, 'TOUCHBACK', '#cbd5e1'); at(S.t + 1.0, () => dead()); return; }
@@ -2614,7 +2677,7 @@ const Live = (() => {
   const POP_SFX = {
     'HUT!': 'snap', 'SACK!': 'bigHit', 'FUMBLE!': 'turnover', 'INTERCEPTED!': 'turnover', 'TURNOVER!': 'turnover', 'RECOVERED': 'bigPlay',
     "IT'S GOOD!": 'fieldGoal', 'NO GOOD': 'noGood', 'PANCAKE': 'tackle', 'BROKEN UP': 'tackle',
-    'BROKE TACKLE': 'bigPlay', 'JUKE!': 'bigPlay', 'SPIN MOVE': 'bigPlay', 'STIFF ARM': 'bigPlay', 'MISSED TACKLE': 'bigPlay', 'ESCAPES!': 'bigPlay',
+    'TRUCKED!': 'bigHit', 'RUNS THROUGH HIM': 'tackle', 'BROKE TACKLE': 'bigPlay', 'JUKE!': 'bigPlay', 'SPIN MOVE': 'bigPlay', 'STIFF ARM': 'bigPlay', 'MISSED TACKLE': 'bigPlay', 'ESCAPES!': 'bigPlay',
   };
   function pop(x, y, text, color, opts = {}) {
     pops.push({ x, y, text, color, age: 0, life: opts.life || 1.4, big: opts.big });

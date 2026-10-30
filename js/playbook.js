@@ -33,12 +33,18 @@ const Playbook = (() => {
     for (const [k, [x, y]] of Object.entries({ ...OL, ...f.skill })) out[k] = [flip ? -x : x, y];
     return out;
   };
+  // a play can move a man within its formation (a stacked receiver, a slot backed off the line)
+  const playPos = (play, flip) => {
+    const out = formPos(play.form, flip);
+    for (const [k, [x, y]] of Object.entries(play.align || {})) out[k] = [flip ? -x : x, y];
+    return out;
+  };
 
   // ── offense ──
   // routes: slot → [kind, depth]; prot: slots that stay in to block; reads: progression order
   // run: { carrier, hole (x of the aiming point), scheme }
   const R = (id, name, form, cat, desc, run) => ({ id, name, form, kind: 'run', cat, desc, run });
-  const PS = (id, name, form, cat, desc, routes, reads, o = {}) => ({ id, name, form, kind: 'pass', cat, desc, routes, reads, prot: o.prot || [], drop: o.drop || 5, pa: !!o.pa, boot: !!o.boot, screen: o.screen || null });
+  const PS = (id, name, form, cat, desc, routes, reads, o = {}) => ({ id, name, form, kind: 'pass', cat, desc, routes, reads, prot: o.prot || [], drop: o.drop || 5, pa: !!o.pa, boot: !!o.boot, screen: o.screen || null, align: o.align || null });
   const OFF = [
     // Shotgun Doubles
     R('gd_iz', 'Inside Zone', 'gun_doubles', 'inside', 'Zone step, RB reads the backside A-gap.', { carrier: 'RB', hole: -1.8, scheme: 'zone' }),
@@ -46,7 +52,8 @@ const Playbook = (() => {
     PS('gd_mesh', 'Mesh', 'gun_doubles', 'quick', 'Two shallow crossers rub man coverage.', { WR1: ['go', 0], WR3: ['drag', 2.5], TE: ['drag', 5], WR2: ['curl', 11], RB: ['flat', 2] }, ['WR3', 'TE', 'RB', 'WR2']),
     PS('gd_smash', 'Smash', 'gun_doubles', 'quick', 'Hitch outside, corner from the slot — high-low the corner.', { WR1: ['hitch', 5], WR3: ['corner', 11], TE: ['corner', 11], WR2: ['hitch', 5], RB: ['block', 0] }, ['WR3', 'WR1', 'TE', 'WR2'], { prot: ['RB'] }),
     PS('gd_verts', 'Four Verticals', 'gun_doubles', 'deep', 'Everybody up the field — stretch the safeties.', { WR1: ['go', 0], WR3: ['seam', 0], TE: ['seam', 0], WR2: ['go', 0], RB: ['check', 2] }, ['WR3', 'TE', 'WR1', 'WR2', 'RB'], { drop: 7 }),
-    PS('gd_bubble', 'WR Bubble', 'gun_doubles', 'screen', 'Quick flip to the slot, outside man stalk-blocks.', { WR3: ['bubble', 0], WR1: ['stalk', 0], TE: ['go', 0], WR2: ['go', 0], RB: ['block', 0] }, ['WR3'], { prot: ['RB'], drop: 1, screen: 'WR3' }),
+    // the slot starts off the ball so the bubble arcs behind the outside man, who climbs to his stalk block
+    PS('gd_bubble', 'WR Bubble', 'gun_doubles', 'screen', 'Quick flip to the slot, outside man stalk-blocks.', { WR3: ['bubble', 0], WR1: ['stalk', 0], TE: ['go', 0], WR2: ['go', 0], RB: ['block', 0] }, ['WR3'], { prot: ['RB'], drop: 1, screen: 'WR3', align: { WR3: [-8.5, -2.6] } }),
     // Shotgun Trips
     R('gt_stretch', 'Stretch', 'gun_trips', 'outside', 'Outside zone to the trips side — press the edge, cut or bounce.', { carrier: 'RB', hole: 7, scheme: 'stretch' }),
     R('gt_counter', 'Counter', 'gun_trips', 'inside', 'Jab step away, backside guard pulls and kicks out.', { carrier: 'RB', hole: 2.8, scheme: 'counter' }),
@@ -75,7 +82,8 @@ const Playbook = (() => {
     PS('em_verts', 'Empty Verts', 'empty', 'deep', 'Five go routes — find the open seam.', { WR1: ['go', 0], RB: ['seam', 0], TE: ['seam', 0], WR3: ['seam', 0], WR2: ['go', 0] }, ['TE', 'RB', 'WR3', 'WR1', 'WR2'], { drop: 7 }),
     PS('em_mesh', 'Empty Mesh', 'empty', 'quick', 'Mesh with five out — someone is always open underneath.', { WR3: ['drag', 2.5], TE: ['drag', 5], WR1: ['go', 0], WR2: ['curl', 10], RB: ['whip', 4] }, ['WR3', 'TE', 'RB', 'WR2'], { drop: 3 }),
     // more from the base sets
-    PS('gd_fades', 'Double Fades', 'gun_doubles', 'deep', 'Back-shoulder fades outside, slants underneath.', { WR1: ['fade', 0], WR2: ['fade', 0], WR3: ['slant', 0], TE: ['slant', 0], RB: ['check', 2] }, ['WR1', 'WR2', 'WR3', 'TE'], { drop: 3 }),
+    // stacked release: the man on the line fades to the sideline, the man off the line behind him fades inside
+    PS('gd_fades', 'Double Fades', 'gun_doubles', 'deep', 'Stack release: outside fade on the line, inside fade off it — slants on the other side.', { WR1: ['fade', 0], WR3: ['fadein', 0], WR2: ['slant', 0], TE: ['slant', 0], RB: ['check', 2] }, ['WR1', 'WR3', 'TE', 'WR2'], { drop: 3, align: { WR3: [-12.3, -2.8] } }),
     PS('gt_wheel', 'Trips Wheel', 'gun_trips', 'deep', 'Back wheels up the sideline behind the trips clear-out.', { WR3: ['seam', 0], WR2: ['comeback', 14], TE: ['out', 8], WR1: ['dig', 12], RB: ['wheel', 0] }, ['WR3', 'RB', 'TE', 'WR1'], { drop: 5 }),
     PS('gb_angle', 'Bunch Angle', 'gun_bunch', 'quick', 'The bunch clears the flat for the back on an angle route.', { WR2: ['go', 0], WR3: ['out', 6], TE: ['corner', 10], WR1: ['slant', 0], RB: ['angle', 0] }, ['RB', 'WR3', 'TE', 'WR1'], { drop: 3 }),
     // Shotgun Wing
@@ -110,28 +118,87 @@ const Playbook = (() => {
     robber: [0, 11], tampa: [0, 13],
   };
   const ZKIND = z => (/^(deep|half|q)/.test(z) ? 'deep' : /^flat/.test(z) ? 'flat' : 'hook');
+  // ── defensive formations ──
+  // The defense always fields the same 11 slots (DE1 DT1 DT2 DE2 · LB1 MLB LB2 · CB1 CB2 · S1 S2); a formation
+  // decides which position fills each one and where the front lines up. A Dime puts a third corner in the LB1 slot
+  // and a third safety in LB2; a 3-4 stands a fourth linebacker up on the edge in DE1. Ratings follow the player, so
+  // a corner in a linebacker's slot covers like a corner and fills the run like one.
+  const BASE_POS = { DE1: 'DL', DT1: 'DL', DT2: 'DL', DE2: 'DL', LB1: 'LB', MLB: 'LB', LB2: 'LB', CB1: 'CB', CB2: 'CB', S1: 'S', S2: 'S' };
   const FRONT = { DE1: [-4.4, 1.0], DT1: [-1.1, 1.0], DT2: [1.3, 1.0], DE2: [4.6, 1.0], LB1: [-3.6, 4.5], MLB: [0, 5], LB2: [4.8, 4.2] };
-  const D = (id, name, cat, desc, a) => ({ id, name, cat, desc, a });
+  const DF = (name, short, desc, pos, front) => ({ name, short, desc, pos: { ...BASE_POS, ...pos }, front: { ...FRONT, ...front } });
+  const DFORMS = {
+    '43': DF('4-3 Base', '4-3', '4 DL · 3 LB · 2 CB · 2 S', {}, {}),
+    '34': DF('3-4', '3-4', '3 DL · 4 LB · 2 CB · 2 S', { DE1: 'LB' },
+      { DE1: [-6.4, 1.4], DT1: [-3.0, 1.0], DT2: [0.1, 1.0], DE2: [3.2, 1.0], LB1: [-2.1, 4.6], MLB: [2.2, 4.6], LB2: [6.6, 1.4] }),
+    nickel: DF('Nickel 4-2-5', 'Nickel', '4 DL · 2 LB · 3 CB · 2 S', { LB1: 'CB' },
+      { LB1: [-8, 4.2], MLB: [-1.3, 4.8], LB2: [2.4, 4.6] }),
+    dime: DF('Dime 4-1-6', 'Dime', '4 DL · 1 LB · 3 CB · 3 S', { LB1: 'CB', LB2: 'S' },
+      { LB1: [-8, 4.6], MLB: [0, 5.4], LB2: [6.4, 6.8] }),
+    '335': DF('3-3-5 Stack', '3-3-5', '3 DL · 3 LB · 2 CB · 3 S', { DT2: 'LB', LB2: 'S' },
+      { DE1: [-3.6, 1.0], DT1: [0, 1.0], DE2: [3.8, 1.0], DT2: [3.8, 4.4], LB1: [-3.8, 4.4], MLB: [0, 4.8], LB2: [7.4, 5.4] }),
+    goal: DF('Goal Line 5-3', 'Goal Line', '5 DL · 3 LB · 2 CB · 1 S', { LB1: 'DL', S1: 'LB' },
+      { DE1: [-5, 1.0], DT1: [-2.2, 1.0], LB1: [0, 1.0], DT2: [2.2, 1.0], DE2: [5, 1.0], MLB: [-1.6, 3.4], LB2: [2.6, 3.4] }),
+  };
+  // call-sheet order (number-like keys would otherwise sort first)
+  const DFORM_ORDER = ['43', '34', 'nickel', 'dime', '335', 'goal'];
+  const D = (id, name, form, cat, desc, a) => ({ id, name, form, cat, desc, a });
   const man = s => ['man', s], zone = z => ['zone', z], blitz = x => ['blitz', x];
   const RUSH4 = { DE1: 'rush', DT1: 'rush', DT2: 'rush', DE2: 'rush' };
   const DEF = [
-    D('c2', 'Cover 2', 'base', 'Two deep halves, corners squat the flats.', { ...RUSH4, CB1: zone('flatL'), CB2: zone('flatR'), S1: zone('halfL'), S2: zone('halfR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
-    D('c3', 'Cover 3', 'cover', 'Three deep, four under. Keep it in front.', { ...RUSH4, CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), S1: zone('flatL'), LB1: zone('hookL'), MLB: zone('hookR'), LB2: zone('flatR') }),
-    D('c1', 'Cover 1 Man', 'base', 'Man across, free safety in the middle, robber underneath.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), LB2: man('TE'), MLB: man('RB'), LB1: zone('robber'), S2: zone('deepM') }),
-    D('c4', 'Cover 4', 'cover', 'Quarters — four deep, eliminate the big play.', { ...RUSH4, CB1: zone('qL'), S1: zone('qML'), S2: zone('qMR'), CB2: zone('qR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
-    D('mike', 'Mike Blitz', 'blitz', 'Mike shoots the A-gap, Cover 1 behind it.', { ...RUSH4, MLB: blitz(0.8), CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), LB2: man('TE'), LB1: man('RB'), S2: zone('deepM') }),
-    D('c0', 'Cover 0 Blitz', 'blitz', 'Six rushers, no help. Get home or get burned.', { ...RUSH4, MLB: blitz(0.8), LB1: blitz(-2.6), CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), S2: man('TE'), LB2: man('RB') }),
-    D('fire', 'Fire Zone', 'blitz', 'Two linebackers blitz, the end drops — 3 deep, 3 under.', { DE1: 'rush', DT1: 'rush', DT2: 'rush', DE2: zone('flatR'), LB1: blitz(-2.6), MLB: blitz(0.8), CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), S1: zone('hookL'), LB2: zone('hookR') }),
-    D('box', 'Stack the Box', 'runstop', 'Safety down, eight in the box. Man outside.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), S1: ['box', 2.5], MLB: ['box', -0.8], LB2: man('TE'), S2: zone('deepM') }),
-    D('c2man', 'Cover 2 Man', 'base', 'Man underneath with two safeties over the top.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S1: zone('halfL'), S2: zone('halfR') }),
-    D('tampa', 'Tampa 2', 'cover', 'Cover 2 with the Mike running the deep middle.', { ...RUSH4, CB1: zone('flatL'), CB2: zone('flatR'), S1: zone('halfL'), S2: zone('halfR'), LB1: zone('curlL'), MLB: zone('tampa'), LB2: zone('curlR') }),
-    D('c6', 'Cover 6', 'cover', 'Quarters to one side, Cover 2 to the other.', { ...RUSH4, CB1: zone('qL'), S1: zone('qML'), S2: zone('halfR'), CB2: zone('flatR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
-    D('buzz', 'Cover 3 Buzz', 'base', 'A safety buzzes down to the hook — eight near the box vs the run.', { ...RUSH4, CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), S1: zone('hookL'), LB1: zone('flatL'), MLB: zone('hookR'), LB2: zone('flatR') }),
-    D('sblitz', 'Safety Blitz', 'blitz', 'Strong safety off the edge, Cover 1 behind it.', { ...RUSH4, S1: blitz(-5.5), CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S2: zone('deepM') }),
-    D('cfire', 'Corner Fire', 'blitz', 'The boundary corner blitzes, safeties rotate to three deep.', { ...RUSH4, CB1: blitz(-8), S1: zone('deepL'), S2: zone('deepM'), CB2: zone('deepR'), LB1: zone('flatL'), MLB: zone('hookM'), LB2: zone('curlR') }),
-    D('goal', 'Goal Line', 'runstop', 'Everyone up — safeties and backers fill every gap.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: ['box', 0.6], S1: ['box', -2.4], S2: ['box', 3] }),
-    D('prevent', 'Prevent', 'cover', 'Four deep, three under — nothing over the top.', { ...RUSH4, CB1: zone('qL'), S1: zone('qML'), S2: zone('qMR'), CB2: zone('qR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR'), _soft: true }),
+    // 4-3
+    D('c2', 'Cover 2', '43', 'base', 'Two deep halves, corners squat the flats.', { ...RUSH4, CB1: zone('flatL'), CB2: zone('flatR'), S1: zone('halfL'), S2: zone('halfR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
+    D('c3', 'Cover 3', '43', 'cover', 'Three deep, four under. Keep it in front.', { ...RUSH4, CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), S1: zone('flatL'), LB1: zone('hookL'), MLB: zone('hookR'), LB2: zone('flatR') }),
+    D('c1', 'Cover 1 Man', '43', 'base', 'Man across, free safety in the middle, robber underneath.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), LB2: man('TE'), MLB: man('RB'), LB1: zone('robber'), S2: zone('deepM') }),
+    D('c4', 'Cover 4', '43', 'cover', 'Quarters — four deep, eliminate the big play.', { ...RUSH4, CB1: zone('qL'), S1: zone('qML'), S2: zone('qMR'), CB2: zone('qR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
+    D('mike', 'Mike Blitz', '43', 'blitz', 'Mike shoots the A-gap, Cover 1 behind it.', { ...RUSH4, MLB: blitz(0.8), CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), LB2: man('TE'), LB1: man('RB'), S2: zone('deepM') }),
+    D('c0', 'Cover 0 Blitz', '43', 'blitz', 'Six rushers, no help. Get home or get burned.', { ...RUSH4, MLB: blitz(0.8), LB1: blitz(-2.6), CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), S2: man('TE'), LB2: man('RB') }),
+    D('fire', 'Fire Zone', '43', 'blitz', 'Two linebackers blitz, the end drops — 3 deep, 3 under.', { DE1: 'rush', DT1: 'rush', DT2: 'rush', DE2: zone('flatR'), LB1: blitz(-2.6), MLB: blitz(0.8), CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), S1: zone('hookL'), LB2: zone('hookR') }),
+    D('box', 'Stack the Box', '43', 'runstop', 'Safety down, eight in the box. Man outside.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), S1: ['box', 2.5], MLB: ['box', -0.8], LB2: man('TE'), S2: zone('deepM') }),
+    D('c2man', 'Cover 2 Man', '43', 'base', 'Man underneath with two safeties over the top.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S1: zone('halfL'), S2: zone('halfR') }),
+    D('tampa', 'Tampa 2', '43', 'cover', 'Cover 2 with the Mike running the deep middle.', { ...RUSH4, CB1: zone('flatL'), CB2: zone('flatR'), S1: zone('halfL'), S2: zone('halfR'), LB1: zone('curlL'), MLB: zone('tampa'), LB2: zone('curlR') }),
+    D('c6', 'Cover 6', '43', 'cover', 'Quarters to one side, Cover 2 to the other.', { ...RUSH4, CB1: zone('qL'), S1: zone('qML'), S2: zone('halfR'), CB2: zone('flatR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
+    D('buzz', 'Cover 3 Buzz', '43', 'base', 'A safety buzzes down to the hook — eight near the box vs the run.', { ...RUSH4, CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), S1: zone('hookL'), LB1: zone('flatL'), MLB: zone('hookR'), LB2: zone('flatR') }),
+    D('sblitz', 'Safety Blitz', '43', 'blitz', 'Strong safety off the edge, Cover 1 behind it.', { ...RUSH4, S1: blitz(-5.5), CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S2: zone('deepM') }),
+    D('cfire', 'Corner Fire', '43', 'blitz', 'The boundary corner blitzes, safeties rotate to three deep.', { ...RUSH4, CB1: blitz(-8), S1: zone('deepL'), S2: zone('deepM'), CB2: zone('deepR'), LB1: zone('flatL'), MLB: zone('hookM'), LB2: zone('curlR') }),
+    // 3-4: DE1 and LB2 are the outside backers standing up on the edges
+    D('34_c3', '3-4 Cover 3', '34', 'base', 'Weak OLB rushes, strong OLB drops to the flat — three deep behind it.', { DE1: 'rush', DT1: 'rush', DT2: 'rush', DE2: 'rush', LB2: zone('flatR'), LB1: zone('hookL'), MLB: zone('hookR'), S1: zone('flatL'), CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM') }),
+    D('34_c2', '3-4 Cover 2', '34', 'cover', 'Both edges set the rush lanes, two safeties split the deep field.', { DE1: 'rush', DT1: 'rush', DT2: 'rush', DE2: 'rush', LB2: zone('curlR'), LB1: zone('curlL'), MLB: zone('hookM'), CB1: zone('flatL'), CB2: zone('flatR'), S1: zone('halfL'), S2: zone('halfR') }),
+    D('34_olb', 'Double OLB Blitz', '34', 'blitz', 'Both outside backers come off the edges, Cover 1 behind them.', { DE1: 'rush', DT1: 'rush', DT2: 'rush', DE2: 'rush', LB2: blitz(6), CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), LB1: man('TE'), MLB: man('RB'), S2: zone('deepM') }),
+    D('34_zone', '3-4 Zone Blitz', '34', 'blitz', 'Inside backers blitz while the weak OLB and an end drop into zones.', { DE1: zone('flatL'), DT1: 'rush', DT2: 'rush', DE2: zone('hookR'), LB1: blitz(-2.2), MLB: blitz(1.2), LB2: 'rush', CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), S1: zone('hookL') }),
+    D('34_okie', 'Okie Run Fit', '34', 'runstop', 'Five on the line, inside backers fit downhill, safety in the box.', { DE1: 'rush', DT1: 'rush', DT2: 'rush', DE2: 'rush', LB2: 'rush', MLB: ['box', 0.8], LB1: man('TE'), S1: man('WR3'), CB1: man('WR1'), CB2: man('WR2'), S2: zone('deepM') }),
+    // Nickel: the third corner (LB1 slot) lines up over the slot receiver
+    D('n_c2', 'Nickel Cover 2', 'nickel', 'base', 'Five DBs, two deep — the nickel takes the slot side curl.', { ...RUSH4, CB1: zone('flatL'), CB2: zone('flatR'), S1: zone('halfL'), S2: zone('halfR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
+    D('n_c1', 'Nickel Man', 'nickel', 'base', 'Nickel locks up the slot, free safety over the top, robber underneath.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S1: zone('robber'), S2: zone('deepM') }),
+    D('n_c3', 'Nickel Cover 3', 'nickel', 'cover', 'Three deep with a corner\'s speed in the flat.', { ...RUSH4, CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM'), LB1: zone('flatL'), MLB: zone('hookL'), LB2: zone('hookR'), S1: zone('flatR') }),
+    D('n_c4', 'Nickel Quarters', 'nickel', 'cover', 'Quarters with a nickel underneath — take away everything deep.', { ...RUSH4, CB1: zone('qL'), S1: zone('qML'), S2: zone('qMR'), CB2: zone('qR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR') }),
+    D('n_blitz', 'Nickel Blitz', 'nickel', 'blitz', 'The slot corner comes off the edge, Cover 1 behind it.', { ...RUSH4, LB1: blitz(-6.5), CB1: man('WR1'), CB2: man('WR2'), S1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S2: zone('deepM') }),
+    // Dime: one linebacker, a third corner (LB1) and a third safety (LB2)
+    D('d_c1', 'Dime Man', 'dime', 'cover', 'Six DBs in man, a robber in the middle and a free safety deep.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S1: zone('robber'), S2: zone('deepM') }),
+    D('d_c2m', 'Dime 2-Man', 'dime', 'cover', 'Man underneath, two safeties over the top — third and long.', { ...RUSH4, CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), MLB: man('RB'), S1: zone('halfL'), S2: zone('halfR') }),
+    D('d_blitz', 'Dime Blitz', 'dime', 'blitz', 'Safety and Mike both come — six rushers, DBs locked up.', { ...RUSH4, S1: blitz(-5), MLB: blitz(0.8), CB1: man('WR1'), CB2: man('WR2'), LB1: man('WR3'), LB2: man('TE'), S2: zone('deepM') }),
+    D('prevent', 'Prevent', 'dime', 'cover', 'Four deep, three under — nothing over the top.', { ...RUSH4, CB1: zone('qL'), S1: zone('qML'), S2: zone('qMR'), CB2: zone('qR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('curlR'), _soft: true }),
+    // 3-3-5: three stacked backers (DT2 is the right stack), a spur safety (LB2) as the fifth DB
+    D('335_c3', 'Stack Cover 3', '335', 'base', 'Three down, a stacked backer adds the fourth rusher — three deep.', { DE1: 'rush', DT1: 'rush', DE2: 'rush', DT2: blitz(2), LB1: zone('hookL'), MLB: zone('hookM'), LB2: zone('flatR'), S1: zone('flatL'), CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM') }),
+    D('335_fire', 'Stack Fire', '335', 'blitz', 'Two stacked backers shoot the gaps, man across with a free safety.', { DE1: 'rush', DT1: 'rush', DE2: 'rush', DT2: blitz(2), LB1: blitz(-2.4), MLB: zone('hookM'), LB2: man('TE'), S1: man('WR3'), CB1: man('WR1'), CB2: man('WR2'), S2: zone('deepM') }),
+    D('335_drop', 'Drop 8', '335', 'cover', 'Rush three, drop eight — a wall of zones underneath and three deep.', { DE1: 'rush', DT1: 'rush', DE2: 'rush', DT2: zone('curlR'), LB1: zone('curlL'), MLB: zone('hookM'), LB2: zone('flatR'), S1: zone('flatL'), CB1: zone('deepL'), CB2: zone('deepR'), S2: zone('deepM') }),
+    // Goal line: a fifth lineman (LB1) and a third backer in the safety's spot (S1)
+    D('goal', 'Goal Line', 'goal', 'runstop', 'Five down, everyone fills a gap — man on the receivers.', { ...RUSH4, LB1: 'rush', CB1: man('WR1'), CB2: man('WR2'), S2: man('WR3'), LB2: man('TE'), MLB: ['box', 0.6], S1: ['box', -2.4] }),
+    D('gl_blitz', 'Goal Line Blitz', 'goal', 'blitz', 'Seven come — the backers shoot the A-gaps, no one behind.', { ...RUSH4, LB1: 'rush', MLB: blitz(-0.8), LB2: blitz(1.4), S1: man('TE'), CB1: man('WR1'), CB2: man('WR2'), S2: man('WR3') }),
+    D('gl_zone', 'Goal Line Zone', 'goal', 'base', 'Five down, backers spot-drop to the flats and the goal post.', { ...RUSH4, LB1: 'rush', MLB: zone('hookM'), LB2: zone('flatR'), S1: zone('flatL'), CB1: man('WR1'), CB2: man('WR2'), S2: zone('deepM') }),
   ];
+  // how likely the defensive coordinator is to be in each personnel package for the down and distance
+  function formWeight(form, gs) {
+    if (!gs) return 1;
+    const toGoal = 100 - gs.ball, long = gs.togo >= 7, short = gs.togo <= 2;
+    switch (form) {
+      case 'goal': return toGoal <= 4 || (short && toGoal <= 8) ? 3 : 0;
+      case 'dime': return long && gs.down >= 3 ? 2.2 : long ? 0.5 : short ? 0 : 0.15;
+      case 'nickel': return long ? 1.4 : short ? 0.2 : 0.8;
+      case '34': return 1;
+      case '335': return long ? 0.8 : short ? 0.2 : 0.5;
+      default: return short ? 1.3 : 1;
+    }
+  }
 
   // ── routes ──
   // waypoints relative to the receiver's start x, depth from the LOS; inn = direction toward the ball
@@ -153,9 +220,10 @@ const Playbook = (() => {
       case 'snag': return [[X(inn * 2.6), d], [X(inn * 2.8), d - 0.6]];
       case 'stick': return [[X(0), d], [X(inn * 1), d - 0.6]];
       case 'check': return [[X(o * 2), 0], [X(o * 6), d], [X(o * 11), d + 1]];
-      case 'bubble': return [[X(o * 2), -1.4], [X(o * 4.5), -1.0], [X(o * 6.5), 0]];
+      case 'bubble': return [[X(o * 2), -3.0], [X(o * 4.5), -3.1], [X(o * 7), -2.3]];
       case 'wheel': return [[X(o * 3.5), 0.5], [X(o * 6.5), 4], [X(o * 7.5), 30]];
       case 'fade': return [[X(o * 1.5), 6], [X(o * 3.5), 32]];
+      case 'fadein': return [[X(inn * 1.4), 6], [X(inn * 2.4), 32]];
       case 'swing': return [[X(o * 3), -1.6], [X(o * 7), -0.6], [X(o * 10), 1]];
       case 'angle': return [[X(o * 2.5), 1.5], [X(inn * 2), 5], [X(inn * 6), 6]];
       case 'whip': return [[X(inn * 2.5), d], [X(o * 3), d], [X(o * 8), d]];
@@ -177,8 +245,12 @@ const Playbook = (() => {
   }
   function pickDef(cat, gs) {
     const pool = DEF.filter(p => p.cat === cat && (p.id !== 'prevent' || (gs && gs.qtr >= 4 && gs.clock < 150)));
-    return U.pick(pool.length ? pool : DEF);
+    const w = pool.map(p => formWeight(p.form, gs));
+    if (!w.some(x => x > 0)) { const ok = pool.filter(p => p.form !== 'goal'); return U.pick(ok.length ? ok : pool.length ? pool : DEF); }
+    return U.wpick(pool, p => w[pool.indexOf(p)]);
   }
+  // play type for the call sheet: blitzes, run stops, then man or zone by what the corners are doing
+  const defType = p => (p.cat === 'blitz' ? 'blitz' : p.cat === 'runstop' ? 'runstop' : ['CB1', 'CB2'].every(k => p.a[k] && p.a[k][0] === 'man') ? 'man' : 'zone');
 
   // ── play art ──
   const RC = { WR1: '#facc15', WR2: '#f472b6', WR3: '#60a5fa', TE: '#34d399', RB: '#fb923c', QB: '#e2e8f0' };
@@ -200,7 +272,7 @@ const Playbook = (() => {
   };
   const frame = inner => `<svg class="pa-svg" viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg"><rect width="120" height="80" rx="6" fill="#0f2a1c"/>${[5, 10, 15, 20].map(y => `<line x1="0" x2="120" y1="${VY(y)}" y2="${VY(y)}" stroke="rgba(255,255,255,.06)"/>`).join('')}<line x1="0" x2="120" y1="${VY(0)}" y2="${VY(0)}" stroke="rgba(148,197,255,.55)" stroke-width="1" stroke-dasharray="3 2"/>${inner}</svg>`;
   function svgOff(play, flip) {
-    const F = formPos(play.form, flip), f = flip ? -1 : 1;
+    const F = playPos(play, flip), f = flip ? -1 : 1;
     let g = '';
     if (play.kind === 'run') {
       const h = hole(play, flip), sc = play.run.scheme, car = play.run.carrier;
@@ -265,18 +337,20 @@ const Playbook = (() => {
       }
     }
     for (const [k, [x, y]] of Object.entries(O)) g += `<circle cx="${VX(x)}" cy="${VY(y)}" r="2" fill="#475569"/>`;
+    // defenders marked by position, so the personnel reads at a glance: line red, backers gold, DBs blue
+    const pos = (DFORMS[play.form] || DFORMS['43']).pos, PCOL = { DL: '#fca5a5', LB: '#fde047', CB: '#93c5fd', S: '#93c5fd' };
     for (const [k, [x, y]] of Object.entries(align)) {
       const X = VX(x), Y = VY(y);
-      g += `<path d="M${X - 2.2},${Y - 2.2}L${X + 2.2},${Y + 2.2}M${X + 2.2},${Y - 2.2}L${X - 2.2},${Y + 2.2}" stroke="#f8fafc" stroke-width="1.5" stroke-linecap="round"/>`;
+      g += `<path d="M${X - 2.2},${Y - 2.2}L${X + 2.2},${Y + 2.2}M${X + 2.2},${Y - 2.2}L${X - 2.2},${Y + 2.2}" stroke="${PCOL[pos[k]] || '#f8fafc'}" stroke-width="1.5" stroke-linecap="round"/>`;
     }
     return frame(g);
   }
   // pre-snap alignment for a defensive call against an offensive set (slot → [x, y])
   function defAlign(play, O) {
-    const out = {};
+    const out = {}, front = (DFORMS[play.form] || DFORMS['43']).front;
     for (const [k, asg] of Object.entries(play.a)) {
       if (k[0] === '_') continue;
-      const base = FRONT[k] || null;
+      const base = front[k] || null;
       if (k.startsWith('D')) { out[k] = base.slice(); continue; }
       if (asg[0] === 'man') {
         const [mx, my] = O[asg[1]] || [0, 0];
@@ -316,5 +390,5 @@ const Playbook = (() => {
     return out;
   }
 
-  return { FORMS, BOOKS, inBook, OFF, DEF, ZONES, ZKIND, OL, formPos, routePts, inward, hole, offById, defById, pickOff, pickDef, svgOff, svgDef, defAlign };
+  return { FORMS, BOOKS, inBook, OFF, DEF, DFORMS, DFORM_ORDER, ZONES, ZKIND, OL, formPos, playPos, routePts, inward, hole, offById, defById, pickOff, pickDef, defType, svgOff, svgDef, defAlign };
 })();

@@ -37,9 +37,23 @@ const Engine = (() => {
   const avail = (gs, side, pos) => gs.lu[side][pos].filter(id => !gs.out[id]).map(id => G.players[id]).filter(Boolean);
   function who(gs, side, pos, idx = 0) { return avail(gs, side, pos)[idx] || null; }
   const stam = (gs, p) => (p.id < 0 ? 100 : gs.stam[p.id] ?? 100);
+  // A defensive formation's slot map: each slot keeps its base position's depth order where it can, and the
+  // packages' extra men come off the bench next (the dime's third safety is S3, a 3-4's fourth backer LB4).
+  const DSLOT_CACHE = {};
+  function defSlots(form) {
+    if (!form || form === '43' || !Playbook.DFORMS[form]) return DEF_SLOTS;
+    if (DSLOT_CACHE[form]) return DSLOT_CACHE[form];
+    const pos = Playbook.DFORMS[form].pos, n = {}, out = {};
+    for (const keep of [true, false]) for (const k of Object.keys(DEF_SLOTS)) {
+      if ((pos[k] === DEF_SLOTS[k][0]) !== keep) continue;
+      n[pos[k]] = (n[pos[k]] ?? -1) + 1;
+      out[k] = [pos[k], n[pos[k]]];
+    }
+    return (DSLOT_CACHE[form] = out);
+  }
   // Builds the 11 on the field for one snap, rotating gassed starters out.
-  function slots(gs, side, offense) {
-    const map = offense ? OFF_SLOTS : DEF_SLOTS, out = {}, used = new Set();
+  function slots(gs, side, offense, form) {
+    const map = offense ? OFF_SLOTS : defSlots(form), out = {}, used = new Set();
     const groups = {};
     for (const [slot, [pos, i]] of Object.entries(map)) (groups[pos] = groups[pos] || []).push([slot, i]);
     for (const [pos, list] of Object.entries(groups)) {
@@ -253,6 +267,8 @@ const Engine = (() => {
   const soft = (x, cap) => cap * Math.tanh(x / cap);
   // Swim Move: quick hands work best for quick rushers, and a Mirror blocker takes half of it away
   const swimOdds = (spd, mirrored) => U.clamp((spd - 55) / 30, 0.2, 1) * (mirrored ? 0.5 : 1) * 0.4;
+  // Truck Stick lands more for stronger backs
+  const truckOdds = str => U.clamp((str - 55) / 30, 0.2, 1) * 0.35;
   const clutch = gs => (gs.ot || gs.qtr >= 4) && Math.abs(gs.score[0] - gs.score[1]) <= 8;
   const redZone = gs => gs.ball >= 80;
   const shortYd = gs => (gs.down >= 3 && gs.togo <= 2) || gs.ball >= 95;
@@ -510,7 +526,7 @@ const Engine = (() => {
 
   // ── RUN ──
   function resolveRun(gs, oc, dc) {
-    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = slots(gs, d, false);
+    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = slots(gs, d, false, gs._dform);
     const side = oc === 'outside' ? (U.chance(0.5) ? 'L' : 'R') : 'M';
     const det = { type: 'run', call: oc, dcall: dc, o, los: gs.ball, O: idsOf(O), D: idsOf(D), side, carrier: 'RB', blocks: [] };
     const rb2 = who(gs, o, 'RB', 1);
@@ -548,8 +564,10 @@ const Engine = (() => {
       const m2 = gap(elusR(gs, o, rb) - tackleR(gs, d, l2)) * 0.5 + U.gauss(0, 10) + laneQ * 4 + ({ cover: 3, runstop: -3, blitz: 1, base: 0 }[dc]) + (side !== 'M' ? gap(A(gs, o, rb, 'spd') - A(gs, d, l2, 'spd')) * 0.3 : 0) + (l2k === 'MLB' && side !== 'M' ? 3 : 0)
         + soft(sm(gs, det, rb, 'wrecking'), 3) - soft(sm(gs, det, l2, 'thumper') + sm(gs, det, l2, 'sideline', side !== 'M') + sm(gs, det, l2, 'shedder', l2.pos === 'LB'), 3);
       const juke = m2 < 8 && sp(gs, det, rb, 'jukebox', true, 0.35);
-      levels.push({ d: l2k, win: m2 >= 8 || juke, y: g1 });
-      if (m2 < 8 && !juke) { yards = g1 + U.ri(0, 2); tackler = l2k; }
+      // Truck Stick: the backer meets him square and gets run over
+      const truck = m2 < 8 && !juke && sp(gs, det, rb, 'truck', true, truckOdds(A(gs, o, rb, 'str')));
+      levels.push({ d: l2k, win: m2 >= 8 || juke || truck, y: g1 });
+      if (m2 < 8 && !juke && !truck) { yards = g1 + U.ri(0, 2); tackler = l2k; }
       else {
         const g2 = g1 + U.ri(2, 6);
         const l3k = dc === 'runstop' ? 'S2' : side === 'R' ? 'S2' : 'S1';
@@ -610,7 +628,7 @@ const Engine = (() => {
     screen: [['RB', 'screen', -2, 1.3]],
   };
   function resolvePass(gs, oc, dc) {
-    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = slots(gs, d, false);
+    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = slots(gs, d, false, gs._dform);
     const det = { type: 'pass', call: oc, dcall: dc, o, los: gs.ball, O: idsOf(O), D: idsOf(D), rush: [], routes: [] };
     const qb = O.QB, qs = st(gs, qb, o);
     // protection
@@ -897,7 +915,7 @@ const Engine = (() => {
     const td = gs.tend[d];
     if (dc === 'blitz') td.blitz++;
     td.lastDef = dc;
-    const O = slots(gs, o, true), D = slots(gs, d, false);
+    const O = slots(gs, o, true), D = slots(gs, d, false, dplay.form);
     const det = { type: 'snap', live: true, kind: play.kind, call: cat, dcall: dc, play: play.id, dplay: dplay.id, flip, o, los: gs.ball, togo: gs.togo, O: idsOf(O), D: idsOf(D), down: gs.lastSit };
     gs.lastPlay = det;
     return det;
@@ -940,7 +958,7 @@ const Engine = (() => {
     if (!det || !det.live || gs.over) return;
     if (det.type === 'kickoff') return commitKick(gs, det, res);
     if (det.type === 'punt') return commitPunt(gs, det, res);
-    if (!res) { const fb = det.kind === 'run' ? resolveRun(gs, det.call, det.dcall) : resolvePass(gs, det.call, det.dcall); Object.assign(det, fb, { type: 'snap', live: true }); gs.wpH.push(winProb(gs)); return; }
+    if (!res) { const dp0 = Playbook.defById(det.dplay); gs._dform = dp0 ? dp0.form : null; const fb = det.kind === 'run' ? resolveRun(gs, det.call, det.dcall) : resolvePass(gs, det.call, det.dcall); Object.assign(det, fb, { type: 'snap', live: true }); gs.wpH.push(winProb(gs)); return; }
     const o = gs.poss, d = 1 - o;
     const P = id => (id != null && id >= 0 && G.players[id]) || GHOST('WR');
     const O = {}, Dd = {};
@@ -1111,6 +1129,7 @@ const Engine = (() => {
   function step(gs, input = {}) {
     if (gs.over) return 'over';
     gs._g = null;
+    const defId = input.def;
     input = norm(input);
     gs.lastSit = null; gs.lastPlay = null;
     if (gs.phase === 'kickoff') { kickoff(gs); gs.wpH.push(winProb(gs)); return gs.over ? 'over' : 'ok'; }
@@ -1137,6 +1156,9 @@ const Engine = (() => {
     if (oc === 'fg') { fieldGoal(gs); gs.wpH.push(winProb(gs)); return gs.over ? 'over' : 'ok'; }
     if (oc === 'punt') oc = aiOffCall(gs);
     const dc = userDef ? input.def : aiDefCall(gs);
+    // the personnel on the field comes from an actual call in that family (sim games included)
+    const dplay = (userDef && Playbook.defById(defId)) || Playbook.pickDef(dc, gs);
+    gs._dform = dplay.form;
     gs.lastSit = `${downTxt(gs)} at ${spot(gs)}`;
     const kind = OFF_CALLS.find(c => c.id === oc).kind;
     const t = gs.tend[o];
@@ -1174,6 +1196,6 @@ const Engine = (() => {
   return {
     create, step, prepare, commit, ratings, simToEnd, winProb, preWinProb, fourthInfo, needsCall, suggestOff, aiDefCall, callEdges, canKneel,
     spot, downTxt, slots, stam, OFF_CALLS, DEF_CALLS,
-    stk: { sm, sp, tierOf, clutch, redZone, shortYd, wxPass, swimOdds, tbChance },
+    stk: { sm, sp, tierOf, clutch, redZone, shortYd, wxPass, swimOdds, truckOdds, tbChance },
   };
 })();
