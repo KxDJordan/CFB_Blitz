@@ -21,6 +21,11 @@ const Live = (() => {
   let pops = [], parts = [], shake = 0, flash = null, cut = null, readyCb = null;
   // presentation: slow-motion beats, sack hit flash, crowd excitement, space taken by the play-call panel
   let slow = 0, hit = 0, excite = 0, inset = 0, insetCur = 0, logoImgs = [];
+  // arcade layer: hit-stop freeze, camera zoom, impact rings, flying helmets, badge auras, fireworks, the team logo
+  // stamp, momentum (+ for team 0, − for team 1) and players on fire for the rest of the drive. All of it is
+  // presentation only: nothing here changes what happens on the field.
+  let stopT = 0, zoom = 1, rings = [], debris = [], auras = [], fworks = [], logoFlash = null;
+  let mom = 0, fire = {}, fireOn = new Set(), fireO = null;
 
   // ── formations (x offset from centre, y offset from line of scrimmage) ──
   const OFF_F = { QB: [0, -5], RB: [-1.7, -5.2], WR1: [-13, -0.8], WR2: [13, -0.8], WR3: [-8, -1.2], TE: [5.3, -1.0], LT: [-3.4, -0.9], LG: [-1.7, -0.9], C: [0, -0.7], RG: [1.7, -0.9], RT: [3.4, -0.9] };
@@ -65,6 +70,8 @@ const Live = (() => {
     logoImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(Logo.svg(L.team(gs.t[0]).logo, 200).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '));
     logoImgs = [0, 1].map(i => { const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(Logo.svg(L.team(gs.t[i]).logo, 200).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')); return im; });
     slow = 0; hit = 0; excite = 0;
+    stopT = 0; zoom = 1; rings = []; debris = []; auras = []; fworks = []; logoFlash = null;
+    mom = 0; fire = {}; fireOn = new Set(); fireO = null;
     resize();
     initVisuals();
     pops = []; parts = []; S = null; cut = null; readyCb = null; acc = 0;
@@ -91,19 +98,24 @@ const Live = (() => {
       if (!cut.mid && cut.age >= 0.22) { cut.mid = true; cut.fn(); }
       if (cut.age >= 0.6) cut = null;
     }
-    if (S && !paused && !(cut && !cut.mid)) {
+    const frozen = stopT > 0;
+    if (!paused) stopT = Math.max(0, stopT - dt);
+    if (S && !paused && !frozen && !(cut && !cut.mid)) {
       acc += dt * speed * (slow > 0 ? 0.3 : 1);
       let n = 0;
       while (acc >= DT && n++ < 24) { step(); acc -= DT; }
       if (n >= 24) acc = 0;
     }
     if (readyCb && !paused && !cut && S && S.ready) { const cb = readyCb; readyCb = null; setTimeout(cb, 0); }
+    zoom += (zoomTarget() - zoom) * (1 - Math.exp(-dt * 3));
+    sc = W / VIEW_W * zoom;
     updateCamera(dt);
-    const vdt = paused ? 0 : dt * Math.min(speed, 2);
+    const vdt = paused ? 0 : dt * Math.min(speed, 2), pdt = frozen ? 0 : vdt;
     for (const p of pops) p.age += vdt;
     pops = pops.filter(p => p.age < p.life);
-    for (const p of parts) { p.x += p.vx * vdt; p.y += p.vy * vdt; p.z = Math.max(0, p.z + p.vz * vdt); p.vz -= 18 * vdt; p.age += vdt; }
+    for (const p of parts) { p.x += p.vx * pdt; p.y += p.vy * pdt; p.z = Math.max(0, p.z + p.vz * pdt); p.vz -= 18 * pdt; p.age += pdt; }
     parts = parts.filter(p => p.age < p.life);
+    stepFx(vdt, pdt);
     shake *= Math.pow(0.03, dt);
     slow = Math.max(0, slow - dt); hit = Math.max(0, hit - dt * 2.4); excite = Math.max(0, excite - dt * 0.35);
     Sfx.crowd(paused ? 0 : Math.min(1, excite + (gs && gs.rival ? 0.3 : 0)));
@@ -130,6 +142,10 @@ const Live = (() => {
     };
   }
   function newScene(o, los, ltg, kind) {
+    // a new possession puts out every fire; momentum cools a little with every snap
+    if (fireO != null && o !== fireO) { fire = {}; fireOn = new Set(); }
+    fireO = o;
+    if (kind !== 'lineup') mom *= 0.9;
     S = { o, los, ltg, kind, ag: {}, list: [], t: 0, snapT: null, ball: { mode: 'none', x: CX, y: los ?? 35, z: 0 }, carrier: null, engs: [], ev: [], dead: false, deadT: 0, ready: false, onDone: null, focus: null, dirUp: 1, free: false, fp: null, det: null, result: null };
     return S;
   }
@@ -253,6 +269,8 @@ const Live = (() => {
       if (a.eng) continue;
       if (a.down > 0) {
         a.vx *= 0.86; a.vy *= 0.86; a.x += a.vx * DT; a.y += a.vy * DT;
+        if (a.spin) { a.face += a.spin * DT; a.spin *= 0.93; if (Math.abs(a.spin) < 0.2) a.spin = 0; }
+        if (a.kvx || a.kvy) { a.x += a.kvx * DT; a.y += a.kvy * DT; a.kvx *= 0.95; a.kvy *= 0.95; if (hyp(a.kvx, a.kvy) < 0.1) a.kvx = a.kvy = 0; }
         if (!a.stayDown) { a.down -= DT; if (a.down < 0) a.down = 0; }
         continue;
       }
@@ -278,7 +296,14 @@ const Live = (() => {
       }
       a.phase += DT * (1.2 + sp * 1.05);
     }
-    const cr = S.carrier, FP = S.fp;
+    const cr = S.carrier, FP = S.fp, B = S.ball;
+    // a jump ball: the target and a defender are both under it as it comes down — slow it down and push in
+    if (B.mode === 'air' && FP && FP.mode === 'air' && FP.target && !S.contest) {
+      const left = B.t0 + B.dur - S.t, r = FP.target;
+      if (left > 0 && left < 0.45 && hyp(r.x - B.tx, r.y - B.ty) < 2.6) {
+        for (const d of S.list) if (d.side !== r.side && d.down <= 0 && hyp(d.x - B.tx, d.y - B.ty) < 2.4 && d2(d, r) < 2.4) { S.contest = { x: B.tx, y: B.ty, until: performance.now() + 1200 }; slowMo(0.7); excite = Math.max(excite, 0.5); break; }
+      }
+    }
     if (cr && FP && FP.L0 != null && !FP.bigShown && !S.dead && S.ball.mode === 'held' && (cr.y - FP.L0) * (FP.cdir || 1) >= 15) { FP.bigShown = true; slowMo(0.8); excite = Math.max(excite, 0.9); }
     if (S.snapT != null && !S.dead && FP && FP.L0 != null && Math.round(S.t / DT) % 6 === 0) for (const a of S.list) if (a.side === S.o && (a.pos === 'WR' || a.pos === 'TE' || a.pos === 'RB')) { (a.path = a.path || []).push([a.x, a.y]); if (a.path.length > 90) a.path.shift(); }
     if (cr && S.ball.mode === 'held' && hyp(cr.vx, cr.vy) > 3) { (cr.trail = cr.trail || []).push([cr.x, cr.y]); if (cr.trail.length > 18) cr.trail.shift(); }
@@ -400,8 +425,29 @@ const Live = (() => {
     const F0 = S.fp, c0 = S.carrier;
     if (F0 && F0.L0 != null && F0.kind !== 'ret' && c0 && c0.side === S.o && (F0.td || (c0.y - F0.L0) * (F0.cdir || 1) >= 20)) S.replay = performance.now();
     for (const e of S.engs) if (!e.done) release(e);
+    if (F0) bigPlays(F0, c0);
     if (fx) fx();
   }
+  // who made a big play: it builds his team's momentum, and two in one drive sets him on fire
+  function bigPlays(F, c) {
+    const made = [];
+    if (F.td && c) made.push([c, 0.45]);
+    else if (c && F.L0 != null && c.side === F.offSide && (c.y - F.L0) * (F.cdir || 1) >= 20) made.push([c, 0.25]);
+    if (F.res && F.res.outcome === 'int' && c && c.side !== F.offSide && !F.td) made.push([c, 0.4]);
+    if (F.recovered && F.recovered.side !== F.offSide) made.push([F.recovered, 0.35]);
+    if (F.tackler && F.qb && c === F.qb && F.mode === 'pass') made.push([F.tackler, 0.2]);
+    for (const [a, w] of made) {
+      addMom(a.side, w);
+      if (a.pid == null) continue;
+      fire[a.pid] = (fire[a.pid] || 0) + 1;
+      if (fire[a.pid] >= 2 && !fireOn.has(a.pid)) {
+        fireOn.add(a.pid);
+        const sc0 = S;
+        setTimeout(() => { if (S === sc0) { pop(a.x, a.y + 0.8, 'ON FIRE!', '#fb923c', { big: true, life: 1.8 }); Sfx.play('bigPlay', 0.5); } }, 350);
+      }
+    }
+  }
+  const addMom = (side, w) => { mom = U.clamp(mom + (side === 0 ? w : -w), -1, 1); };
 
   // ════════════ FREE PLAY ════════════
   // Nothing below is scripted: blocks, routes, reads, throws, catches, cuts and
@@ -420,6 +466,7 @@ const Live = (() => {
   }
   function stkPop(a, id, minTier = 0) {
     const t = Engine.stk.tierOf(P(a.pid), id);
+    if (t >= minTier && t >= 0) auraFx(a, DATA.STICKER_TIERS[t].color, DATA.STICKERS[id].glyph);
     if (t < minTier || t < 0 || (S.stkPops || 0) >= 2) return;
     S.stkPops = (S.stkPops || 0) + 1;
     pop(a.x, a.y + 0.6, '★ ' + DATA.STICKERS[id].name.toUpperCase(), DATA.STICKER_TIERS[t].color, { life: 1.8 });
@@ -464,13 +511,43 @@ const Live = (() => {
     if (offS > 0 && soft(offS, 3) > 1) stkPop(c, rb ? 'wrecking' : 'yac', 2);
     if (S.t - (S.lastWhiff || -9) > 0.8) { S.lastWhiff = S.t; pop(c.x, c.y, sacking ? 'ESCAPES!' : U.pick(['BROKE TACKLE', 'JUKE!', 'SPIN MOVE', 'STIFF ARM', 'MISSED TACKLE']), '#facc15', { life: 1 }); }
     burst(c.x, c.y, 'rgba(250,204,21,.8)', 6);
+    ring(c.x, c.y, '#facc15', 0.7, 0);
+    addMom(c.side, 0.03);
     return false;
+  }
+  const hasBadge = (a, id) => a.pid != null && Engine.stk.tierOf(P(a.pid), id) >= 0;
+  // the whole field freezes for a beat on contact (real time, shorter at high game speeds)
+  function hitStop(sec) { stopT = Math.max(stopT, sec / Math.sqrt(Math.max(1, speed))); }
+  // a shockwave ring (and radial streaks on the big ones) at the point of contact
+  function ring(x, y, col, size = 1, streaks = 0) {
+    rings.push({ x, y, col, size, age: 0, life: 0.32 + size * 0.1, st: Array.from({ length: streaks }, () => [Math.random() * Math.PI * 2, U.rand(0.7, 1.3)]) });
+    if (rings.length > 12) rings.shift();
+  }
+  // knocked off his feet: sliding, spinning, and on a monster hit launched into the air (helmet optional)
+  function knockback(c, d, dir, power) {
+    const k = Math.min(9, 3 + (power - 11) * 0.9); // ~1-3 yards of slide on top of the fall
+    c.kvx = dir[0] * k; c.kvy = dir[1] * k;
+    c.spin = (Math.random() < 0.5 ? -1 : 1) * U.rand(5, 11);
+    if (power >= 14 && Math.random() < 0.55) {
+      c.airT = 0.55; c.air0 = performance.now();
+      if (Math.random() < 0.3) helmetPop(c, dir);
+      for (let i = 0; i < 10; i++) { const a = Math.random() * Math.PI * 2, v = U.rand(1, 4); parts.push({ x: c.x, y: c.y, z: 0.2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: U.rand(2, 6), age: 0, life: U.rand(0.6, 1.1), s: U.rand(5, 8), c: U.pick(['#3f7d3a', '#2f6b2e', '#6b4f2a', '#57401f']) }); }
+      shake = Math.max(shake, 1.3);
+      Sfx.play('bigHit', 0.4);
+    }
+  }
+  function helmetPop(c, dir) {
+    const k = kit[c.side];
+    debris.push({ x: c.x, y: c.y, z: 1.6, vx: dir[0] * U.rand(3, 6) + U.rand(-1.5, 1.5), vy: dir[1] * U.rand(3, 6) + U.rand(-1.5, 1.5), vz: U.rand(5, 8), rot: 0, vr: U.rand(-14, 14), col: k.helmet, stripe: k.stripe, age: 0, life: 2.6 });
   }
   function tackle(c, d) {
     const F = S.fp;
     if (S.dead || (F && F.over)) return;
     if (d.eng) release(d.eng);
     if (c.eng) release(c.eng);
+    // how hard the hit lands: closing speed through the tackler's mass and strength (Thumper/Enforcer hit harder)
+    const tdir = hyp(d.vx, d.vy) > 0.5 ? [d.vx / hyp(d.vx, d.vy), d.vy / hyp(d.vx, d.vy)] : [(c.x - d.x) / (d2(c, d) || 1), (c.y - d.y) / (d2(c, d) || 1)];
+    const power = hyp(c.vx - d.vx, c.vy - d.vy) * d.mass * (0.75 + (d.R ? d.R.str : 60) / 220) + (hasBadge(d, 'thumper') || hasBadge(d, 'enforcer') ? 2 : 0);
     const fwd = F ? F.cdir : (S.dirUp || 1);
     // momentum and strength decide which way the pile falls
     const lean = (c.R.str - d.R.str) * 0.03;
@@ -481,7 +558,10 @@ const Live = (() => {
     shake = Math.max(shake, 0.5);
     burst(c.x, c.y, 'rgba(226,232,240,.9)', 14);
     Sfx.play('tackle');
-    if (F && F.qb === c && F.mode === 'pass') { hit = 1; shake = 1.1; slowMo(0.45); excite = Math.max(excite, 0.6); burst(c.x, c.y, 'rgba(255,255,255,.95)', 22, 5); pop(c.x, c.y + 1, 'SACK!', '#fca5a5', { big: true }); }
+    const sack = F && F.qb === c && F.mode === 'pass', bigHit = power >= 9 || sack;
+    ring(c.x, c.y, sack ? '#fca5a5' : '#ffffff', bigHit ? 1.6 + Math.min(1, (power - 9) / 6) : 0.8, bigHit ? 10 : 0);
+    if (bigHit) { hitStop(sack ? 0.12 : 0.05 + Math.min(0.07, (power - 9) * 0.012)); shake = Math.max(shake, 0.9); addMom(d.side, 0.06); }
+    if (sack) { hit = 1; shake = 1.1; slowMo(0.45); excite = Math.max(excite, 0.6); burst(c.x, c.y, 'rgba(255,255,255,.95)', 22, 5); pop(c.x, c.y + 1, 'SACK!', '#fca5a5', { big: true }); }
     const sc = S;
     setTimeout(() => { if (S !== sc) return; c.stayDown = false; c.down = 1.0; d.stayDown = false; d.down = 0.7; }, 900 / speed);
     if (!F) return dead(S.onTackle);
@@ -495,6 +575,11 @@ const Live = (() => {
       if (Math.random() < fp) return fumble(c, d);
     }
     F.spotY = null;
+    // a big hit sends him flying — but the ball is spotted where the pile would have fallen anyway
+    if (power >= 11) {
+      F.spotY = spotOf(c) + c.vy * DT * 0.86 / 0.14;
+      knockback(c, d, tdir, power);
+    }
     F.over = true;
     dead(() => { if (S.onTackle) S.onTackle(); });
   }
@@ -504,6 +589,7 @@ const Live = (() => {
     looseBall(c.x, c.y, 0.8, U.rand(-3, 3) + c.vx * 0.3, U.rand(-2, 3) * F.cdir + c.vy * 0.2, 3);
     pop(c.x, c.y, 'FUMBLE!', '#fca5a5', { big: true });
     slowMo(0.7); excite = Math.max(excite, 0.7);
+    hitStop(0.1); ring(c.x, c.y, '#fca5a5', 2.2, 12);
     shake = 0.8;
     for (const a of S.list) { if (a.eng) release(a.eng); a.brain = looseBrain; }
   }
@@ -679,6 +765,12 @@ const Live = (() => {
     confetti(a.x, a.y, [kit[a.side].jersey, team.logo.secondary, '#facc15', '#ffffff']);
     shake = 0.6;
     for (const m of S.list) if (m.side === a.side && d2(m, a) < 18) m.celebrate = true;
+    // the scorer spikes it or breaks into a dance; fireworks go up over the end zone; the logo stamps the screen
+    if (S.ball.mode === 'held' && S.ball.holder === a && Math.random() < 0.6) S.spike = { t0: S.t + 0.3, x: a.x, y: a.y, dx: U.rand(-1, 1), boom: false };
+    else a.dance = true;
+    const cols = [team.logo.primary, team.logo.secondary, '#facc15', '#ffffff'], dir = (S.fp && S.fp.cdir) || S.dirUp || 1;
+    for (let i = 0; i < 7; i++) fworks.push({ x: U.rand(6, FW - 6), y: a.y + U.rand(1, 7) * dir, z: 0, vz: U.rand(19, 24), wait: 0.25 + i * U.rand(0.18, 0.32), col: U.pick(cols), cols });
+    logoFlash = { side: a.side, t0: performance.now() };
   }
 
   // ── per-tick rules of the game ──
@@ -1173,6 +1265,8 @@ const Live = (() => {
     F.res.target = r.key.slice(1); F.res.air = ty - F.L0;
     if (pressured) pop(qb.x, qb.y, 'PRESSURE', '#fca5a5');
     throwBall(qb, [clampX(tx), ty], flight, 0.8 + Math.min(6, op.dist * 0.12), () => catchBall(r), 2.0, 1.4);
+    // how the throw looks in the air: a laser from a Cannon Arm, a glowing rainbow from a Dime Dropper, else a spiral
+    S.ball.style = depth >= 15 && hasBadge(qb, 'cannon') ? 'laser' : depth >= 15 && hasBadge(qb, 'dime') ? 'dime' : 'spiral';
     for (const a of mates(qb)) if (a.blocking && !a.eng && a.pos !== 'OL') a.blockT = a.blockT || null;
   }
   // the ball arrives: receiver vs defender at the catch point
@@ -1189,7 +1283,7 @@ const Live = (() => {
     const rS = soft(stkM(r, 'gluehands', dD < 1.6) + stkM(r, 'redzone', Engine.stk.redZone(gs)) * 0.3, 0.3);
     const incomplete = (pbu, drop) => {
       F.res.outcome = 'incomplete'; F.res.pbu = pbu ? pbu.key.slice(1) : null; F.res.drop = !!drop; F.over = true;
-      if (pbu) { b.vx = U.rand(-4, 4); b.vy = U.rand(-2, 2); b.vz = 5; pop(bx, by, 'BROKEN UP', '#fca5a5'); burst(bx, by, 'rgba(252,165,165,.9)', 10); }
+      if (pbu) { b.vx = U.rand(-4, 4); b.vy = U.rand(-2, 2); b.vz = 5; pop(bx, by, 'BROKEN UP', '#fca5a5'); burst(bx, by, 'rgba(252,165,165,.9)', 10); if (S.contest) { hitStop(0.08); ring(pbu.x, pbu.y, '#fca5a5', 1.6, 8); } }
       else pop(bx, by, drop ? 'DROPPED' : 'INCOMPLETE', '#cbd5e1');
       at(S.t + 0.8, () => dead());
     };
@@ -1219,6 +1313,8 @@ const Live = (() => {
     F.caught = true; F.mode = 'yac'; F.res.outcome = 'complete'; F.res.carrier = r.key.slice(1); F.catchY = r.y; F.cdir = 1;
     burst(r.x, r.y, 'rgba(255,255,255,.6)', 5, 1.5);
     Sfx.play('catch');
+    // won the jump ball: freeze on the grab, gold burst on the winner
+    if (S.contest) { hitStop(0.08); burst(r.x, r.y, 'rgba(250,204,21,.95)', 18, 5); ring(r.x, r.y, '#facc15', 1.8, 10); pop(r.x, r.y + 0.8, 'WHAT A CATCH!', '#facc15', { big: true }); addMom(r.side, 0.12); }
     r.brain = runnerBrain; r.route = null; r.lane = null;
     for (const a of S.list) {
       if (a === r) continue;
@@ -1233,6 +1329,8 @@ const Live = (() => {
     pop(pk.x, pk.y, 'INTERCEPTED!', '#fca5a5', { big: true });
     slowMo(1.0); excite = Math.max(excite, 0.8);
     shake = 0.8; burst(pk.x, pk.y, 'rgba(252,165,165,.9)', 16);
+    hitStop(0.1); ring(pk.x, pk.y, '#fca5a5', 2, 12);
+    if (S.contest) { burst(pk.x, pk.y, 'rgba(250,204,21,.95)', 18, 5); auraFx(pk, '#fca5a5', 'INT'); }
     S.dirUp = -1;
     if (pk.y > 100) { F.res.touchback = true; F.over = true; pk.pose = 'kneel'; pk.brain = stop; at(S.t + 0.7, () => dead(() => pop(pk.x, pk.y, 'TOUCHBACK', '#cbd5e1'))); return; }
     pk.brain = runnerBrain; pk.lane = null;
@@ -1729,10 +1827,13 @@ const Live = (() => {
       }
       if (S.replay) drawReplay();
       drawBallTrail();
+      drawSpeed();
       for (const a of S.list) if (a.down > 0) drawPlayer(a);
       for (const a of S.list) if (!(a.down > 0)) drawPlayer(a);
       drawBall(ballPos());
+      drawRings(); drawDebris(); drawAuras();
     }
+    drawRockets();
     for (const p of parts) {
       ctx.globalAlpha = Math.max(0, 1 - p.age / p.life);
       ctx.fillStyle = p.c;
@@ -1743,6 +1844,8 @@ const Live = (() => {
     if (wx) skyWeather();
     for (const p of pops) drawPop(p);
     ctx.restore();
+    drawMomentum();
+    if (logoFlash) drawLogoFlash();
     if (hit > 0) { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const hg = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, W * 0.9); hg.addColorStop(0, `rgba(255,255,255,${0.42 * hit})`); hg.addColorStop(1, `rgba(255,255,255,${0.08 * hit})`); ctx.fillStyle = hg; ctx.fillRect(0, 0, W, H); }
     if (flash) drawFlash();
     if (cut) {
@@ -1819,13 +1922,15 @@ const Live = (() => {
         y0 = y1;
       }
       // the crowd comes alive on big plays: a wave rolls across and camera flashes pop
-      if (excite > 0.05) {
+      // ...and momentum keeps the flashbulbs going between plays
+      const ex = Math.max(excite, Math.abs(mom) * 0.45);
+      if (ex > 0.05) {
         const wave = x0 + ((performance.now() / 1000 * 22) % (x1 - x0));
         const wg = ctx.createLinearGradient(SX(wave - 5), 0, SX(wave + 5), 0);
-        wg.addColorStop(0, 'rgba(255,255,255,0)'); wg.addColorStop(0.5, `rgba(255,255,255,${0.16 * excite})`); wg.addColorStop(1, 'rgba(255,255,255,0)');
+        wg.addColorStop(0, 'rgba(255,255,255,0)'); wg.addColorStop(0.5, `rgba(255,255,255,${0.16 * ex})`); wg.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.fillStyle = wg; ctx.fillRect(SX(wave - 5), SY(hi(front, far)), 10 * sc, Math.abs(far - front) * sc);
         ctx.fillStyle = 'rgba(255,255,255,.95)';
-        for (let i = 0; i < 26 * excite; i++) { const fx = SX(x0 + Math.random() * (x1 - x0)), fy = SY(front + dir * Math.random() * 30); ctx.fillRect(fx, fy, 2, 2); }
+        for (let i = 0; i < 26 * ex; i++) { const fx = SX(x0 + Math.random() * (x1 - x0)), fy = SY(front + dir * Math.random() * 30); ctx.fillRect(fx, fy, 2, 2); }
       }
       // banners in team colours hung over the front rows
       for (let bx = x0 + 3, n = 0; bx < x1 - 4; bx += 11, n++) {
@@ -2166,9 +2271,14 @@ const Live = (() => {
     const big = a.pos === 'OL' || a.pos === 'DL';
     let r = Math.max(9, sc * 0.84) * (big ? 1.08 : 1) * (carrier ? 1.12 : 1);
     if (a.celebrate) r *= 1 + Math.abs(Math.sin(performance.now() / 150 + a.phase)) * 0.14;
-    const fa = -a.face, hr = r * 0.64;
+    const fa = -a.face - (a.dance && S.dead ? performance.now() / 110 : 0), hr = r * 0.64;
     if (a.down > 0) {
-      ctx.save(); ctx.translate(x, y); ctx.rotate(fa);
+      // launched by a monster hit: up through the air, bigger at the top of the arc, then down
+      const au = a.airT ? (performance.now() - a.air0) / 1000 / (a.airT * Math.sqrt(Math.max(1, speed))) : 1;
+      const lift = au < 1 ? Math.sin(Math.PI * au) * sc * 1.3 : 0;
+      if (au >= 1 && a.airT) a.airT = 0;
+      ctx.save(); ctx.translate(x, y - lift); ctx.rotate(fa);
+      if (lift) { const k2 = 1 + lift / (sc * 1.3) * 0.3; ctx.scale(k2, k2); }
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = 'rgba(0,0,0,.3)'; ell(2, 2, r * 1.35, r * 0.72); ctx.fill();
       ctx.fillStyle = k.dark; ell(-r * 0.95, -r * 0.25, r * 0.45, r * 0.22); ctx.fill(); ell(-r * 0.95, r * 0.25, r * 0.45, r * 0.22); ctx.fill();
@@ -2181,6 +2291,13 @@ const Live = (() => {
     // shadow (direction depends on the time of day)
     const so2 = wx ? { day: [2.6, 3], dusk: [5.5, 2.4], night: [0.6, 1.8] }[wx.time] : [1.5, 2];
     ctx.fillStyle = 'rgba(0,0,0,.3)'; ell(x + so2[0], y + so2[1], r * 1.05, r * 1.05); ctx.fill();
+    if (a.pid != null && fireOn.has(a.pid)) {
+      const fl = 0.5 + 0.5 * Math.sin(performance.now() / 90 + a.phase);
+      const g = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * (2 + fl * 0.4));
+      g.addColorStop(0, 'rgba(251,146,60,.55)'); g.addColorStop(0.6, 'rgba(239,68,68,.22)'); g.addColorStop(1, 'rgba(239,68,68,0)');
+      ctx.fillStyle = g; ell(x, y, r * (2 + fl * 0.4), r * (2 + fl * 0.4)); ctx.fill();
+      ctx.strokeStyle = `rgba(253,186,116,${0.6 + fl * 0.4})`; ctx.lineWidth = 2; ell(x, y, r * 1.3, r * 1.3); ctx.stroke();
+    }
     if (carrier) {
       const pu = 0.5 + 0.5 * Math.sin(performance.now() / 180);
       ctx.fillStyle = `rgba(250,204,21,${0.16 + pu * 0.16})`; ell(x, y, r * (1.75 + pu * 0.25), r * (1.75 + pu * 0.25)); ctx.fill();
@@ -2229,10 +2346,39 @@ const Live = (() => {
       ctx.setLineDash([sc * 0.5, sc * 0.5]); ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(SX(b.fx), SY(b.fy)); ctx.lineTo(SX(b.tx), SY(b.ty)); ctx.stroke(); ctx.setLineDash([]);
     }
+    const px = q => SX(q.x), py = q => SY(q.y) - q.z * sc * BALL_Z;
+    const path = () => { ctx.beginPath(); tr.forEach((q, i) => (i ? ctx.lineTo(px(q), py(q)) : ctx.moveTo(px(q), py(q)))); };
+    if (b.style === 'laser' && tr.length > 1) {
+      // Cannon Arm: a straight, glowing rope
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(56,189,248,.28)'; ctx.lineWidth = Math.max(5, sc * 0.55); path(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(224,242,254,.95)'; ctx.lineWidth = Math.max(1.6, sc * 0.14); path(); ctx.stroke();
+      return;
+    }
+    if (b.style === 'dime' && tr.length > 1) {
+      // Dime Dropper: a soft golden rainbow
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(250,204,21,.22)'; ctx.lineWidth = Math.max(6, sc * 0.7); path(); ctx.stroke();
+      for (let i = 0; i < tr.length; i++) { const u = i / tr.length, q = tr[i]; ctx.fillStyle = `rgba(253,224,71,${0.1 + u * 0.6})`; ell(px(q), py(q), Math.max(1.4, sc * 0.22 * u), Math.max(1.4, sc * 0.22 * u)); ctx.fill(); }
+      return;
+    }
     for (let i = 0; i < tr.length; i++) {
       const u = i / tr.length, q = tr[i];
       ctx.fillStyle = `rgba(255,255,255,${0.05 + u * 0.35})`;
-      ell(SX(q.x), SY(q.y) - q.z * sc * 0.35, Math.max(1, sc * 0.16 * u), Math.max(1, sc * 0.16 * u)); ctx.fill();
+      ell(px(q), py(q), Math.max(1, sc * 0.16 * u), Math.max(1, sc * 0.16 * u)); ctx.fill();
+    }
+    // a spiral: two threads twisting around the ball's path
+    if (b.style === 'spiral' && tr.length > 2) {
+      const t0 = performance.now() / 45;
+      for (let i = 1; i < tr.length; i++) {
+        const q = tr[i], q0 = tr[i - 1], u = i / tr.length;
+        const dx = px(q) - px(q0), dy = py(q) - py(q0), dl = hyp(dx, dy) || 1, nx = -dy / dl, ny = dx / dl;
+        for (const ph of [0, Math.PI]) {
+          const o = Math.sin(i * 0.9 - t0 + ph) * sc * 0.2 * u;
+          ctx.fillStyle = `rgba(226,232,240,${0.12 + u * 0.4})`;
+          ell(px(q) + nx * o, py(q) + ny * o, Math.max(0.8, sc * 0.07), Math.max(0.8, sc * 0.07)); ctx.fill();
+        }
+      }
     }
   }
   // after a big play: the receivers' and runners' actual paths, like a broadcast telestrator
@@ -2262,25 +2408,158 @@ const Live = (() => {
     ctx.fillStyle = '#ffffff'; ctx.fillText('REPLAY', 31, H * 0.06 + 11.5);
     ctx.globalAlpha = 1;
   }
+  // the ball's height on screen (yards of z → pixels, as a share of the scale): exaggerated so bombs float
+  const BALL_Z = 0.5;
   function drawBall(p) {
     if (!S || S.ball.mode === 'none') return;
     const held = S.ball.mode === 'held';
+    if (held && S.spike && S.t >= S.spike.t0) return drawSpike();
     const x = SX(p.x), gy = SY(p.y);
-    const lift = held ? 0 : p.z * sc * 0.35;
-    const size = Math.max(3.2, sc * 0.3) * (1 + (held ? 0 : p.z * 0.035));
-    if (!held && p.z > 0.4) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, gy, size * 0.9, size * 0.5, 0, 0, Math.PI * 2); ctx.fill(); }
-    const bx = held ? x + Math.cos(-S.ball.holder.face) * sc * 0.45 : x, by = held ? gy + Math.sin(-S.ball.holder.face) * sc * 0.45 : gy - lift;
-    ctx.save(); ctx.translate(bx, by); ctx.rotate(S.ball.mode === 'air' ? -Math.atan2(S.ball.ty - S.ball.fy, S.ball.tx - S.ball.fx) : -0.6);
+    if (held) {
+      const f = -S.ball.holder.face;
+      return ballSprite(x + Math.cos(f) * sc * 0.45, gy + Math.sin(f) * sc * 0.45, 0, -0.6, 0);
+    }
+    const air = S.ball.mode === 'air', kick = air && !S.ball.style && S.ball.dur >= 1.5;
+    const rot = air ? (kick ? performance.now() / 70 : -Math.atan2(S.ball.ty - S.ball.fy, S.ball.tx - S.ball.fx)) : -0.6;
+    ballSprite(x, gy, p.z, rot, air && !kick ? performance.now() / 35 : 0);
+  }
+  // a ball z yards up: its shadow stays on the turf (smaller and fainter the higher it goes), the ball rises and grows;
+  // spin turns the laces around the long axis
+  function ballSprite(x, gy, z, rot, spin) {
+    const base = Math.max(3.2, sc * 0.3), size = base * (1 + z * 0.06), hz = Math.min(1, z / 12);
+    if (z > 0.15) { ctx.fillStyle = `rgba(0,0,0,${0.36 - hz * 0.2})`; ctx.beginPath(); ctx.ellipse(x, gy, base * (1 - hz * 0.4), base * 0.55 * (1 - hz * 0.4), 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.save(); ctx.translate(x, gy - z * sc * BALL_Z); ctx.rotate(rot);
     ctx.fillStyle = '#8b4513'; ctx.strokeStyle = '#2b1306'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.ellipse(0, 0, size, size * 0.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(-size * 0.4, 0); ctx.lineTo(size * 0.4, 0); ctx.stroke();
+    const lo = spin ? Math.sin(spin) * size * 0.42 : 0;
+    if (!spin || Math.cos(spin) > -0.2) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(-size * 0.4, lo); ctx.lineTo(size * 0.4, lo); ctx.stroke(); }
     ctx.restore();
+  }
+  // touchdown spike: slammed into the turf, one big bounce, a little one, then it rolls
+  function drawSpike() {
+    const sp = S.spike, u = S.t - sp.t0;
+    const z = u < 0.12 ? 1.2 * (1 - u / 0.12) : u < 0.67 ? 3.2 * Math.sin(Math.PI * (u - 0.12) / 0.55) : u < 0.97 ? 0.8 * Math.sin(Math.PI * (u - 0.67) / 0.3) : 0;
+    const roll = Math.min(u, 1.4);
+    ballSprite(SX(sp.x + sp.dx * roll * 1.6), SY(sp.y + roll * 0.9), z, u * 14, 0);
+  }
+  // a carrier in the open at full tilt: speed lines behind him, and afterimages for Burners, Home Run Hitters
+  // and anyone on fire
+  function drawSpeed() {
+    const c = S.carrier, F = S.fp;
+    if (!c || S.ball.mode !== 'held' || c.down > 0 || !F || F.L0 == null || S.dead) return;
+    const sp = hyp(c.vx, c.vy);
+    if (sp < c.vmax * 0.7 || (c.y - F.L0) * (F.cdir || 1) <= 5) return;
+    const fast = hasBadge(c, 'burner') || hasBadge(c, 'homerun') || fireOn.has(c.pid);
+    if (!fast && !F.bigShown) return;
+    const ux = c.vx / sp, uy = c.vy / sp;
+    ctx.lineCap = 'round'; ctx.lineWidth = 1.6;
+    for (let i = 0; i < 7; i++) {
+      const off = (i - 3) * 0.32, j = (c.phase * 3 + i * 0.37) % 1, L1 = 1.2 + ((i * 37) % 5) * 0.35;
+      const bx = c.x - ux * (1 + j * 0.8) - uy * off, by = c.y - uy * (1 + j * 0.8) + ux * off;
+      ctx.strokeStyle = `rgba(255,255,255,${0.42 * (1 - j)})`;
+      ctx.beginPath(); ctx.moveTo(SX(bx), SY(by)); ctx.lineTo(SX(bx - ux * L1), SY(by - uy * L1)); ctx.stroke();
+    }
+    if (!fast) return;
+    const k = kit[c.side], r = Math.max(9, sc * 0.84) * 1.1;
+    for (const [back, al] of [[5, 0.3], [10, 0.18], [15, 0.1]]) {
+      const j = (c.hi - back + 64) % 64, hx = c.hx[j], hy = c.hy[j];
+      if (hx == null) continue;
+      ctx.globalAlpha = al; ctx.fillStyle = k.jersey; ell(SX(hx), SY(hy), r * 0.95, r * 0.95); ctx.fill();
+      ctx.fillStyle = k.helmet; ell(SX(hx) + Math.cos(-c.face) * r * 0.14, SY(hy) + Math.sin(-c.face) * r * 0.14, r * 0.6, r * 0.6); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawRings() {
+    ctx.lineCap = 'round';
+    for (const r of rings) {
+      const u = r.age / r.life, R = (0.35 + u * 1.6) * r.size * sc, x = SX(r.x), y = SY(r.y);
+      ctx.globalAlpha = (1 - u) * 0.9; ctx.strokeStyle = r.col;
+      ctx.lineWidth = Math.max(1.4, (1 - u) * sc * 0.28 * r.size); ell(x, y, R, R); ctx.stroke();
+      ctx.lineWidth = Math.max(1.2, (1 - u) * 3);
+      for (const [th, l] of r.st) { const a0 = R * 1.15, a1 = R * (1.5 + l * 0.7); ctx.beginPath(); ctx.moveTo(x + Math.cos(th) * a0, y + Math.sin(th) * a0); ctx.lineTo(x + Math.cos(th) * a1, y + Math.sin(th) * a1); ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // a helmet knocked loose, bouncing and spinning across the turf
+  function drawDebris() {
+    for (const h of debris) {
+      const x = SX(h.x), gy = SY(h.y), hr = Math.max(5, sc * 0.42);
+      ctx.globalAlpha = Math.min(1, (h.life - h.age) / 0.5);
+      ctx.fillStyle = 'rgba(0,0,0,.3)'; ell(x + 2, gy + 2, hr, hr * 0.8); ctx.fill();
+      ctx.save(); ctx.translate(x, gy - h.z * sc * 0.35); ctx.rotate(h.rot);
+      ctx.fillStyle = h.col; ell(0, 0, hr, hr); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = h.stripe; ctx.lineWidth = Math.max(1.4, hr * 0.25); ctx.beginPath(); ctx.moveTo(-hr * 0.9, 0); ctx.lineTo(-hr * 0.2, 0); ctx.stroke();
+      ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = Math.max(1, hr * 0.17); ctx.beginPath(); ctx.arc(0, 0, hr * 1.02, -0.85, 0.85); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawAuras() {
+    for (const au of auras) {
+      const a = au.a, u = au.age / au.life, x = SX(a.x), y = SY(a.y), r = Math.max(9, sc * 0.84);
+      ctx.globalAlpha = u < 0.15 ? u / 0.15 : 1 - (u - 0.15) / 0.85;
+      ctx.strokeStyle = au.col; ctx.lineWidth = 2.5; ell(x, y, r * (1.5 + u * 1.1), r * (1.5 + u * 1.1)); ctx.stroke();
+      ctx.lineWidth = 1.2; ell(x, y, r * (1.2 + u * 0.5), r * (1.2 + u * 0.5)); ctx.stroke();
+      const by = y - r * 2.3 - u * 10, br = Math.max(8, r * 0.75);
+      ctx.fillStyle = au.col; ell(x, by, br, br); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = '#0b0f17'; ctx.font = `700 ${Math.round(br * 0.95)}px Oswald, Impact, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(au.glyph, x, by + 0.5);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawRockets() {
+    for (const f of fworks) {
+      if (f.wait > 0) continue;
+      const x = SX(f.x), y = SY(f.y) - f.z * sc * 0.35;
+      ctx.strokeStyle = 'rgba(255,237,160,.55)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + Math.min(26, f.vz * 1.4)); ctx.stroke();
+      ctx.fillStyle = '#fffbea'; ell(x, y, 2.4, 2.4); ctx.fill();
+    }
+  }
+  // momentum: the edges of the screen glow in the hot team's colour, and a tug-of-war meter sits above the play panel
+  function drawMomentum() {
+    const m = Math.abs(mom);
+    if (m < 0.06 || !gs) return;
+    const side = mom > 0 ? 0 : 1, rgb = U.hexToRgb(L.team(gs.t[side]).logo.primary).join(',');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (m > 0.2) {
+      const pul = 0.6 + 0.4 * Math.sin(performance.now() / 260), al = (m - 0.2) * 0.32 * pul;
+      const g = ctx.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.42, W / 2, H * 0.45, Math.max(W, H) * 0.78);
+      g.addColorStop(0, `rgba(${rgb},0)`); g.addColorStop(1, `rgba(${rgb},${al})`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    const bw = Math.min(124, W * 0.32), bh = 6, x0 = 10, y0 = H - insetCur - 22;
+    if (y0 < H * 0.3) return;
+    const t0 = L.team(gs.t[0]), t1 = L.team(gs.t[1]);
+    ctx.globalAlpha = Math.min(1, m * 4);
+    ctx.fillStyle = 'rgba(6,10,18,.72)'; roundRect(x0 - 4, y0 - 15, bw + 8, bh + 21, 7); ctx.fill();
+    ctx.font = '700 9px Oswald, Impact, sans-serif'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'left'; ctx.fillText(t0.abbr, x0, y0 - 7);
+    ctx.textAlign = 'right'; ctx.fillText(t1.abbr, x0 + bw, y0 - 7);
+    ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(226,232,240,.6)'; ctx.fillText('MOMENTUM', x0 + bw / 2, y0 - 7);
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(x0, y0, bw, bh, 3); ctx.fill();
+    const half = bw / 2, len = half * Math.min(1, m);
+    ctx.fillStyle = L.team(gs.t[side]).logo.primary;
+    if (side === 0) ctx.fillRect(x0 + half - len, y0, len, bh); else ctx.fillRect(x0 + half, y0, len, bh);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 + half - 0.75, y0 - 2, 1.5, bh + 4);
+    ctx.globalAlpha = 1;
+  }
+  // touchdown: the scoring team's logo stamps the screen behind the banner
+  function drawLogoFlash() {
+    const u = (performance.now() - logoFlash.t0) / 800, li = logoImgs[logoFlash.side];
+    if (u >= 1) { logoFlash = null; return; }
+    if (!li || !li.complete) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const s2 = Math.min(W, H) * (0.45 + u * 0.7);
+    ctx.globalAlpha = 0.55 * (1 - u);
+    ctx.drawImage(li, W / 2 - s2 / 2, H * 0.42 - s2 / 2, s2, s2);
+    ctx.globalAlpha = 1;
   }
   function drawPop(p) {
     const u = p.age / p.life;
     const x = SX(p.x), y = SY(p.y) - sc * 1.6 - u * 14;
     ctx.globalAlpha = u > 0.75 ? (1 - u) / 0.25 : Math.min(1, u * 6);
-    const fs = p.big ? 17 : 12;
+    const fs = Math.round((p.big ? 17 : 12) * (1 + Math.abs(mom) * 0.3));
     ctx.font = `700 ${fs}px Oswald, Impact, sans-serif`;
     const w = ctx.measureText(p.text).width + fs * 0.9, h = fs * 1.55;
     const xc = U.clamp(x, w / 2 + 4, W - w / 2 - 4);
@@ -2352,6 +2631,49 @@ const Live = (() => {
     if (text === 'TOUCHDOWN') Sfx.play('touchdown', 1);
   }
   function slowMo(sec) { slow = Math.max(slow, sec); }
+  // a badge firing: an aura in its tier colour and its glyph flashing over the player
+  function auraFx(a, col, glyph) {
+    auras.push({ a, col, glyph, age: 0, life: 1.1 });
+    if (auras.length > 4) auras.shift();
+  }
+  // push in on a breakaway or a jump ball, pull out while a deep ball or a kick is in the air
+  function zoomTarget() {
+    if (!S) return 1;
+    const b = S.ball, F = S.fp;
+    if (S.contest && performance.now() < S.contest.until) return 1.3;
+    if (S.dead) return 1;
+    if (b.mode === 'air' && b.dur >= 1.0) return 0.82;
+    if (F && F.bigShown && b.mode === 'held' && S.carrier && S.carrier.down <= 0) return 1.16;
+    return 1;
+  }
+  function stepFx(vdt, pdt) {
+    for (const r of rings) r.age += vdt;
+    rings = rings.filter(r => r.age < r.life);
+    for (const a of auras) a.age += vdt;
+    auras = auras.filter(a => a.age < a.life);
+    for (const h of debris) {
+      h.x += h.vx * pdt; h.y += h.vy * pdt; h.z += h.vz * pdt; h.vz -= 20 * pdt; h.rot += h.vr * pdt; h.age += pdt;
+      if (h.z <= 0) { h.z = 0; if (h.vz < -1.5) { h.vz = -h.vz * 0.45; h.vx *= 0.7; h.vy *= 0.7; h.vr *= 0.6; } else { h.vz = 0; h.vx *= 0.9; h.vy *= 0.9; h.vr *= 0.9; } }
+    }
+    debris = debris.filter(h => h.age < h.life);
+    for (const f of fworks) {
+      if (f.wait > 0) { f.wait -= pdt; continue; }
+      f.z += f.vz * pdt; f.vz -= 18 * pdt;
+      if (f.vz <= 2 && !f.done) {
+        f.done = true;
+        for (let i = 0; i < 34; i++) { const a = Math.random() * Math.PI * 2, v = U.rand(2, 6); parts.push({ x: f.x, y: f.y, z: f.z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: U.rand(-1, 6), age: 0, life: U.rand(0.9, 1.4), s: U.rand(4, 7), c: U.pick(f.cols) }); }
+      }
+    }
+    fworks = fworks.filter(f => !f.done);
+    if (!S || pdt <= 0) return;
+    // players on fire leave flames behind them
+    if (fireOn.size) for (const a of S.list) if (a.pid != null && fireOn.has(a.pid) && a.down <= 0 && Math.random() < 0.55) {
+      parts.push({ x: a.x + U.rand(-0.3, 0.3), y: a.y + U.rand(-0.3, 0.3), z: 0.5, vx: -a.vx * 0.15 + U.rand(-0.4, 0.4), vy: -a.vy * 0.15 + U.rand(-0.4, 0.4), vz: U.rand(3, 6), age: 0, life: U.rand(0.25, 0.5), s: U.rand(4, 7), c: U.pick(['#f97316', '#fb923c', '#facc15', '#ef4444']) });
+    }
+    // the spike hits the turf
+    const sp = S.spike;
+    if (sp && !sp.boom && S.t >= sp.t0 + 0.12) { sp.boom = true; burst(sp.x, sp.y, 'rgba(255,255,255,.9)', 10, 3); ring(sp.x, sp.y, '#ffffff', 0.9, 6); Sfx.play('tackle', 0.4); }
+  }
   // how much of the canvas the play-call panel covers (px); the field shifts up to keep the line visible
   function setInset(px) { inset = Math.max(0, Math.min(px, H * 0.55)); }
 
