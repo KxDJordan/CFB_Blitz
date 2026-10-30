@@ -138,7 +138,7 @@ const L = (() => {
     x.tier++;
     return { id: x.id, tier: x.tier, kind: 'up' };
   }
-  // A big season earns badges.
+  // Badges for a big season: earned the week the milestone is reached.
   const MILESTONES = {
     QB: s => s.py >= 3500 || s.ptd >= 28, RB: s => s.ry >= 1100 || s.rtd >= 12,
     WR: s => s.rcy >= 1000 || s.rctd >= 9, TE: s => s.rcy >= 650 || s.rctd >= 7,
@@ -146,12 +146,23 @@ const L = (() => {
     LB: s => s.tk >= 90 || s.sk >= 6, CB: s => s.int >= 4 || s.tk >= 60, S: s => s.int >= 4 || s.tk >= 75,
     K: s => s.fga >= 12 && s.fgm / s.fga >= 0.86,
   };
-  function earnStickers(p, t, ovrJump) {
-    const out = [];
-    const hit = MILESTONES[p.pos] && MILESTONES[p.pos](p.st, p, t);
-    if (hit && U.chance(U.clamp(0.55 + (p.pot - 70) * 0.012, 0.3, 0.9))) { const c = growSticker(p); if (c) out.push(c); }
-    if (ovrJump >= 6 && U.chance(0.3)) { const c = growSticker(p, 2); if (c) out.push(c); }
-    return out;
+  // checked after every game week: crossing a season milestone, or climbing 6+ OVR since the season began (once a year each)
+  function weeklyBadges(t, p, wk) {
+    if (p.msY !== G.year && MILESTONES[p.pos] && MILESTONES[p.pos](p.st, p, t)) {
+      p.msY = G.year;
+      if (U.chance(U.clamp(0.55 + (p.pot - 70) * 0.012, 0.3, 0.9))) logBadge(p, growSticker(p), wk, 'milestone');
+    }
+    if (p.jY !== G.year && p.ovr - (p.ovr0 ?? p.ovr) >= 6) {
+      p.jY = G.year;
+      if (U.chance(0.3)) logBadge(p, growSticker(p, 2), wk, 'growth');
+    }
+  }
+  // every badge earned or upgraded during the season, newest first (the offseason recap and BlitzBoard read it)
+  function logBadge(p, c, wk, why) {
+    if (!c) return null;
+    const e = { ...c, y: G.year, wk, why, pid: p.id, name: `${p.first} ${p.last}`, pos: p.pos, teamId: p.teamId };
+    G.badgeLog = [e].concat(G.badgeLog || []).slice(0, 150);
+    return e;
   }
 
   function posCounts(t) {
@@ -971,12 +982,20 @@ const L = (() => {
       results.push(applyResult(g, gs));
     }
     for (const t of G.teams) for (const p of roster(t)) if (p.inj > 0) { p.inj--; if (p.inj > 0 && Career.quickHeal(t)) p.inj--; }
+    const u = user(), ovrBefore = new Map(roster(u).map(p => [p.id, p.ovr]));
     weeklyPractice();
+    developWeek(wk);
     G.teams.forEach(rebuildDepth);
     const pollBefore = G.poll.slice();
     updatePoll();
     Forum.weekly(wk, results, pollBefore);
     Career.weekWrap(wk, results);
+    // this week's development report for your roster: practice, growth and decline, badges
+    const moved = roster(u).filter(p => ovrBefore.has(p.id) && p.ovr !== ovrBefore.get(p.id)).map(p => ({ pid: p.id, d: p.ovr - ovrBefore.get(p.id) }));
+    G.devWeek = {
+      y: G.year, wk, ups: moved.filter(x => x.d > 0).sort((a, b) => b.d - a.d), downs: moved.filter(x => x.d < 0).sort((a, b) => a.d - b.d),
+      badges: (G.badgeLog || []).filter(b => b.y === G.year && b.wk === wk && b.teamId === u.id),
+    };
     // front offices work the phones until the deadline
     if (wk < SEA.DEADLINE && U.chance(0.35)) aiTrade();
     advanceWeek();
@@ -1052,20 +1071,48 @@ const L = (() => {
   }
 
   // Development by age: young players climb toward their potential, prime players hold, veterans slide.
-  function progress(p) {
-    Career.applyArc(p);
-    const a = p.age, gap = p.pot - p.ovr, gr = p.gr || 1, tm = p.teamId != null ? team(p.teamId) : null;
+  // A season of development by age: young players climb toward their potential, prime players hold,
+  // veterans slide. r (0-1) is the season's luck, so a year can be a breakout or a dud.
+  function seasonGrowth(p, tm, r) {
+    const a = p.age, gap = p.pot - p.ovr, gr = p.gr || 1;
     let g;
-    if (a <= 25) g = gap * U.rand(0.1, 0.25) * gr + 0.3;
-    else if (a <= 27) g = gap * U.rand(0.03, 0.12) * gr + U.rand(-1, 0.3);
-    else if (a <= 30) g = U.rand(-3.5, -0.5);
-    else g = U.rand(-5.5, -2);
-    if (gap > 0) g += (Math.min(p.starts, SEA.REG) / SEA.REG) * 0.6;
+    if (a <= 25) g = gap * (0.1 + 0.15 * r) * gr + 0.3;
+    else if (a <= 27) g = gap * (0.03 + 0.09 * r) * gr + (-1 + 1.3 * r);
+    else if (a <= 30) g = -3.5 + 3 * r;
+    else g = -5.5 + 3.5 * r;
     // coaching: the development staff speeds growth and slows the decline
     if (g > 0) g *= Career.devMult(tm, p); else if (a >= 28) g *= Career.vetMult(tm);
-    const d = addOvr(p, g);
-    if (a >= 28) p.pot = Math.max(p.ovr, Math.round(p.pot - U.rand(1, 3)));
+    return g;
+  }
+  // Rostered players develop in real time: each regular-season week moves them 1/REG of the way through the
+  // season's growth (or decline), plus a little for every start; fractions carry over until they add up to a point.
+  function weeklyGrowth(t, p) {
+    if (p.sr == null) p.sr = Math.random();
+    let g = seasonGrowth(p, t, p.sr) / SEA.REG;
+    if (p.starts > (p.wkStarts || 0) && p.pot > p.ovr) g += 0.6 / SEA.REG * Career.devMult(t, p);
+    p.wkStarts = p.starts;
+    p.gAcc = (p.gAcc || 0) + g;
+    let d = 0;
+    while (Math.abs(p.gAcc) >= 1) { const s = Math.sign(p.gAcc); d += addOvr(p, s); p.gAcc -= s; }
     p.pot = Math.max(p.pot, p.ovr);
+    return d;
+  }
+  // after every week's games: regular-season growth for everyone, and badges for whoever earned one
+  function developWeek(wk) {
+    for (const t of G.teams) for (const p of roster(t)) {
+      if (wk <= SEA.REG) weeklyGrowth(t, p);
+      weeklyBadges(t, p, wk);
+    }
+  }
+  // past 28 the ceiling comes down a little every year
+  function agePot(p) {
+    if (p.age >= 28) p.pot = Math.max(p.ovr, Math.round(p.pot - U.rand(1, 3)));
+    p.pot = Math.max(p.pot, p.ovr);
+  }
+  // unsigned free agents sit the year out, so their year of development lands at once in the offseason
+  function progress(p) {
+    const d = addOvr(p, seasonGrowth(p, null, Math.random()));
+    agePot(p);
     return d;
   }
   // Retirement: rare before 30, likely in the mid-30s; kickers last a few years longer.
@@ -1076,7 +1123,9 @@ const L = (() => {
     return U.chance(U.clamp(0.1 + (a - 30) * 0.13 + (p.ovr < 65 ? 0.15 : 0) - (p.ovr >= 82 ? 0.12 : 0), 0.03, 0.95));
   }
   function startOffseason() {
-    const retired = [], risers = [], decliners = [], leagueRetired = [], stickers = [];
+    const retired = [], risers = [], decliners = [], leagueRetired = [];
+    // growth and badges already happened week by week: the recap reports the season that was
+    const stickers = (G.badgeLog || []).filter(b => b.y === G.year);
     for (const t of G.teams) {
       for (const p of roster(t)) {
         const sum = { name: `${p.first} ${p.last}`, pos: p.pos, ovr: p.ovr, age: p.age, exp: p.exp, teamId: t.id, line: seasonLine(p), num: p.num };
@@ -1087,9 +1136,10 @@ const L = (() => {
           if (p.ovr >= 74 || p.exp >= 10) leagueRetired.push(sum);
           removePlayer(p); continue;
         }
-        const d = progress(p);
-        for (const c of earnStickers(p, t, d)) stickers.push({ ...c, pid: p.id, name: `${p.first} ${p.last}`, pos: p.pos, teamId: t.id });
-        p.age++; p.exp++; p.st = blankStats(); p.starts = 0; p.inj = 0;
+        Career.applyArc(p);
+        agePot(p);
+        const d = p.ovr - (p.ovr0 ?? p.ovr);
+        p.age++; p.exp++; p.st = blankStats(); p.starts = 0; p.wkStarts = 0; p.inj = 0;
         if (t.user && d > 0) risers.push({ pid: p.id, d });
         if (t.user && d < 0) decliners.push({ pid: p.id, d });
       }
@@ -1127,7 +1177,8 @@ const L = (() => {
     G.cuts = trimRoster(user()).concat(fitUnderCap(user(), true));
     rebuildDepth(user());
     for (const t of G.teams) { t.rec = blankRec(); t.qw = 0; }
-    for (const p of Object.values(G.players)) p.ovr0 = p.ovr;
+    // a fresh season: new development luck, OVR change measured from here
+    for (const p of Object.values(G.players)) { p.ovr0 = p.ovr; p.sr = Math.random(); p.wkStarts = p.starts || 0; }
     G.week = 1; G.champion = null; G.confChamps = []; G.awards = null; G.camp = null; G.draft = null; G.seeds = null;
     buildSchedule();
     G.poll = [];
@@ -1177,7 +1228,7 @@ const L = (() => {
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } G = null; }
 
   return {
-    FACES, rollStickers, growSticker, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr, divRecStr, divName,
+    FACES, rollStickers, growSticker, logBadge, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr, divRecStr, divName,
     calcOvr, posCounts, rebuildDepth, depthHealthy, moveDepth, setAutoDepth, isStarter,
     units, power, powerFromUnits, offRating, defRating, ratings, groupAvg, needs,
     newCareer, draftCur, draftPick, draftAI, bestPickFor, finishDraft, prospectValue,

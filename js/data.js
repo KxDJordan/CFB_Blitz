@@ -176,9 +176,9 @@ const DATA = (() => {
   };
   const WEATHER_TIME = { day: 'Day game', dusk: 'Twilight kickoff', night: 'Night game' };
 
-  // ── HELMET STICKERS ──
-  // Situational badges. 'mag' stickers always apply in their situation (tier scales
-  // the bonus); 'proc' stickers have a tier-scaled chance to fire.
+  // ── BADGES (stored as "stickers": STICKERS, p.stk) ──
+  // Situational badges. 'mag' badges always apply in their situation (tier scales
+  // the bonus); 'proc' badges have a tier-scaled chance to fire.
   const STICKER_TIERS = [
     { id: 'bronze', label: 'Bronze', mult: 1.0, proc: 0.25, color: '#d6905a' },
     { id: 'silver', label: 'Silver', mult: 1.6, proc: 0.40, color: '#d8dee6' },

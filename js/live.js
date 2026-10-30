@@ -445,7 +445,7 @@ const Live = (() => {
   // The result is reported back to the engine, which writes the play-by-play.
   const sig = z => 1 / (1 + Math.exp(-z));
   const soft = (x, c) => c * Math.tanh(x / c);
-  // helmet stickers: magnitude (always on in its situation) and proc (chance) — both recorded for the log
+  // badges: magnitude (always on in its situation) and proc (chance) — both recorded for the log
   function stkM(a, id, cond = true) { const p = P(a.pid); return p && S.det ? Engine.stk.sm(gs, S.det, p, id, cond) : 0; }
   function stkQ(a, id, cond = true) { const p = P(a.pid), t = Engine.stk.tierOf(p, id); return t >= 0 && cond ? DATA.STICKERS[id].base * DATA.STICKER_TIERS[t].mult : 0; }
   function stkP(a, id, cond = true, scale = 1) {

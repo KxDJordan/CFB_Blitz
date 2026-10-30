@@ -225,7 +225,7 @@ const Engine = (() => {
   }
   const wet = gs => ['rain', 'storm', 'snow'].includes(gs.wx.type);
 
-  // ── helmet stickers ──
+  // ── badges ──
   const TIER = DATA.STICKER_TIERS;
   function tierOf(p, id) { if (!p || !p.stk) return -1; const x = p.stk.find(y => y.id === id); return x ? x.tier : -1; }
   function fired(gs, det, p, id, t) {
@@ -235,27 +235,27 @@ const Engine = (() => {
     det.stk = det.stk || [];
     if (!det.stk.some(x => x.pid === p.id && x.id === id)) det.stk.push({ pid: p.id, id, tier: t, proc: DATA.STICKERS[id].kind === 'proc' });
   }
-  // magnitude sticker: returns its bonus (0 if the player doesn't have it / situation doesn't apply)
+  // magnitude badge: returns its bonus (0 if the player doesn't have it / situation doesn't apply)
   function sm(gs, det, p, id, cond = true) {
     const t = tierOf(p, id);
     if (t < 0 || !cond) return 0;
     fired(gs, det, p, id, t);
     return DATA.STICKERS[id].base * TIER[t].mult;
   }
-  // proc sticker: rolls the tier's chance (scaled), true if it fires
+  // proc badge: rolls the tier's chance (scaled), true if it fires
   function sp(gs, det, p, id, cond = true, scale = 1) {
     const t = tierOf(p, id);
     if (t < 0 || !cond || !U.chance(TIER[t].proc * scale)) return false;
     fired(gs, det, p, id, t);
     return true;
   }
-  // diminishing returns when several stickers stack in the same contest
+  // diminishing returns when several badges stack in the same contest
   const soft = (x, cap) => cap * Math.tanh(x / cap);
   const clutch = gs => (gs.ot || gs.qtr >= 4) && Math.abs(gs.score[0] - gs.score[1]) <= 8;
   const redZone = gs => gs.ball >= 80;
   const shortYd = gs => (gs.down >= 3 && gs.togo <= 2) || gs.ball >= 95;
-  // the most notable sticker on a play, for the play-by-play
-  // only stickers from the side that won the play get the credit
+  // the most notable badge on a play, for the play-by-play
+  // only badges from the side that won the play get the credit
   function stkNote(det, offWon) {
     const ids = new Set(Object.values((offWon ? det.O : det.D) || {}));
     const won = (det.stk || []).filter(x => ids.has(x.pid)).sort((a, b) => (b.proc - a.proc) || (b.tier - a.tier));

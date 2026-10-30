@@ -382,7 +382,12 @@ const Career = (() => {
       const c = { pid: p.id, name: pn(p), pos: p.pos, team: p.teamId, line: x.line, opp: r.W.id === p.teamId ? r.Lo.id : r.W.id, v };
       if (x.kind === 'def') { if (!def || v > def.v) def = c; } else if (!off || v > off.v) off = c;
     }
-    for (const c of [off, def]) if (c) { const p = G.players[c.pid]; p.pow = (p.pow || 0) + 1; }
+    // the honour itself, and sometimes a badge for the performance
+    for (const c of [off, def]) if (c) {
+      const p = G.players[c.pid];
+      p.pow = (p.pow || 0) + 1;
+      if (U.chance(0.35)) L.logBadge(p, L.growSticker(p, 2), wk, 'pow');
+    }
     G.reel = { year: G.year, wk, plays, pow: { off, def } };
     G.powLog = [{ y: G.year, wk, off, def }].concat(G.powLog || []).slice(0, 60);
     if (off || def) {
