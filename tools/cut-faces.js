@@ -31,20 +31,36 @@ const DUP = +(process.env.DUP || 1.25); // lower = keep more look-alikes
           const k = (j * W + i) * 4; if (d[k + 3] > 245 && !pink(k)) { sx0 += i; sy0 += j; cnt++; }
         }
         const cx = sx0 / cnt, cy = sy0 / cnt, ri = Math.sqrt(cnt / Math.PI) * 0.94;
-        const tc = document.createElement('canvas'); tc.width = tc.height = S;
-        const tx = tc.getContext('2d');
-        tx.drawImage(c, cx - ri, cy - ri, ri * 2, ri * 2, 0, 0, S, S);
-        const id = tx.getImageData(0, 0, S, S), q2 = id.data;
-        // leftover ring glow / see-through edge: fold into a dark backdrop
-        for (let k = 0; k < q2.length; k += 4) {
-          const mag = q2[k] > 120 && q2[k + 1] < 80 && q2[k + 2] > 60 && q2[k + 2] > q2[k + 1] * 1.8;
-          const a = q2[k + 3] / 255, w = mag ? 0 : a;
-          q2[k] = q2[k] * w + 21 * (1 - w); q2[k + 1] = q2[k + 1] * w + 26 * (1 - w); q2[k + 2] = q2[k + 2] * w + 38 * (1 - w); q2[k + 3] = 255;
+        const cut = (x0, y0, rad) => {
+          const tc = document.createElement('canvas'); tc.width = tc.height = S;
+          const tx = tc.getContext('2d');
+          tx.drawImage(c, x0 - rad, y0 - rad, rad * 2, rad * 2, 0, 0, S, S);
+          const id = tx.getImageData(0, 0, S, S), q2 = id.data;
+          // leftover ring glow / see-through edge: fold into a dark backdrop
+          for (let k = 0; k < q2.length; k += 4) {
+            const mag = q2[k] > 120 && q2[k + 1] < 80 && q2[k + 2] > 60 && q2[k + 2] > q2[k + 1] * 1.8;
+            const a = q2[k + 3] / 255, w = mag ? 0 : a;
+            q2[k] = q2[k] * w + 21 * (1 - w); q2[k + 1] = q2[k + 1] * w + 26 * (1 - w); q2[k + 2] = q2[k + 2] * w + 38 * (1 - w); q2[k + 3] = 255;
+          }
+          tx.putImageData(id, 0, 0);
+          return tc;
+        };
+        // the pixel-mass centre above drifts on sheets with a solid backdrop, red glow or uneven rows, so the sprite
+        // tile is centred on the portrait's own ring: scan 16 ways out to the hot-pink ring, re-centre, repeat
+        const ring = (i, j) => { i = Math.round(i); j = Math.round(j); if (i < 0 || j < 0 || i >= W || j >= H) return true; const k = (j * W + i) * 4; return d[k] > 185 && d[k + 1] < 95 && d[k + 2] > 85 && d[k + 2] > d[k + 1] * 1.6; };
+        const DIRS = Array.from({ length: 16 }, (_, n) => [Math.cos(n * Math.PI / 8), Math.sin(n * Math.PI / 8)]);
+        let rx = cx, ry = cy, hits = [];
+        for (let it = 0; it < 5; it++) {
+          hits = DIRS.map(([ux, uy]) => { let run = 0; for (let t = 8; t < 160; t++) { if (ring(rx + ux * t, ry + uy * t)) { if (++run >= 3) return t - 2; } else run = 0; } return 160; });
+          DIRS.forEach(([ux, uy], n) => { rx += ux * hits[n] / DIRS.length; ry += uy * hits[n] / DIRS.length; });
         }
-        tx.putImageData(id, 0, 0);
+        const med = hits.slice().sort((p, q) => p - q)[8], agree = hits.filter(h => Math.abs(h - med) / med < 0.08).length;
+        const ringOk = agree >= 13 && med > Math.min(cw, ch) * 0.25 && med < 150;
+        // fingerprints keep using the original cut, so duplicate detection (and the face order) never changes
+        const fpc = cut(cx, cy, ri), tc = ringOk ? cut(rx, ry, med * 0.8) : fpc;
         // fingerprint (at 96px): grayscale layout, hair silhouette, edges, hair colour and skin tone
         const F = 96, fc = document.createElement('canvas'); fc.width = fc.height = F;
-        const fcx = fc.getContext('2d'); fcx.drawImage(tc, 0, 0, F, F);
+        const fcx = fc.getContext('2d'); fcx.drawImage(fpc, 0, 0, F, F);
         const G = 20, fp = document.createElement('canvas'); fp.width = fp.height = G;
         const fx = fp.getContext('2d'); fx.drawImage(fc, F * 0.1, F * 0.05, F * 0.8, F * 0.8, 0, 0, G, G);
         const px = fx.getImageData(0, 0, G, G).data, gray = [];
