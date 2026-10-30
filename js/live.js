@@ -443,12 +443,17 @@ const Live = (() => {
     let z = 1.75 + (d.R.tackle - c.R.elus) * 0.022 + Math.min(gang, 2) * 0.5 - (fromBehind ? 0.6 : 0) - Math.max(0, csp - 6) * 0.1 + mod;
     if (sacking) z += 1.2 - (c.R.elus - 55) * 0.02;
     const rp = P(c.pid), rb = rp && rp.pos === 'RB';
-    const offS = (F.kind === 'run' && beyond ? stkM(c, 'wrecking', rb) : 0) + (F.caught ? stkM(c, 'yac') : 0) + (F.kind === 'run' && Engine.stk.shortYd(gs) ? stkM(c, 'hammer', rb) : 0);
-    const defS = stkM(d, 'suretackle') + stkM(d, 'thumper', F.kind === 'run' && d.pos === 'LB') + stkM(d, 'sideline', F.kind === 'run' && Math.abs(c.x - CX) > 8);
+    const offS = (F.kind === 'run' && beyond ? stkM(c, 'wrecking', rb) : 0) + (F.caught ? stkM(c, 'yac') : 0) + (F.kind === 'run' && Engine.stk.shortYd(gs) ? stkM(c, 'hammer', rb) : 0)
+      + stkM(c, 'scramble', c === F.qb && F.mode === 'scramble') + stkM(c, 'screenpro', !!(F.play && F.play.screen) && F.caught);
+    const defS = stkM(d, 'suretackle') + stkM(d, 'thumper', F.kind === 'run' && (d.pos === 'LB' || d.pos === 'S')) + stkM(d, 'sideline', F.kind === 'run' && Math.abs(c.x - CX) > 8)
+      + stkM(d, 'sackfinish', F.kind === 'pass');
     z += soft(offS, 3) * 0.14 - soft(defS, 3) * 0.14;
     // juke box: the first man at the second level grabs air
-    if (rb && F.kind === 'run' && beyond && !F.juked) { F.juked = true; if (stkP(c, 'jukebox', true, 0.6)) z = -9; }
+    if (beyond && !F.juked && (F.kind === 'run' || F.caught || F.mode === 'scramble')) { F.juked = true; if (stkP(c, 'jukebox', true, 0.6)) z = -9; }
     if (sacking && stkP(c, 'escape', true, 0.5)) z = -9;
+    // Spin Move: once, at first contact in the backfield. Stiff Arm: once, past the line
+    if (z > -9 && !beyond && F.kind === 'run' && !F.spun) { F.spun = true; if (stkP(c, 'spin', true, 0.6)) z = -9; }
+    if (z > -9 && beyond && (F.kind === 'run' || F.mode === 'scramble') && !F.stiffed) { F.stiffed = true; if (stkP(c, 'stiffarm', true, 0.5)) z = -9; }
     if (Math.random() < sig(z)) { tackle(c, d); return true; }
     // broken tackle
     d.down = 0.3 + Math.random() * 0.3; d.stayDown = false;
@@ -534,6 +539,8 @@ const Live = (() => {
     let aim = null;
     if (F.aim && (S.t < F.aimUntil || (a.y - F.aim[1]) * dir < -0.6)) aim = ang(F.aim[0] - a.x, F.aim[1] - a.y);
     let best = base, bs = -1e9;
+    // Cutback: a patient runner pays less to change direction, so he takes the backside lane when it opens
+    const turn = 1.5 - Math.min(1, stkQ(a, 'cutback') * 0.6);
     for (let i = -7; i <= 7; i++) {
       const th = base + i * 0.19, ux = Math.cos(th), uy = Math.sin(th);
       let tC = 2.2;
@@ -547,7 +554,7 @@ const Live = (() => {
           if (ddx * ddx + ddy * ddy < reach * reach) { tC = t; break scan; }
         }
       }
-      let s = uy * dir * a.vmax * tC + (tC >= 2.2 ? 2.5 : 0) - Math.abs(th - prev) * 1.5;
+      let s = uy * dir * a.vmax * tC + (tC >= 2.2 ? 2.5 : 0) - Math.abs(th - prev) * turn;
       if (aim != null) { let da = th - aim; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; s -= Math.abs(da) * (F.aimW ?? 3.2); }
       if (s > bs) { bs = s; best = th; }
     }
@@ -558,7 +565,7 @@ const Live = (() => {
     if (!a.visT || S.t >= a.visT) { a.visT = S.t + 0.05; a.lane = pickLane(a); }
     const open = F.L0 != null && (a.y - F.L0) * F.cdir > 5;
     let k = 0.94 * (a.secureT > S.t ? 0.72 : 1); // carrying the ball costs a step
-    if (open && F.kind === 'run') k += soft(stkM(a, 'homerun', P(a.pid) && P(a.pid).pos === 'RB'), 5) * 0.012;
+    if (open && (F.kind === 'run' || F.caught)) k += soft(stkM(a, 'homerun'), 5) * 0.012;
     if (F.mode === 'intret') k += stkM(a, 'pick6') * 0.8;
     a.wx = Math.cos(a.lane) * a.vmax * k; a.wy = Math.sin(a.lane) * a.vmax * k;
     // QB slides once he has his yards
@@ -637,16 +644,27 @@ const Live = (() => {
     let m;
     if (mode === 'pass') {
       const lead = gs.score[def.side] > gs.score[1 - def.side] && gs.qtr >= 4;
+      // Mirror: quick feet against speed, and a quarter of every rusher's badge edge taken away
+      const mirror = stkQ(blk, 'mirror') > 0;
       m = blk.R.pblk - def.R.rush
-        + soft(stkQ(blk, 'brickwall') + stkQ(blk, 'anchor') * 0.5, 3)
-        - soft(stkQ(def, 'bender', def.key === 'dDE1' || def.key === 'dDE2') + stkQ(def, 'bullrush') + stkQ(def, 'closer', lead) + stkQ(def, 'blitzer', !!def.blitz), 3.5);
+        + soft(stkQ(blk, 'brickwall') + stkQ(blk, 'anchor') * 0.5 + stkQ(blk, 'mirror', def.R.spd > 75) + stkQ(blk, 'blitzpickup', !!def.blitz), 3)
+        - soft((stkQ(def, 'bender', def.key === 'dDE1' || def.key === 'dDE2' || def.pos === 'LB') + stkQ(def, 'bullrush') + stkQ(def, 'closer', lead) + stkQ(def, 'blitzer', !!def.blitz)
+          + stkQ(def, 'getoff') + stkQ(def, 'longarm')) * (mirror ? 0.75 : 1), 3.5);
     } else {
-      m = blk.R.rblk - def.R.rdef + soft(stkQ(blk, 'grader') + stkQ(blk, 'puller', !!blk.pulling), 2.5) - soft(stkQ(def, 'stuffer'), 2.5);
+      const wide = F.hole != null && Math.abs(F.hole - CX) > 5;
+      m = blk.R.rblk - def.R.rdef + soft(stkQ(blk, 'grader') + stkQ(blk, 'puller', !!blk.pulling) + stkQ(blk, 'pancake') * 0.6 + stkQ(blk, 'sealer', wide), 2.5)
+        - soft(stkQ(def, 'stuffer') + stkQ(def, 'eater', !wide) + stkQ(def, 'longarm') * 0.5 + stkQ(def, 'penetrator') * 0.5 + stkQ(def, 'shedder', def.pos === 'LB'), 2.5);
       if (F.kind !== 'ret' && (blk.pos === 'WR' || blk.pos === 'RB' || blk.pos === 'CB' || blk.pos === 'S')) m -= 6;
     }
     m += U.gauss(0, 5);
     const away = F.hole != null ? (Math.sign(def.x - F.hole) || 1) : 0;
-    return engage(blk, def, { free: true, mode, m, dir: mode === 'run' ? [away * 0.5, F.cdir * 0.6] : [0, 0] });
+    const e = engage(blk, def, { free: true, mode, m, dir: mode === 'run' ? [away * 0.5, F.cdir * 0.6] : [0, 0] });
+    // Swim Move: one try per rush; when it lands he's past his man in a heartbeat
+    if (e && mode === 'pass' && F.mode === 'pass' && !def.swum) {
+      def.swum = true;
+      if (stkP(def, 'swim', true, Engine.stk.swimOdds(def.R.spd, stkQ(blk, 'mirror') > 0))) e.shed = S.t + U.rand(0.25, 0.6);
+    }
+    return e;
   }
   function touchdownFx(a) {
     a.celebrate = true;
@@ -806,7 +824,7 @@ const Live = (() => {
       // second-level players key the line during their read step; deep and man-cover DBs read late
       const lb = a.pos === 'LB';
       const jd = j === 'rush' ? 0.05 : j === 'blitz' ? 0.05 : j === 'box' ? 0.15 : j === 'man' ? (lb ? 0.4 : 0.5) : a.job && a.job.kd === 'deep' ? 0.45 : 0.3;
-      a.readT = Math.min(a.readT, S.t + base + jd + Math.max(0, (85 - a.R.awr)) * 0.008 + U.rand(0, 0.12) + (extra[a.key] || 0));
+      a.readT = Math.min(a.readT, S.t + base + jd + Math.max(0, (85 - a.R.awr)) * 0.008 + U.rand(0, 0.12) + (extra[a.key] || 0) - stkQ(a, 'getoff') * 0.06);
     }
   }
   // ── defense ──
@@ -824,12 +842,14 @@ const Live = (() => {
         const r = S.ag['o' + asg[1]];
         const tau = U.clamp(0.24 + ((r ? r.R.route : 60) - a.R.cover) * 0.005 + U.gauss(0, 0.05)
           + (r ? (stkQ(r, 'routetech') + stkQ(r, 'burner') * 0.8 + stkQ(r, 'redzone', Engine.stk.redZone(gs))) * 0.05 : 0)
-          - (stkQ(a, 'lockdown') + stkQ(a, 'covlb', r && (r.pos === 'TE' || r.pos === 'RB'))) * 0.06, 0.05, 0.62);
+          + (r ? stkQ(r, 'release') * 0.05 : 0)
+          - (stkQ(a, 'lockdown') + stkQ(a, 'covlb', r && (r.pos === 'TE' || r.pos === 'RB')) + stkQ(a, 'press') * 0.6) * 0.06, 0.05, 0.62);
         a.job = { type: 'man', r, tau, cush: Math.max(0.8, a.y - (r ? r.y : a.y)), lev: (r && r.x < CX ? 0.7 : -0.7) };
+        if (r) r.pressBy = a;
       } else if (asg[0] === 'zone') {
         const kd = Playbook.ZKIND(asg[1]);
         const w = asg[1].startsWith('half') ? 13 : asg[1].startsWith('q') ? 7.5 : 9.5;
-        const tau = U.clamp(0.32 - (a.R.cover - 70) * 0.006 - (stkQ(a, 'zonehawk', dplay.id === 'c3') + stkQ(a, 'centerfield', kd === 'deep')) * 0.06 + U.gauss(0, 0.04), 0.08, 0.6);
+        const tau = U.clamp(0.32 - (a.R.cover - 70) * 0.006 - (stkQ(a, 'zonehawk', dplay.id === 'c3') + stkQ(a, 'centerfield', kd === 'deep') + stkQ(a, 'robber', kd !== 'deep')) * 0.06 + U.gauss(0, 0.04), 0.08, 0.6);
         a.job = { type: 'zone', z: asg[1], L: zoneAbs(asg[1]), kd, w, tau };
       } else a.job = { type: 'rush' };
       a.ballReact = U.clamp(0.26 - (a.R.awr - 70) * 0.006 + U.gauss(0, 0.05), 0.1, 0.5);
@@ -901,6 +921,8 @@ const Live = (() => {
   function rushBrain(a, j) {
     const F = S.fp, qb = F.qb;
     a.rushing = true;
+    // Get-Off: explodes out of his stance for the first few steps
+    if (S.t - S.snapT < 0.45 && stkQ(a, 'getoff') > 0) a.boost = true;
     if (j.type === 'blitz' && S.t - S.snapT < 0.5) return seek(a, j.gap, F.L0 + 0.2, 1, 0.2);
     let tx = qb.x, ty = qb.y;
     // ends keep contain: stay outside the quarterback until close
@@ -920,6 +942,8 @@ const Live = (() => {
     const ant = U.clamp(0.55 + (a.R.cover - 60) * 0.012, 0.4, 1.1);
     const px = hx + r.vx * j.tau * ant, py = hy + r.vy * j.tau * ant;
     const cush = Math.max(0.9, j.cush - t * 1.5) * (r.vy > 1 ? 1 : 0.6);
+    // Recovery Speed: when his man gets on top of him he finds another gear
+    if (r.y - a.y > 1.2) a.vk = 1 + stkQ(a, 'recovery') * 0.08;
     seek(a, clampX(px + j.lev * U.clamp(1 - (r.y - F.L0) / 14, 0, 1)), Math.min(py + cush, 109.3), 1, 0.22);
     a.faceT = ang(r.x - a.x, r.y - a.y);
   }
@@ -977,6 +1001,8 @@ const Live = (() => {
     const F = S.fp;
     if (F.loose) return looseBrain(a);
     const pts = a.route;
+    // Press Corner jams him at the line for the first steps; Release Artist slips it
+    if (a.pressBy && S.t - S.snapT < 0.7) a.vk = 1 - U.clamp(stkQ(a.pressBy, 'press') * 0.3 - stkQ(a, 'release') * 0.3, 0, 0.3);
     if (S.ball.mode === 'air' && F.target === a) return trackBall(a);
     if (F.throwT != null && F.target !== a && S.ball.mode === 'air') return seek(a, S.ball.tx, S.ball.ty, 0.6, 1);
     while (a.wp < pts.length - 1 && hyp(pts[a.wp][0] - a.x, pts[a.wp][1] - a.y) < 1.0) { a.wp++; if (a.wp === 1) a.readyT = S.t; }
@@ -1031,7 +1057,7 @@ const Live = (() => {
     }
     return [clampX(x), y];
   }
-  function ballSpeed(qb) { return 17 + qb.R.str * 0.07; }
+  function ballSpeed(qb) { return 17 + qb.R.str * 0.07 + stkQ(qb, 'cannon') * 15; }
   // how open a receiver will be when the ball gets there (yards of cushion; < 0 = covered)
   function openness(r) {
     const F = S.fp, qb = F.qb, v = ballSpeed(qb);
@@ -1088,7 +1114,7 @@ const Live = (() => {
     const ready = r => r.readyT != null || t > Q.readStart + 0.8;
     const cur = reads[Math.min(Q.ri, reads.length - 1)];
     const late = t - Q.readStart;
-    const thr = 1.4 - late * 0.6 - (Q.ri >= reads.length - 1 ? 0.5 : 0);
+    const thr = 1.4 - late * 0.6 - (Q.ri >= reads.length - 1 ? 0.5 : 0) - stkQ(a, 'fearless') * 4;
     if (ready(cur)) { const op = openness(cur); if (op.o >= thr) return throwTo(cur, op, pressured); }
     // a wide-open man anywhere on the field
     if (Math.random() < 0.25 + a.R.awr * 0.004) {
@@ -1126,8 +1152,8 @@ const Live = (() => {
     const F = S.fp, qb = F.qb, p = P(qb.pid);
     const depth = op.P[1] - F.L0;
     const qbS = stkM(qb, 'dime', depth >= 15) + stkM(qb, 'iceveins', Engine.stk.clutch(gs)) + stkM(qb, 'trigger', F.play.cat === 'quick' || F.play.cat === 'screen') * 0.6 + (pressured ? stkM(qb, 'pocket') * 2.5 : 0);
-    const wxp = Math.max(0, -Engine.stk.wxPass(gs, depth));
-    let sig2 = (0.27 + op.dist * 0.029 + Math.max(0, op.dist - 18) * 0.035) * (1 + (72 - qb.R.acc) * 0.03) * (pressured ? 1.65 : 1) * (1 + wxp * 1.8) * (1 - soft(qbS, 0.35));
+    const wxp = Math.max(0, -Engine.stk.wxPass(gs, depth)) * (1 - Math.min(0.8, stkM(qb, 'cannon', depth >= 15) * 4));
+    let sig2 = (0.27 + op.dist * 0.029 + Math.max(0, op.dist - 18) * 0.035) * (1 + (72 - qb.R.acc) * 0.03) * (pressured ? Math.max(1.1, 1.65 - stkM(qb, 'ontherun') * 3.5) : 1) * (1 + wxp * 1.8) * (1 - soft(qbS, 0.35));
     sig2 = Math.max(0.08, sig2);
     // throw away from the nearest defender
     let nd = null, ndd = 99;
@@ -1150,9 +1176,11 @@ const Live = (() => {
     const dR = hyp(r.x - bx, r.y - by);
     let D = null, dD = 9;
     for (const d of S.list) if (d.side !== r.side && d.down <= 0) { const dd = hyp(d.x - bx, d.y - by); if (dd < dD) { dD = dd; D = d; } }
-    if (r.x < 0 || r.x > FW || r.y > 110) { F.res.outcome = 'incomplete'; F.over = true; pop(clampX(bx), by, 'OUT OF BOUNDS', '#cbd5e1'); return at(S.t + 0.8, () => dead()); }
-    const reachR = 1.3 + (r.R.skl - 60) * 0.005, reachD = D ? 1.05 + (D.R.skl - 60) * 0.004 : 0;
+    // Toe Tapper: keeps his feet in a little past the line
+    const tt = stkM(r, 'toetap') * 6;
+    if (r.x < -tt || r.x > FW + tt || r.y > 110 + tt) { F.res.outcome = 'incomplete'; F.over = true; pop(clampX(bx), by, 'OUT OF BOUNDS', '#cbd5e1'); return at(S.t + 0.8, () => dead()); }
     const depth = by - F.L0;
+    const reachR = 1.3 + (r.R.skl - 60) * 0.005 + stkM(r, 'deeptrack', depth >= 20) * 2, reachD = D ? 1.05 + (D.R.skl - 60) * 0.004 : 0;
     const rS = soft(stkM(r, 'gluehands', dD < 1.6) + stkM(r, 'redzone', Engine.stk.redZone(gs)) * 0.3, 0.3);
     const incomplete = (pbu, drop) => {
       F.res.outcome = 'incomplete'; F.res.pbu = pbu ? pbu.key.slice(1) : null; F.res.drop = !!drop; F.over = true;
@@ -1164,6 +1192,7 @@ const Live = (() => {
     if (D && dD < reachD && dD <= dR + 0.2) {
       let pI = 0.18 + (D.R.skl - 70) * 0.006 + (dR > reachR ? 0.22 : 0) - dD * 0.12;
       if (stkP(D, 'ballhawk', true, 0.5)) pI += 0.3;
+      pI += stkM(D, 'robber', depth < 12) * 0.4;
       if (depth >= 15 && dR < reachR && stkP(r, 'mossd', true, 0.4)) return caught(r, D);
       if (Math.random() < pI) return intercepted(D);
       if (dR < reachR && Math.random() < 0.22 + (r.R.skl - D.R.skl) * 0.01 + rS) return caught(r, D);
@@ -1171,7 +1200,7 @@ const Live = (() => {
     }
     if (dR <= reachR) {
       const contest = D && dD < 1.8 ? (1.8 - dD) * 0.24 + (D.R.cover - r.R.route) * 0.004 : 0;
-      const pc = 0.955 + (r.R.skl - 70) * 0.004 - contest * 1.2 - (dR / reachR) * 0.08 + rS;
+      const pc = 0.955 + (r.R.skl - 70) * 0.004 - contest * 1.2 - (dR / reachR) * 0.08 + rS + stkM(r, 'chainmover', gs.down === 3);
       if (Math.random() < pc) { if (contest > 0.2 && rS > 0.1) stkPop(r, 'gluehands', 1); return caught(r, D); }
       return incomplete(contest > 0.15 ? D : null, contest <= 0.15);
     }
@@ -1250,7 +1279,9 @@ const Live = (() => {
       if (play.pa && slot === 'RB') { const rb = a; const rb0 = a.brain; rb.brain = b => (S.t - S.snapT < 0.65 ? seek(b, F.qbp.mesh[0], F.qbp.mesh[1] + 0.3, 0.8, 0.4) : rb0(b)); }
     }
     if (play.screen === 'RB') at(S.snapT + 1.1, () => { for (const k of ['LT', 'LG', 'C', 'RG', 'RT']) { const a = A('o' + k); if (a.eng) release(a.eng); setBlocker(a, 'run'); } });
-    if (play.pa) { F.fakeUntil = S.snapT + 1.4; for (const a of S.list) if (a.side !== S.o) a.biteT = U.clamp(0.25 + (85 - a.R.awr) * 0.02, 0.15, 1.1); }
+    // Play-Action Pro sells the fake longer and harder
+    const paPro = play.pa ? stkQ(S.ag.oQB, 'playaction') : 0;
+    if (play.pa) { F.fakeUntil = S.snapT + 1.4 + paPro; for (const a of S.list) if (a.side !== S.o) a.biteT = U.clamp(0.25 + (85 - a.R.awr) * 0.02 + paPro * 1.5, 0.15, 1.1); }
     assignDefense(dplay, F);
     S.focus = () => { const p = ballPos(); return S.ball.mode === 'air' ? [p.x, p.y + 2] : S.carrier === qb ? [CX, L0 + 6] : [p.x, p.y + 4]; };
     S.onTackle = () => finalePop();
@@ -1562,7 +1593,7 @@ const Live = (() => {
           b.brain = x => { seek(x, clampX(landX * 0.6 + CX * 0.4 + lane), Math.max(L0 + 4, land - 14 - Math.abs(lane) * 0.4), 1, 1.5); x.faceT = -Math.PI / 2; };
         });
         S.ag.x6.brain = x => { seek(x, clampX(landX + (landX < CX ? 2.5 : -2.5)), land - 6, 0.9, 1.2); x.faceT = -Math.PI / 2; };
-        throwBall({ x: punter.x, y: punter.y }, [landX, land], 3.6, 19, () => {
+        throwBall({ x: punter.x, y: punter.y }, [landX, land], 3.6 + stkQ(punter, 'hangtime') * 0.15, 19, () => {
           const coverTeam = S.list.filter(a => a.side === o && a !== punter);
           if (det.touchback) { const b = S.ball; b.vx = 0; b.vy = 4; b.vz = 3; pop(landX, land, 'TOUCHBACK', '#cbd5e1'); at(S.t + 1.0, () => dead()); return; }
           holdBall(ret);

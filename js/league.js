@@ -4,7 +4,6 @@
 let G = null;
 
 const L = (() => {
-  const SAVE_KEY = 'problitz.save.v1';
   const POS = DATA.POSITIONS;
   const SEA = DATA.SEASON;
 
@@ -87,15 +86,18 @@ const L = (() => {
     if (!p.stars) p.stars = starsFor(p.ovr);
     if (extra.udfa) p.udfa = true;
     p.gr = rollGrowth(p.pot); p.xp = {}; p.ovr0 = p.ovr; p.face = pickFace(t);
+    p.role = pickRole(p); // his archetype, for life
     rollStickers(p);
     if (t) p.contract = extra.udfa ? { sal: MIN_SAL, yrs: 2 } : { sal: +(marketSalary(p) * U.rand(0.8, 1.2)).toFixed(1), yrs: U.ri(1, age <= 26 ? 5 : age <= 30 ? 3 : 2) };
     G.players[id] = p;
     if (t) t.roster.push(id);
     return p;
   }
-  function addOvr(p, g) {
-    const before = p.ovr;
-    for (const a of DATA.ATTRS) p.attrs[a] = Math.round(U.clamp(p.attrs[a] + g + U.gauss(0, 0.8) + (a === 'spd' && g < 0 ? g * 0.4 : 0), 20, 99));
+  // focus: the archetype's key attributes take a bigger share of growth (and of decline, a smaller one); the others
+  // give it back, so the overall change stays the same
+  function addOvr(p, g, focus) {
+    const before = p.ovr, lean = focus ? Math.abs(g) * 0.12 : 0;
+    for (const a of DATA.ATTRS) p.attrs[a] = Math.round(U.clamp(p.attrs[a] + g + U.gauss(0, 0.8) + (a === 'spd' && g < 0 ? g * 0.4 : 0) + (focus ? (focus.includes(a) ? lean : -lean) : 0), 20, 99));
     p.ovr = calcOvr(p);
     return p.ovr - before;
   }
@@ -103,6 +105,16 @@ const L = (() => {
     const t = p.teamId != null ? team(p.teamId) : null;
     if (t) t.roster = t.roster.filter(id => id !== p.id);
     delete G.players[p.id];
+  }
+  // ── ARCHETYPES: chosen once, from how his attributes lean (a little luck breaks near-ties) ──
+  // held: badges he already has (players from before archetypes) pull him toward the archetype they belong to
+  function pickRole(p, held) {
+    let best = null, bv = -1e9;
+    for (const r of DATA.ROLES[p.pos] || []) {
+      const v = DATA.roleFit(p, r) + U.gauss(0, 2.5) + (held ? held.filter(id => r.badges.includes(id)).length * 10 : 0);
+      if (v > bv) { bv = v; best = r; }
+    }
+    return best ? best.id : null;
   }
   // ── BADGES (internally "stickers") ──
   // Talent score blends potential, current rating and the draft grade.
@@ -115,7 +127,7 @@ const L = (() => {
     return 0;
   }
   function rollStickers(p) {
-    const pool = DATA.stickersFor(p.pos);
+    const pool = DATA.roleBadges(p);
     const sc = U.clamp(talent(p) + U.gauss(0, 0.08), 0, 1.15);
     let n = Math.round(U.clamp(sc * 4.4 + U.gauss(0, 0.6) - 0.9, 0, 4));
     if (p.udfa) n = Math.min(n, U.chance(0.35) ? 1 : 0);
@@ -124,7 +136,7 @@ const L = (() => {
   // Upgrade an existing badge or earn a new one. Returns the change, or null.
   function growSticker(p, maxTier = 3) {
     p.stk = p.stk || [];
-    const pool = DATA.stickersFor(p.pos).filter(id => !p.stk.some(x => x.id === id));
+    const pool = DATA.roleBadges(p).filter(id => !p.stk.some(x => x.id === id));
     const upg = p.stk.filter(x => x.tier < Math.min(maxTier, p.pot >= 88 ? 3 : 2)).sort((a, b) => a.tier - b.tier);
     if (pool.length && (p.stk.length < 2 || (p.stk.length < 4 && U.chance(0.4)) || !upg.length)) {
       if (p.stk.length >= 4) return null;
@@ -242,7 +254,7 @@ const L = (() => {
       plan: { off: 'balanced', def: 'base' }, practice: 'OL', lastPractice: null,
       settings: { theme: cfg.theme || 'night', askFourth: true, callPlays: true, speed: 2 },
       draft: null, camp: null, off: null, threadSeq: 1, faceV: 2, picks: [], pickCurve: null, draftOrder: null, trades: [],
-      difficulty: cfg.difficulty || 'contender',
+      difficulty: cfg.difficulty || 'contender', hotSeat: !!cfg.hotSeat,
     };
     const diff = DATA.DIFFICULTY.find(d => d.id === cfg.difficulty) || DATA.DIFFICULTY[1];
     const ai = cfg.aiTeams.slice(0, 15);
@@ -1092,7 +1104,8 @@ const L = (() => {
     p.wkStarts = p.starts;
     p.gAcc = Math.round(((p.gAcc || 0) + g) * 1000) / 1000;
     let d = 0;
-    while (Math.abs(p.gAcc) >= 1) { const s = Math.sign(p.gAcc); d += addOvr(p, s); p.gAcc -= s; }
+    const role = DATA.roleOf(p);
+    while (Math.abs(p.gAcc) >= 1) { const s = Math.sign(p.gAcc); d += addOvr(p, s, role && role.focus); p.gAcc -= s; }
     p.pot = Math.max(p.pot, p.ovr);
     return d;
   }
@@ -1185,6 +1198,7 @@ const L = (() => {
     G.phase = 'season';
     Career.staffSeasonStart();
     Forum.preseason();
+    Career.setGoals();
     Career.rivalryHype();
     save();
   }
@@ -1198,43 +1212,77 @@ const L = (() => {
   }
 
   // ── persistence ──
-  // Saves are coalesced: a burst of changes (a pick, a week of results, a trade) writes the save once, a moment
-  // later, instead of re-serializing the whole league on every tap. flush() writes right away; the UI calls it
-  // when the app is hidden or closed. Season and career stat lines are mostly zeros, so only their non-zero
-  // entries are stored (load() fills the rest back in).
+  // The save lives in Store (IndexedDB, with a localStorage mirror). Saves are coalesced: a burst of changes (a pick,
+  // a week of results, a trade) writes once, a moment later, instead of re-serializing the league on every tap.
+  // flush() writes right away; the UI calls it with hidden=true when the app goes to the background. Season and
+  // career stat lines are mostly zeros, so only their non-zero entries are stored (adopt() fills the rest back in).
   let saveT = 0;
   function save() { clearTimeout(saveT); saveT = setTimeout(flush, 400); }
   const packStats = (k, v) => ((k === 'st' || k === 'car') && v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([, x]) => x)) : v);
-  function flush() {
+  function flush(hidden) {
     clearTimeout(saveT); saveT = 0;
     if (!G) return;
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(G, packStats)); } catch (e) { console.warn('Save failed', e); }
+    let data;
+    try { data = JSON.stringify(G, packStats); } catch (e) { console.warn('Save failed', e); return; }
+    Store.write(data, hidden);
   }
-  function load() {
-    try {
-      const s = localStorage.getItem(SAVE_KEY);
-      if (!s) return false;
-      G = JSON.parse(s);
-      for (const p of Object.values(G.players)) {
-        p.st = Object.assign(blankStats(), p.st); p.car = Object.assign(blankStats(), p.car);
-        if (!p.stk) rollStickers(p);
-        if (p.gr == null) { p.gr = rollGrowth(p.pot); p.xp = {}; }
-        if (p.ovr0 == null) p.ovr0 = p.ovr;
-        if (p.face == null) p.face = p.id % FACES;
-      }
-      // faces were rebuilt with new sheets and duplicates removed: move old saves onto the new sprite
-      if ((G.faceV || 1) < 2) { for (const p of Object.values(G.players)) p.face = FACE_MAP_V1[p.face] ?? p.face % FACES; G.faceV = 2; }
-      for (const p of Object.values(G.players)) if (p.face >= FACES) p.face = p.face % FACES;
-      G.picks = G.picks || []; G.trades = G.trades || []; G.fa = G.fa || []; G.faLog = G.faLog || [];
-      if (G.scoutPts == null) G.scoutPts = 0;
-      for (const p of Object.values(G.players)) if (p.teamId != null && !p.contract) p.contract = { sal: +(marketSalary(p) * U.rand(0.8, 1.2)).toFixed(1), yrs: U.ri(1, 4) };
-      for (const t of G.teams) if (payroll(t) > DATA.CAP) fitUnderCap(t, true);
-      Career.ensure();
-      return true;
-    } catch (e) { return false; }
+  // take a parsed save as the live game: fill in what older saves lack and repair what older versions got wrong
+  function adopt(g) {
+    if (!g || !Array.isArray(g.teams) || !g.teams.length || !g.players || typeof g.players !== 'object') return false;
+    G = g;
+    for (const p of Object.values(G.players)) {
+      p.st = Object.assign(blankStats(), p.st); p.car = Object.assign(blankStats(), p.car);
+      // archetypes arrived later: give each existing player the one his current badges belong to (they all stay)
+      if (!p.role) p.role = pickRole(p, (p.stk || []).map(x => x.id));
+      if (!p.stk) rollStickers(p);
+      if (p.gr == null) { p.gr = rollGrowth(p.pot); p.xp = {}; }
+      if (p.ovr0 == null) p.ovr0 = p.ovr;
+      if (p.face == null) p.face = p.id % FACES;
+    }
+    // faces were rebuilt with new sheets and duplicates removed: move old saves onto the new sprite
+    if ((G.faceV || 1) < 2) { for (const p of Object.values(G.players)) p.face = FACE_MAP_V1[p.face] ?? p.face % FACES; G.faceV = 2; }
+    for (const p of Object.values(G.players)) if (p.face >= FACES) p.face = p.face % FACES;
+    G.picks = G.picks || []; G.trades = G.trades || []; G.fa = G.fa || []; G.faLog = G.faLog || [];
+    if (G.scoutPts == null) G.scoutPts = 0;
+    for (const p of Object.values(G.players)) if (p.teamId != null && !p.contract) p.contract = { sal: +(marketSalary(p) * U.rand(0.8, 1.2)).toFixed(1), yrs: U.ri(1, 4) };
+    for (const t of G.teams) if (payroll(t) > DATA.CAP) fitUnderCap(t, true);
+    Career.ensure();
+    return true;
   }
-  const hasSave = () => { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } };
-  function wipe() { clearTimeout(saveT); saveT = 0; try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } G = null; }
+  // a saved copy (text) from the Store; false if it doesn't read cleanly, so the caller can try an older copy
+  function load(text) {
+    const prev = G;
+    try { if (adopt(JSON.parse(text))) return true; } catch (e) { /* damaged copy */ }
+    G = prev;
+    return false;
+  }
+  // ── export / import: a career as a file, for backups and moving between devices ──
+  const EXPORT_APP = 'pro-blitz';
+  function exportText() {
+    flush();
+    return JSON.stringify({ app: EXPORT_APP, v: 1, at: new Date().toISOString(), team: fullName(user()), year: G.year, save: G }, packStats);
+  }
+  function readExport(text) {
+    let o;
+    try { o = JSON.parse(text); } catch (e) { return null; }
+    const g = o && o.app === EXPORT_APP ? o.save : o; // a raw save works too
+    return g && Array.isArray(g.teams) && g.players ? { g, team: o.team || '', year: g.year, at: o.at || null } : null;
+  }
+  // what an import file holds, before anything is replaced
+  function peekImport(text) {
+    const r = readExport(text);
+    if (!r) return { ok: false, why: "That file isn't a Pro Blitz save." };
+    const u = r.g.teams.find(t => t.user) || r.g.teams[r.g.userTeamId || 0];
+    return { ok: true, team: r.team || (u ? `${u.name} ${u.mascot}` : 'Your franchise'), year: r.year, season: r.g.season, at: r.at };
+  }
+  function importText(text) {
+    const r = readExport(text), prev = G;
+    if (!r) return false;
+    try { if (adopt(r.g)) { flush(); return true; } } catch (e) { /* fall through */ }
+    G = prev;
+    return false;
+  }
+  function wipe() { clearTimeout(saveT); saveT = 0; Store.clear(); G = null; }
 
   return {
     FACES, growSticker, logBadge, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, divRecStr, divName,
@@ -1246,6 +1294,6 @@ const L = (() => {
     runCamp, divStandings, confSeeds, seedOf, userGame, gameLabel, winnerOf,
     applyResult, createUserGame, finishWeek, mvpList, seasonLine,
     startOffseason, beginAnnualDraft, startSeason, leaders, teamLeader,
-    save, flush, load, hasSave, wipe,
+    save, flush, load, wipe, exportText, peekImport, importText,
   };
 })();

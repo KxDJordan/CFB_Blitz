@@ -36,6 +36,7 @@ const Career = (() => {
     { id: 'coach_tree', icon: '🌳', name: 'Coaching Tree', desc: 'Have a coordinator hired away as a head coach.' },
     { id: 'staff', icon: '📋', name: 'Dream Staff', desc: 'Have three coaches rated 4 stars or better at once.' },
     { id: 'lifer', icon: '🗓️', name: 'Lifer', desc: 'Complete 10 seasons with one franchise.' },
+    { id: 'second_chance', icon: '🔥', name: 'Second Chance', desc: 'Get fired on the Hot Seat, then win the Blitz Bowl with your next team.' },
   ];
   const ACH_KEY = 'problitz.ach';
   let onUnlock = null;
@@ -401,6 +402,147 @@ const Career = (() => {
       if (mine) unlock('pow');
     }
     if (plays[0] && plays[0].team === uid()) unlock('reel');
+    ownerCheckIn(wk);
+  }
+
+  // ════════════ HOT SEAT: owner goals and job security (opt-in when the career starts) ════════════
+  // Each preseason the owner sets two or three goals scaled to the roster. Hitting them builds job security,
+  // missing them drains it, and at zero the GM is fired and picks a new job from the clubs that come calling.
+  const hotOn = () => !!(G && G.hotSeat);
+  const GOAL_W = { wins: 1, playoffs: 0.8, deep: 0.8, title: 0.8, division: 0.6, rival: 0.5, develop: 0.6, scoring: 0.5, defense: 0.5 };
+  const secLabel = s => (s >= 70 ? 'Secure' : s >= 45 ? 'Stable' : s >= 25 ? 'Warm seat' : 'Hot seat');
+  const hot = () => G.hot || (G.hot = { sec: 50, log: [], jobs: [{ team: uid(), from: G.year }], goals: null, year: 0 });
+  function setGoals() {
+    if (!hotOn()) return;
+    const u = L.user(), r = L.rank(u.id) || 8, H = hot();
+    // a team the polls rank r-th is "expected" around 11.5 - 0.55(r-1) wins; the owner asks for one fewer
+    const goals = [{ k: 'wins', n: U.clamp(Math.round(11.5 - (r - 1) * 0.55 - 1), 3, 13) }];
+    goals.push(r <= 2 && u.prestige >= 4.2 ? { k: 'title' } : r <= 4 ? { k: 'deep' } : r <= 8 ? { k: 'playoffs' } : { k: 'develop' });
+    const rv = topRival();
+    const meets = rv && G.schedule.some(w => (w || []).some(g => (g.h === rv.id && g.a === u.id) || (g.a === rv.id && g.h === u.id)));
+    const pool = (r <= 8 ? ['division', 'scoring', 'defense'] : ['scoring', 'defense', 'develop']).filter(k => !goals.some(g => g.k === k));
+    const extra = meets && U.chance(0.5) ? { k: 'rival', rid: rv.id } : { k: U.pick(pool) };
+    goals.push(extra);
+    H.goals = goals; H.year = G.year;
+    Forum.news({
+      tag: 'HOT SEAT', heat: 70, teams: [u.id], mine: true,
+      title: `${u.name} owner lays out expectations for ${G.year}`,
+      body: `Sources say the owner has made it clear what this season needs to look like:\n\n${goals.map(g => `• ${goalLabel(g)}`).join('\n')}\n\nJob security: ${secLabel(H.sec)}.`,
+      pools: [{ w: 2, team: u, lines: 'loseFan' }, { w: 1, lines: 'neutral' }],
+    });
+  }
+  function goalLabel(g) {
+    switch (g.k) {
+      case 'wins': return `Win at least ${g.n} games`;
+      case 'playoffs': return 'Make the playoffs';
+      case 'deep': return 'Reach the conference championship';
+      case 'title': return 'Win the Blitz Bowl';
+      case 'division': return 'Win the division';
+      case 'rival': return `Beat the ${L.team(g.rid).name} ${L.team(g.rid).mascot}`;
+      case 'develop': return 'Develop a young player (+4 OVR, age 24 or under)';
+      case 'scoring': return 'Top-5 offense (points scored)';
+      default: return 'Top-5 defense (fewest points allowed)';
+    }
+  }
+  // live progress: state is 'met', 'missed' or 'open' (still in play); final settles everything open at season's end
+  function goalStatus(g, final = G.phase !== 'season') {
+    const u = L.user(), rec = u.rec, left = Math.max(0, SEA.REG - rec.w - rec.l), h = u.hist[u.hist.length - 1];
+    const ended = final && h && h.year === G.year, out = { label: goalLabel(g), prog: '', state: 'open' };
+    const seeded = G.seeds ? L.seedOf(u.id) > 0 : null; // known once the regular season is over
+    const rankOf = (key, low) => G.teams.slice().sort((a, b) => (low ? a.rec[key] - b.rec[key] : b.rec[key] - a.rec[key])).indexOf(u) + 1;
+    switch (g.k) {
+      case 'wins':
+        out.prog = `${rec.w} of ${g.n} wins`;
+        out.state = rec.w >= g.n ? 'met' : rec.w + left < g.n ? 'missed' : 'open';
+        break;
+      case 'playoffs': case 'deep': case 'title': case 'division': {
+        const need = { playoffs: 1, deep: 2, title: 4 }[g.k];
+        if (ended) out.state = (g.k === 'division' ? h.divWin : h.po >= need) ? 'met' : 'missed';
+        else if (seeded === false) out.state = 'missed';
+        else if (g.k === 'division') { const lead = L.divStandings(u.div)[0] === u; out.prog = lead ? 'Leading the division' : 'Chasing the division lead'; if (G.seeds) out.state = lead ? 'met' : 'missed'; }
+        else if (g.k === 'playoffs' && seeded) out.state = 'met';
+        else out.prog = seeded ? `${DATA.CONFS[u.conf].short} #${L.seedOf(u.id)} seed` : L.confSeeds(u.conf).includes(u.id) ? 'In playoff position' : 'Outside the playoff picture';
+        break;
+      }
+      case 'rival': {
+        const r = G.rivals && G.rivals[g.rid], games = r ? r.games.filter(x => x.y === G.year) : [];
+        const wins = games.filter(x => x.us > x.them).length;
+        const sched = G.schedule.flat().filter(x => x && ((x.h === g.rid && x.a === u.id) || (x.a === g.rid && x.h === u.id)));
+        out.prog = `${wins}-${games.length - wins} this season`;
+        out.state = wins ? 'met' : sched.every(x => x.done) || ended ? 'missed' : 'open';
+        break;
+      }
+      case 'develop': {
+        const best = L.roster(u).filter(p => p.age <= 24).reduce((m, p) => Math.max(m, p.ovr - (p.ovr0 ?? p.ovr)), 0);
+        out.prog = `Best young riser: +${best}`;
+        out.state = best >= 4 ? 'met' : ended ? 'missed' : 'open';
+        break;
+      }
+      default: {
+        const rk = g.k === 'scoring' ? rankOf('pf') : rankOf('pa', true);
+        out.prog = `Ranked #${rk}`;
+        if (ended || G.seeds) out.state = rk <= 5 ? 'met' : 'missed';
+      }
+    }
+    return out;
+  }
+  // the owner's verdict on the season, right after the Blitz Bowl
+  function judgeSeason() {
+    if (!hotOn() || !G.hot || G.hot.year !== G.year || !G.hot.goals) return;
+    const H = G.hot, u = L.user(), h = u.hist[u.hist.length - 1];
+    let d = 0;
+    const res = H.goals.map(g => {
+      const st = goalStatus(g, true), met = st.state === 'met', w = GOAL_W[g.k] || 0.5;
+      d += met ? 12 * w : -20 * w;
+      if (g.k === 'wins' && !met) d -= Math.min(10, (g.n - u.rec.w) * 2.5); // falling well short hurts more
+      return { label: st.label, met };
+    });
+    if (h && h.champ) d += 25;
+    d = Math.round(d);
+    H.sec = U.clamp(H.sec + d, 0, 100);
+    H.log.unshift({ y: G.year, team: u.id, d, sec: H.sec, res });
+    H.goals = null;
+    if (h && h.champ && H.firedOnce) unlock('second_chance');
+    if (H.sec > 0) return;
+    // fired: the clubs that come calling are the ones that need a new GM most
+    const offers = U.shuffle(G.teams.filter(t => t.id !== u.id).sort((a, b) => (a.rec.w - b.rec.w) || (a.prestige - b.prestige)).slice(0, 6)).slice(0, 3).map(t => t.id);
+    G.fired = { y: G.year, from: u.id, offers };
+    Forum.news({
+      tag: 'HOT SEAT', heat: 95, teams: [u.id], mine: true, by: 'mod',
+      title: `${u.name} ${u.mascot} fire their general manager`,
+      body: `After ${u.hist.length} season${u.hist.length === 1 ? '' : 's'}, the owner has seen enough. ${res.filter(x => !x.met).map(x => x.label).join(', ') || 'The results'} — the goals weren't met, and the front office is being cleaned out.`,
+      pools: [{ w: 3, team: u, lines: 'loseFan' }, { w: 1, lines: 'neutral' }], n: 6,
+    });
+  }
+  // take over another franchise after a firing; the old club carries on as an AI team
+  function takeJob(id) {
+    if (!G.fired || !G.fired.offers.includes(id)) return false;
+    const old = L.user(), nt = L.team(id), H = hot();
+    old.user = false; nt.user = true; G.userTeamId = id;
+    G.rivals = {}; initRivals();
+    H.sec = 50; H.goals = null; H.firedOnce = true;
+    H.jobs.push({ team: id, from: G.year + 1 });
+    G.fired = null;
+    Forum.news({
+      tag: 'NEWS', heat: 80, teams: [id], mine: true,
+      title: `${nt.name} ${nt.mascot} name a new general manager`,
+      body: `Fresh off being let go by the ${old.name} ${old.mascot}, the new GM takes over a ${L.recStr(nt)} club. The owner wants results quickly.`,
+      pools: [{ w: 2, team: nt, lines: 'winFan' }, { w: 1, lines: 'neutral' }],
+    });
+    L.save();
+    return true;
+  }
+  // midseason: a struggling GM hears about it
+  function ownerCheckIn(wk) {
+    if (!hotOn() || wk !== 7 || !G.hot || !G.hot.goals) return;
+    const u = L.user(), behind = G.hot.goals.some(g => { const s = goalStatus(g, false); return s.state === 'missed' || (g.k === 'wins' && u.rec.w < g.n * wk / SEA.REG - 1); });
+    if (!behind && G.hot.sec >= 40) return;
+    Forum.news({
+      tag: 'HOT SEAT', heat: 82, teams: [u.id], mine: true,
+      title: `Owner "disappointed" with the ${u.name} ${u.mascot} at the halfway mark`,
+      body: `With the team at ${L.recStr(u)}, sources describe an owner growing impatient. Job security: ${secLabel(G.hot.sec)}.`,
+      pools: [{ w: 3, team: u, lines: 'loseFan' }, { w: 1, lines: 'neutral' }],
+    });
   }
 
   // ════════════ MILESTONE HOOKS (called from league.js) ════════════
@@ -422,8 +564,10 @@ const Career = (() => {
     if (h.divWin) unlock('div');
     if (h.l === 0 && h.w >= SEA.REG) unlock('perfect');
     if (h.champ) unlock('champ');
-    if (h.champ && prev && prev.champ) unlock('repeat');
-    if (u.hist.filter(x => x.champ).length >= 3) unlock('dynasty');
+    // titles count for the GM, not the franchise: G.history records the user's own result each year
+    const mine = G.history.map(x => x.user && x.user.champ);
+    if (h.champ && mine.length >= 2 && mine[mine.length - 2]) unlock('repeat');
+    if (mine.filter(Boolean).length >= 3) unlock('dynasty');
     if (h.champ && G.difficulty === 'rebuild') unlock('underdog');
     if (h.divWin && prev && prev.dpos === 4) unlock('worst_first');
     const mvp = G.awards && G.awards.mvp;
@@ -432,13 +576,15 @@ const Career = (() => {
       const p = G.players[mvp.pid];
       if (p && p.draft && p.draft.by === u.id) unlock('homegrown');
     }
-    if (u.hist.length >= 10) unlock('lifer');
+    const since = G.hot && G.hot.jobs.length ? G.hot.jobs[G.hot.jobs.length - 1].from : G.year - u.hist.length + 1;
+    if (G.year - since + 1 >= 10) unlock('lifer');
     const tr = topRival();
     if (tr) {
       const reg = tr.games.filter(x => x.y === G.year && !x.po);
       if (reg.length >= 2 && reg.every(x => x.us > x.them)) unlock('rival_sweep');
     }
     staffSeasonEnd();
+    judgeSeason();
   }
   function offseason() {
     for (const r of Object.values(G.rivals || {})) r.heat = Math.round(r.heat * 0.78);
@@ -468,6 +614,7 @@ const Career = (() => {
     ROLES, TRAITS, stars, coachBonus, devMult, vetMult, injMult, quickHeal, marketOpen, interested, hire, fire, staffSeasonStart,
     rivalLevel, rivalList, rivalGame, rivalryHype,
     rollArc, applyArc, hintFor, rememberDraft,
+    setGoals, goalStatus, secLabel, takeJob,
     onGame, weekWrap, seasonEnd, offseason, onTrade, onSign, ensure,
   };
 })();

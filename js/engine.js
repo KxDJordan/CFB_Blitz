@@ -251,6 +251,8 @@ const Engine = (() => {
   }
   // diminishing returns when several badges stack in the same contest
   const soft = (x, cap) => cap * Math.tanh(x / cap);
+  // Swim Move: quick hands work best for quick rushers, and a Mirror blocker takes half of it away
+  const swimOdds = (spd, mirrored) => U.clamp((spd - 55) / 30, 0.2, 1) * (mirrored ? 0.5 : 1) * 0.4;
   const clutch = gs => (gs.ot || gs.qtr >= 4) && Math.abs(gs.score[0] - gs.score[1]) <= 8;
   const redZone = gs => gs.ball >= 80;
   const shortYd = gs => (gs.down >= 3 && gs.togo <= 2) || gs.ball >= 95;
@@ -370,7 +372,7 @@ const Engine = (() => {
       if (U.chance(0.46)) { addPts(gs, side, 2); pat = 'Two-point try is GOOD.'; } else pat = 'Two-point try fails.';
     } else {
       const k = who(gs, side, 'K');
-      if (U.chance(0.94 + ((k ? k.ovr : 60) - 70) * 0.002)) { addPts(gs, side, 1); pat = 'PAT good.'; } else pat = 'PAT is NO GOOD!';
+      if (U.chance(0.94 + ((k ? k.ovr : 60) - 70) * 0.002 + (k ? sm(gs, null, k, 'automatic') : 0))) { addPts(gs, side, 1); pat = 'PAT good.'; } else pat = 'PAT is NO GOOD!';
     }
     gs.drive.td = true;
     ev(gs, `${text} TOUCHDOWN ${gs.abbr[side]}! ${pat}`, 'td', { scorer: side });
@@ -393,7 +395,7 @@ const Engine = (() => {
     const det = { type: 'kickoff', o: r, kickSide: k, returner: ret.id, land: U.ri(-6, 4) };
     gs.lastPlay = det;
     gs.poss = r;
-    if (forceTB || U.chance(0.62)) {
+    if (forceTB || U.chance(tbChance(gs, k))) {
       gs.ball = 35; det.touchback = true; det.land = U.ri(-8, -2);
       ev(gs, `${gs.abbr[k]} kicks off — touchback. ${gs.abbr[r]} ball at the 35.`, 'kick');
     } else if (U.chance(0.006)) {
@@ -410,6 +412,8 @@ const Engine = (() => {
     startDrive(gs);
     checkClock(gs);
   }
+  // Touchback Machine raises the kicking side's touchback rate
+  const tbChance = (gs, side) => { const kk = who(gs, side, 'K'); return 0.62 + (kk ? sm(gs, null, kk, 'touchback') : 0); };
   function punt(gs) {
     const o = gs.poss, d = 1 - o, k = who(gs, o, 'K') || GHOST('K');
     let dist = Math.round(U.gauss(41 + (k.ovr - 70) * 0.12 + tailwind(gs) * 0.28 - (wet(gs) ? 2 : 0) + sm(gs, null, k, 'bigleg') * 50, 5));
@@ -425,7 +429,8 @@ const Engine = (() => {
       ev(gs, `${nm(k)} punts into the end zone. Touchback.`, 'punt');
       changePoss(gs, d, 20);
     } else {
-      let r = U.chance(0.38) ? 0 : Math.max(0, Math.round(U.gauss(7, 6)));
+      const hang = sm(gs, null, k, 'hangtime');
+      let r = U.chance(0.38 + hang * 0.04) ? 0 : Math.max(0, Math.round(U.gauss(7, 6) - hang));
       if (U.chance(0.004)) {
         det.end = -1; det.td = true;
         ev(gs, `${nm(k)} punts ${dist} yds...`, 'punt');
@@ -447,7 +452,7 @@ const Engine = (() => {
     let wxAdj = gs.wxm.fg;
     const aw = k ? Math.min(1, sm(gs, null, k, 'allweather')) : 0;
     windAdj *= 1 - aw; wxAdj *= 1 - aw;
-    const stk = k ? sm(gs, null, k, 'bigleg', dist >= 45) + sm(gs, null, k, 'icecold', clutch(gs)) : 0;
+    const stk = k ? sm(gs, null, k, 'bigleg', dist >= 45) + sm(gs, null, k, 'icecold', clutch(gs)) + sm(gs, null, k, 'automatic', dist <= 40) : 0;
     return U.clamp(0.99 - Math.max(0, dist - 22) * 0.017 + ((k ? k.ovr : 60) - 70) * 0.004 + wxAdj + windAdj + stk, 0.03, 0.99);
   }
   function fieldGoal(gs) {
@@ -519,35 +524,40 @@ const Engine = (() => {
       const ob = O[ok], db = D[dk];
       const off = ob.pos === 'WR' ? A(gs, o, ob, 'str') * 0.6 + A(gs, o, ob, 'awr') * 0.4 - 6 : runBlk(gs, o, ob);
       const def = db.pos === 'DL' ? runDef(gs, d, db) : tackleR(gs, d, db);
-      const stkO = sm(gs, det, ob, 'grader', side === 'M') + sm(gs, det, ob, 'puller', side !== 'M' && ob.pos === 'OL') + sm(gs, det, ob, 'anchor', db.pos === 'DL') * 0.5;
-      const stkD = sm(gs, det, db, 'stuffer');
+      const stkO = sm(gs, det, ob, 'grader', side === 'M') + sm(gs, det, ob, 'puller', side !== 'M' && ob.pos === 'OL') + sm(gs, det, ob, 'anchor', db.pos === 'DL') * 0.5
+        + sm(gs, det, ob, 'pancake') * 0.6 + sm(gs, det, ob, 'sealer', side !== 'M');
+      const stkD = sm(gs, det, db, 'stuffer') + sm(gs, det, db, 'eater', side === 'M') + sm(gs, det, db, 'longarm') * 0.5;
       const m = gap(off - def) * 0.58 + U.gauss(0, 9) + mod + soft(stkO, 2.5) - soft(stkD, 2.5);
       det.blocks.push({ o: ok, d: dk, m: Math.round(m), win: m >= 0 });
       sum += m;
-      if (m < -11 && !tfl) tfl = dk;
+      if (m < -11 + sm(gs, det, db, 'penetrator') && !tfl) tfl = dk;
     }
     const laneQ = sum / pairs.length / 10;
     let yards, tackler = null;
     const levels = [];
     if (dc === 'blitz' && oc === 'inside' && U.chance(0.22)) tfl = tfl || 'MLB';
+    // Spin Move: he spins out of the backfield tackle
+    if (tfl && sp(gs, det, rb, 'spin', true, 0.5)) tfl = null;
     if (tfl) {
       yards = -U.ri(1, 3); tackler = tfl;
       levels.push({ d: tfl, win: false, y: yards });
     } else {
-      const g1 = Math.round(U.clamp(3.0 + laneQ * 2.4 + U.gauss(0, 1.4) + (side !== 'M' ? U.gauss(0.3, 1.8) : 0) + sm(gs, det, rb, 'hammer', shortYd(gs)), -1, 7));
+      const g1 = Math.round(U.clamp(3.0 + laneQ * 2.4 + U.gauss(0, 1.4) + (side !== 'M' ? U.gauss(0.3, 1.8) : 0) + sm(gs, det, rb, 'hammer', shortYd(gs)) + sm(gs, det, rb, 'cutback', side === 'M'), -1, 7));
       const l2k = side === 'M' ? (dc === 'blitz' ? 'LB2' : 'MLB') : side === 'L' ? (det.blocks[1].win ? 'MLB' : 'LB1') : (det.blocks[1].win ? 'MLB' : 'LB2');
       const l2 = D[l2k];
       const m2 = gap(elusR(gs, o, rb) - tackleR(gs, d, l2)) * 0.5 + U.gauss(0, 10) + laneQ * 4 + ({ cover: 3, runstop: -3, blitz: 1, base: 0 }[dc]) + (side !== 'M' ? gap(A(gs, o, rb, 'spd') - A(gs, d, l2, 'spd')) * 0.3 : 0) + (l2k === 'MLB' && side !== 'M' ? 3 : 0)
-        + soft(sm(gs, det, rb, 'wrecking'), 3) - soft(sm(gs, det, l2, 'thumper') + sm(gs, det, l2, 'sideline', side !== 'M'), 3);
+        + soft(sm(gs, det, rb, 'wrecking'), 3) - soft(sm(gs, det, l2, 'thumper') + sm(gs, det, l2, 'sideline', side !== 'M') + sm(gs, det, l2, 'shedder', l2.pos === 'LB'), 3);
       const juke = m2 < 8 && sp(gs, det, rb, 'jukebox', true, 0.35);
       levels.push({ d: l2k, win: m2 >= 8 || juke, y: g1 });
       if (m2 < 8 && !juke) { yards = g1 + U.ri(0, 2); tackler = l2k; }
       else {
         const g2 = g1 + U.ri(2, 6);
         const l3k = dc === 'runstop' ? 'S2' : side === 'R' ? 'S2' : 'S1';
-        const m3 = gap(elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.5 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) + sm(gs, det, rb, 'wrecking') * 0.4 - sm(gs, det, D[l3k], 'suretackle') * 0.6;
-        levels.push({ d: l3k, win: m3 >= 0, y: g2 });
-        if (m3 < 0) { yards = g2 + U.ri(0, 4); tackler = l3k; }
+        const m3 = gap(elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.5 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) + sm(gs, det, rb, 'wrecking') * 0.4 - sm(gs, det, D[l3k], 'suretackle') * 0.6 - sm(gs, det, D[l3k], 'thumper') * 0.4;
+        // Stiff Arm: the last man between him and daylight hits the turf
+        const stiff = m3 < 0 && sp(gs, det, rb, 'stiffarm', true, 0.4);
+        levels.push({ d: l3k, win: m3 >= 0 || stiff, y: g2 });
+        if (m3 < 0 && !stiff) { yards = g2 + U.ri(0, 4); tackler = l3k; }
         else { yards = g2 + U.ri(8, 40) + Math.round(sm(gs, det, rb, 'homerun') * U.rand(0.5, 1.5)); tackler = side === 'R' ? 'CB2' : 'CB1'; }
       }
     }
@@ -610,14 +620,16 @@ const Engine = (() => {
     let help = 'C';
     const lead = gs.score[d] > gs.score[o] && gs.qtr >= 4;
     const rushStk = (rp, bp) => soft(rushStkRaw(rp, bp), 3.5);
-    const rushStkRaw = (rp, bp) => sm(gs, det, rp, 'bender', rp.pos === 'DL' && (rp === D.DE1 || rp === D.DE2)) + sm(gs, det, rp, 'bullrush') * (bp && tierOf(bp, 'anchor') >= 0 ? 0.3 : 1)
-      + sm(gs, det, rp, 'closer', lead) + sm(gs, det, rp, 'blitzer', dc === 'blitz' && rp.pos !== 'DL')
-      - (bp ? sm(gs, det, bp, 'brickwall') + sm(gs, det, bp, 'anchor') * 0.5 : 0);
-    const rushRes = pairs.map(([r, b]) => ({ r, b, m: gap(passRush(gs, d, D[r]) - passBlk(gs, o, O[b])) * 0.6 + U.gauss(0, 9) - (dc === 'cover' ? 2 : 0) + rushStk(D[r], O[b]) }));
+    const rushStkRaw = (rp, bp) => sm(gs, det, rp, 'bender', (rp.pos === 'DL' && (rp === D.DE1 || rp === D.DE2)) || rp.pos === 'LB') + sm(gs, det, rp, 'bullrush') * (bp && tierOf(bp, 'anchor') >= 0 ? 0.3 : 1)
+      + sm(gs, det, rp, 'closer', lead) + sm(gs, det, rp, 'blitzer', dc === 'blitz' && rp.pos !== 'DL') + sm(gs, det, rp, 'getoff') + sm(gs, det, rp, 'longarm')
+      - (bp ? sm(gs, det, bp, 'brickwall') + sm(gs, det, bp, 'anchor') * 0.5 + sm(gs, det, bp, 'mirror') + sm(gs, det, bp, 'blitzpickup', rp.pos !== 'DL') : 0);
+    // Swim Move: a quick rusher who lands it is past his man almost at once
+    const swim = (x, rp, bp) => { if (sp(gs, det, rp, 'swim', true, swimOdds(A(gs, d, rp, 'spd'), bp && tierOf(bp, 'mirror') >= 0))) x.m = Math.max(x.m, 14); return x; };
+    const rushRes = pairs.map(([r, b]) => swim({ r, b, m: gap(passRush(gs, d, D[r]) - passBlk(gs, o, O[b])) * 0.6 + U.gauss(0, 9) - (dc === 'cover' ? 2 : 0) + rushStk(D[r], O[b]) }, D[r], O[b]));
     const weakest = rushRes.filter(x => x.r.startsWith('DT')).sort((a, b) => b.m - a.m)[0];
     weakest.m -= 6; weakest.help = help;
     blitzers.forEach((bz, i) => {
-      if (extra[i]) rushRes.push({ r: bz, b: extra[i], m: gap(passRush(gs, d, D[bz]) - passBlk(gs, o, O[extra[i]])) * 0.9 + U.gauss(0, 9) + rushStk(D[bz], O[extra[i]]) });
+      if (extra[i]) rushRes.push(swim({ r: bz, b: extra[i], m: gap(passRush(gs, d, D[bz]) - passBlk(gs, o, O[extra[i]])) * 0.9 + U.gauss(0, 9) + rushStk(D[bz], O[extra[i]]) }, D[bz], O[extra[i]]));
       else rushRes.push({ r: bz, b: null, m: 20 });
     });
     let pressT = 4.2, presser = null;
@@ -642,11 +654,11 @@ const Engine = (() => {
         sep = gap(routeR(gs, o, rec) - coverR(gs, d, D[dk])) * 0.42 + 1.6 + U.gauss(0, 4.8);
         if (depth >= 15) sep += { base: -3, cover: -5, blitz: 2, runstop: 3 }[dc];
         else if (depth < 10) sep += { base: 0, cover: 2.5, blitz: 0, runstop: 1 }[dc];
-        if (oc === 'pa' && dc !== 'cover') sep += 3;
+        if (oc === 'pa') { if (dc !== 'cover') sep += 3; sep += sm(gs, det, qb, 'playaction') * 7.5; }
         const cd = D[dk];
-        sep += soft(sm(gs, det, rec, 'routetech', depth < 15) + sm(gs, det, rec, 'burner', depth >= 15) + sm(gs, det, rec, 'redzone', redZone(gs)), 1);
+        sep += soft(sm(gs, det, rec, 'routetech', depth < 15) + sm(gs, det, rec, 'burner', depth >= 15) + sm(gs, det, rec, 'redzone', redZone(gs)) + sm(gs, det, rec, 'release', dc !== 'cover' && depth < 15), 1);
         sep -= soft(sm(gs, det, cd, 'lockdown', dc !== 'cover') + sm(gs, det, cd, 'zonehawk', dc === 'cover') + sm(gs, det, cd, 'centerfield', depth >= 15)
-          + sm(gs, det, cd, 'covlb', rec.pos === 'TE' || rec.pos === 'RB'), 1.1);
+          + sm(gs, det, cd, 'covlb', rec.pos === 'TE' || rec.pos === 'RB') + sm(gs, det, cd, 'press', dc !== 'cover' && depth < 15) + sm(gs, det, cd, 'robber', depth < 12) + sm(gs, det, cd, 'recovery', depth >= 15), 1.1);
       }
       return { slot, kind, depth, ready: ready + U.rand(-0.1, 0.1), def: dk, sep: Math.round(sep * 10) / 10 };
     });
@@ -657,7 +669,7 @@ const Engine = (() => {
     let target = null;
     for (const r of ready) {
       if (U.chance(U.clamp(0.25 - (awr - 70) * 0.01 - sm(gs, null, qb, 'general'), 0.02, 0.4))) continue;
-      if (r.sep >= 1.5) { target = r; break; }
+      if (r.sep >= 1.5 - sm(gs, null, qb, 'fearless') * 3) { target = r; break; }
     }
     if (!target && ready.length) {
       const best = ready.slice().sort((a, b) => b.sep - a.sep)[0];
@@ -668,7 +680,7 @@ const Engine = (() => {
     const fin = (yds, text, opts) => { fatigue(gs, O, D, fatX); gain(gs, yds, text, opts); };
     // no throw: sack / scramble / throwaway
     if (!target) {
-      let sackP = U.clamp(0.55 - (A(gs, o, qb, 'spd') - 60) * 0.012 - sm(gs, det, qb, 'pocket') * 0.6, 0.1, 0.75);
+      let sackP = U.clamp(0.55 - (A(gs, o, qb, 'spd') - 60) * 0.012 - sm(gs, det, qb, 'pocket') * 0.6 + sm(gs, det, D[presser], 'sackfinish') * 0.03, 0.1, 0.8);
       if (sp(gs, det, qb, 'escape', true, 0.7)) sackP = 0;
       det.throwT = null;
       if (U.chance(sackP)) {
@@ -680,7 +692,7 @@ const Engine = (() => {
         fin(y, `${nm(qb)} is SACKED by ${nm(sk)} for a loss of ${-y}.${stkNote(det, false)}`, { kind: 'sack' });
         injury(gs, qb, o, 0.004);
       } else if (U.chance(0.5)) {
-        const y = Math.max(-3, Math.round(U.gauss(2 + (A(gs, o, qb, 'spd') - 65) * 0.12, 3.5)));
+        const y = Math.max(-3, Math.round(U.gauss(2 + (A(gs, o, qb, 'spd') - 65) * 0.12 + sm(gs, det, qb, 'scramble'), 3.5)));
         qs.ra++;
         Object.assign(det, { outcome: 'scramble', yards: Math.min(y, 100 - gs.ball), escapeT: pressT, td: gs.ball + y >= 100 });
         fin(y, `${nm(qb)} escapes the pocket and scrambles for ${yd(Math.min(y, 100 - gs.ball))}.`, { kind: 'run', onYds: v => { qs.ry += v; }, onTD: () => { qs.rtd++; } });
@@ -691,7 +703,7 @@ const Engine = (() => {
       }
       return det;
     }
-    if (pressT - Math.max(target.ready, 0.85) < 0.35 && presser && U.chance(0.3 - (A(gs, o, qb, 'awr') - 70) * 0.006 - sm(gs, det, qb, 'pocket') * 0.4) && !sp(gs, det, qb, 'escape', true, 0.5)) {
+    if (pressT - Math.max(target.ready, 0.85) < 0.35 && presser && U.chance(0.3 - (A(gs, o, qb, 'awr') - 70) * 0.006 - sm(gs, det, qb, 'pocket') * 0.4 + sm(gs, det, D[presser], 'sackfinish') * 0.03) && !sp(gs, det, qb, 'escape', true, 0.5)) {
       const sk = D[presser], ss = st(gs, sk, d);
       ss.sk++; ss.tk++; gs.ts[d].sk++;
       const y = -U.ri(2, 9);
@@ -705,13 +717,15 @@ const Engine = (() => {
     det.throwT = Math.max(target.ready, 0.85) + U.rand(0, 0.15);
     const pressured = pressT - det.throwT < 0.35;
     det.pressured = pressured;
-    const acc = qbAcc(gs, o, qb), dpt = target.depth;
+    const acc = qbAcc(gs, o, qb), dpt = target.depth, rec0 = O[target.slot];
     const cov0 = target.def ? D[target.def] : null;
     const qbStk = sm(gs, det, qb, 'dime', dpt >= 15) + sm(gs, det, qb, 'iceveins', clutch(gs)) + sm(gs, det, qb, 'trigger', oc === 'quick' || oc === 'screen') * 0.6
-      + (pressured ? sm(gs, det, qb, 'pocket') * 2.5 : 0);
-    const recStk = sm(gs, det, O[target.slot], 'gluehands', target.sep < 0) + sm(gs, det, O[target.slot], 'redzone', redZone(gs)) * 0.2;
+      + sm(gs, det, qb, 'cannon', dpt >= 15) + sm(gs, det, qb, 'fearless', target.sep < 1)
+      + (pressured ? (sm(gs, det, qb, 'pocket') + sm(gs, det, qb, 'ontherun')) * 2.5 : 0);
+    const recStk = sm(gs, det, rec0, 'gluehands', target.sep < 0) + sm(gs, det, rec0, 'redzone', redZone(gs)) * 0.2
+      + sm(gs, det, rec0, 'deeptrack', dpt >= 20) + sm(gs, det, rec0, 'chainmover', gs.down === 3) + sm(gs, det, rec0, 'toetap', ['out', 'corner', 'go'].includes(target.kind));
     const pC = sig(0.1 + target.sep * 0.15 + gap(acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt) + soft(qbStk + recStk, 0.32));
-    const hawk = cov0 && target.sep < 1 && sp(gs, det, cov0, 'ballhawk', true, 0.5) ? 1.1 : 0;
+    const hawk = (cov0 && target.sep < 1 && sp(gs, det, cov0, 'ballhawk', true, 0.5) ? 1.1 : 0) + (cov0 && dpt < 12 ? sm(gs, det, cov0, 'robber') * 0.8 : 0);
     const pI = sig(-4.4 - target.sep * 0.2 - gap(acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0) + gs.wxm.int + hawk);
     // Moss'd: a contested deep ball the receiver simply goes up and takes
     const mossd = dpt >= 15 && target.sep < 2 && sp(gs, det, O[target.slot], 'mossd', true, 0.35);
@@ -746,15 +760,17 @@ const Engine = (() => {
     }
     if (mossd || r < pI + pC * (1 - pI)) {
       // completion + run after catch
-      let yac = (oc === 'screen' ? Math.max(0, U.gauss(3, 2.5)) : Math.max(0, target.sep * 0.25 + U.gauss(0.3, 1.2))) * gs.wxm.yac + sm(gs, det, rec, 'yac') * 0.15;
+      let yac = (oc === 'screen' ? Math.max(0, U.gauss(3, 2.5)) : Math.max(0, target.sep * 0.25 + U.gauss(0.3, 1.2))) * gs.wxm.yac + sm(gs, det, rec, 'yac') * 0.15 + sm(gs, det, rec, 'screenpro', oc === 'screen');
       const chasers = [target.def || 'MLB', dpt >= 15 ? 'S2' : (cov.WR3 === 'S1' ? 'MLB' : 'S1'), dpt >= 15 ? (target.slot === 'WR2' ? 'CB2' : 'CB1') : 'S2'];
       const attempts = [];
       let tackler = null;
       for (let i = 0; i < 3; i++) {
         const dk = chasers[i], df = D[dk];
         const m = gap(elusR(gs, o, rec) - tackleR(gs, d, df)) * 0.5 + U.gauss(0, 11) + (i === 0 && target.sep > 4 ? 5 : 0) - i * 2 + soft(sm(gs, det, rec, 'yac'), 3) - soft(sm(gs, det, df, 'suretackle') + sm(gs, det, df, 'sideline', oc === 'screen'), 3);
-        attempts.push({ d: dk, at: Math.round(dpt + yac), win: m > 9 });
-        if (m > 9) { yac += U.ri(2, 6); if (i === 2) yac += U.ri(6, 35); }
+        // Juke Box: the first man to arrive after the catch grabs air
+        const juked = m <= 9 && i === 0 && sp(gs, det, rec, 'jukebox', true, 0.35);
+        attempts.push({ d: dk, at: Math.round(dpt + yac), win: m > 9 || juked });
+        if (m > 9 || juked) { yac += U.ri(2, 6); if (i === 2) yac += U.ri(6, 35) + Math.round(sm(gs, det, rec, 'homerun') * U.rand(0.5, 1.5)); }
         else { tackler = dk; yac += m > 0 ? U.ri(1, 3) : 0; break; }
       }
       const yds = Math.round(dpt + yac), ts = st(gs, rec, o);
@@ -889,7 +905,7 @@ const Engine = (() => {
   function prepKickoff(gs) {
     const k = gs.kicker, r = 1 - k;
     // one roll decides it: a touchback is booked as one (and lands deep in the end zone), never a return relabelled as a touchback
-    if (U.chance(0.62)) { kickoff(gs, true); gs.lastPlay.live = false; gs.wpH.push(winProb(gs)); return gs.lastPlay; }
+    if (U.chance(tbChance(gs, gs.kicker))) { kickoff(gs, true); gs.lastPlay.live = false; gs.wpH.push(winProb(gs)); return gs.lastPlay; }
     const ret = who(gs, r, U.pick(['RB', 'WR', 'CB']), 1) || who(gs, r, 'WR', 0) || GHOST('WR');
     const det = { type: 'kickoff', live: true, o: r, kickSide: k, returner: ret.id, land: U.ri(-4, 7) };
     gs.lastPlay = det;
@@ -901,7 +917,7 @@ const Engine = (() => {
     if (gs.ball + dist >= 100 && gs.ball >= 50 && sp(gs, null, k, 'coffin')) dist = 100 - gs.ball - U.ri(2, 8);
     const land = gs.ball + dist;
     const ret = who(gs, d, 'WR', 1) || who(gs, d, 'CB', 0) || GHOST('WR');
-    if (land >= 100 || U.chance(0.36)) {
+    if (land >= 100 || U.chance(0.36 + sm(gs, null, k, 'hangtime') * 0.04)) {
       // touchback or fair catch: nothing to play out — resolve now
       const det = { type: 'punt', live: false, o, los: gs.ball, land: Math.min(land, 108), returner: ret.id, kicker: k.id };
       gs.lastPlay = det;
@@ -1158,6 +1174,6 @@ const Engine = (() => {
   return {
     create, step, prepare, commit, ratings, simToEnd, winProb, preWinProb, fourthInfo, needsCall, suggestOff, aiDefCall, callEdges, canKneel,
     spot, downTxt, slots, stam, OFF_CALLS, DEF_CALLS,
-    stk: { sm, sp, tierOf, clutch, redZone, shortYd, wxPass },
+    stk: { sm, sp, tierOf, clutch, redZone, shortYd, wxPass, swimOdds, tbChance },
   };
 })();

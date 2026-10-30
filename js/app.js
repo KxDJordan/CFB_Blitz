@@ -24,9 +24,11 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') set(); });
 })();
 
-(function boot() {
-  if (L.hasSave() && !L.load()) {
-    console.warn('Save could not be read; starting fresh.');
+// the save loads asynchronously (IndexedDB): use the newest copy that reads cleanly, falling back to older ones
+(async function boot() {
+  const copies = await Store.init();
+  if (copies.length && !copies.some(c => L.load(c.data))) {
+    console.warn('No saved copy could be read; starting fresh.');
     G = null;
   }
   UI.wire();

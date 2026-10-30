@@ -105,6 +105,21 @@ const UI = (() => {
 
   // ── badges ──
   const stkChip = (s, big) => { const d = DATA.STICKERS[s.id], t = DATA.STICKER_TIERS[s.tier]; return `<span class="stk stk-${t.id}${big ? ' big' : ''}" title="${d.name} — ${t.label}">${d.glyph}</span>`; };
+  // ── archetypes: who he is, what he grows into, and the badges still out there for him ──
+  function roleCard(p) {
+    const r = DATA.roleOf(p);
+    if (!r) return '';
+    const have = (p.stk || []).filter(s => r.badges.includes(s.id)).length;
+    const focus = r.focus.map(a => DATA.ATTR_LONG[a === 'skl' ? DATA.attrLabel(p.pos, a) : a]).join(' and ');
+    return `<div class="kicker mb8">Archetype</div><div class="role-card"><div class="flex between"><b>${esc(r.name)}</b><span class="tag">${have}/${r.badges.length} badges</span></div><div class="small muted">${esc(r.desc)}</div><div class="tiny muted mt8">Develops fastest in ${esc(focus)}. Earns only ${esc(r.name)} badges.</div></div>`;
+  }
+  function badgePath(p) {
+    const r = DATA.roleOf(p);
+    if (!r) return '';
+    const left = r.badges.filter(id => !(p.stk || []).some(s => s.id === id));
+    if (!left.length) return '';
+    return `<div class="kicker mb8">Still to earn</div><div class="bp-list mb12">${left.map(id => { const d = DATA.STICKERS[id]; return `<div class="bp-row"><span class="stk stk-locked">${d.glyph}</span><div class="grow"><div class="bp-n">${esc(d.name)}${d.kind === 'proc' ? ' <span class="tiny muted">· chance</span>' : ''}</div><div class="bp-d">${esc(d.desc)}</div></div></div>`; }).join('')}</div>`;
+  }
   const stkRow = p => (p.stk && p.stk.length ? `<span class="stk-row">${p.stk.slice().sort((a, b) => b.tier - a.tier).map(s => stkChip(s)).join('')}</span>` : '');
   function stkList(p, empty) {
     if (!p.stk || !p.stk.length) return `<div class="small muted mb12">${empty || 'No badges yet — milestone seasons, breakout years, Player of the Week honors and hard camps earn them.'}</div>`;
@@ -380,6 +395,7 @@ const UI = (() => {
       step: 0, name: '', mascot: '', abbr: '', abbrEdited: false,
       logo: { shape: 'shield', icon: 'bolt', primary: pal[0].hex, secondary: pal[15].hex, letter: 'B' },
       div: 0, difficulty: 'contender', aiTeams: U.shuffle(DATA.FRANCHISES.slice()).slice(0, 15), theme: (G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night',
+      hotSeat: false,
     };
   }
   function createPreview() {
@@ -427,6 +443,8 @@ const UI = (() => {
         <div class="kicker mt12">Rest of the ${DATA.CONFS[DATA.DIVS[c.div].conf].long}</div><div class="logo-strip">${confMates.map(s => `<span title="${esc(s.name + ' ' + s.mascot)}">${logo({ logo: { ...s.logo, letter: s.name[0] } }, 30)}</span>`).join('')}</div></div>
         <div class="section-title"><h3>Franchise status</h3></div>
         ${DATA.DIFFICULTY.map(d => `<button class="opt-card ${c.difficulty === d.id ? 'on' : ''}" data-a="cfgSet" data-v="difficulty:${d.id}"><span class="radio"></span><div class="grow"><div class="oc-t">${d.label} <span class="tag ${d.id === 'dynasty' ? 't-good' : d.id === 'rebuild' ? 't-bad' : 't-accent'}">${d.tag}</span></div><div class="oc-d">${d.desc}</div></div></button>`).join('')}
+        <div class="section-title"><h3>Owner expectations</h3></div>
+        <button class="opt-card ${c.hotSeat ? 'on' : ''}" data-a="cfgHot"><span class="radio"></span><div class="grow"><div class="oc-t">Hot Seat <span class="tag t-bad">Optional</span></div><div class="oc-d">The owner sets goals every season. Meet them to build job security; miss them and you can be fired, then pick a new job with another franchise.</div></div></button>
         <div class="section-title"><h3>Theme</h3></div>
         ${themePicker(c.theme)}`;
     }
@@ -539,7 +557,7 @@ const UI = (() => {
   }
   function homeTab() {
     const u = L.user();
-    return heroCard(u) + nextGameCard() + devCard() + reelCard() + tradeCard() + practiceCard() + forumTeaser() + leadersCard(u) + injuryCard(u);
+    return heroCard(u) + ownerCard() + nextGameCard() + devCard() + reelCard() + tradeCard() + practiceCard() + forumTeaser() + leadersCard(u) + injuryCard(u);
   }
 
   // ── roster ──
@@ -553,7 +571,7 @@ const UI = (() => {
       const header = `<div class="flex between" style="padding:12px 14px 6px"><span class="kicker">${DATA.POS_NAME[pos]}s · ${ids.length}</span><span class="tiny ${u.manual[pos] ? 'accent' : 'dim'}">${u.manual[pos] ? 'Manual depth' : 'Auto depth'}</span></div>`;
       return `<div class="card flush">${header}<div class="list">${ids.map((id, i) => {
         const p = G.players[id], st = healthy.includes(p);
-        return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 40)}<div class="grow"><div class="r1">${pname(p)} ${st ? '<span class="tag t-accent">ST</span>' : ''}${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${p.udfa && p.exp === 0 ? '<span class="tag">UDFA</span>' : ''}${gainTag(p)}${stkRow(p)}</div><div class="r2">${pos}${i + 1} · ${ageExp(p)} · POT ${U.potGrade(p.pot)} · ${contractStr(p)}</div></div>${ovr(p.ovr)}</button>`;
+        return `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${p.id}">${jersey(p, 40)}<div class="grow"><div class="r1">${pname(p)} ${st ? '<span class="tag t-accent">ST</span>' : ''}${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${p.udfa && p.exp === 0 ? '<span class="tag">UDFA</span>' : ''}${gainTag(p)}${stkRow(p)}</div><div class="r2">${pos}${i + 1}${DATA.roleOf(p) ? ` · ${esc(DATA.roleOf(p).name)}` : ''} · ${ageExp(p)} · POT ${U.potGrade(p.pot)} · ${contractStr(p)}</div></div>${ovr(p.ovr)}</button>`;
       }).join('')}</div></div>`;
     }).join('');
     return `<div class="card"><div class="rings">${ring(rt.off, 'OFF', '#60a5fa')}${ring(rt.ovr, 'OVR', 'var(--accent)')}${ring(rt.def, 'DEF', '#f87171')}</div>
@@ -587,7 +605,7 @@ const UI = (() => {
       return items.length ? `<div class="kv">${items.slice(0, 8).map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join('')}</div>` : '<div class="small muted">No stats recorded yet.</div>';
     };
     const hasCar = c && Object.values(c).some(v => v > 0);
-    sheet(`<div class="team-stripe" style="background:linear-gradient(90deg,${t ? t.logo.primary : '#334155'} 0 60%,${t ? t.logo.secondary : '#64748b'} 60%)"></div><div class="pc-head" style="${t ? teamVars(t) : '--team-1:#334155;--team-2:#64748b'}">${jersey(p, 64)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]} · #${p.num} · Age ${p.age}</div><div class="tiny" style="opacity:.7;margin-top:2px">${esc(p.college)}${t ? ` · ${tfull(t)}` : ''}</div></div><div class="pc-ovr"><b>${p.ovr}</b><span>OVR</span></div></div>
+    sheet(`<div class="team-stripe" style="background:linear-gradient(90deg,${t ? t.logo.primary : '#334155'} 0 60%,${t ? t.logo.secondary : '#64748b'} 60%)"></div><div class="pc-head" style="${t ? teamVars(t) : '--team-1:#334155;--team-2:#64748b'}">${jersey(p, 64)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]}${DATA.roleOf(p) ? ` · ${esc(DATA.roleOf(p).name)}` : ''} · #${p.num} · Age ${p.age}</div><div class="tiny" style="opacity:.7;margin-top:2px">${esc(p.college)}${t ? ` · ${tfull(t)}` : ''}</div></div><div class="pc-ovr"><b>${p.ovr}</b><span>OVR</span></div></div>
       ${G.phase === 'season' || G.phase === 'post' ? `<div class="small mb8" style="margin-top:-2px">${seasonGain(p) > 0 ? `<b class="good">+${seasonGain(p)} OVR</b> this season` : '<span class="muted">No OVR change yet this season</span>'}<span class="muted"> · started at ${p.ovr0 ?? p.ovr}</span></div>` : ''}
       <div class="kv mb12"><div><b>${U.potGrade(p.pot)}</b><span>Potential</span></div><div><b style="font-size:14px;line-height:18px">${DATA.expLabel(p)}</b><span>Experience</span></div><div><b>${L.tradeValue(p).toFixed(1)}</b><span>Trade value</span></div><div><b style="font-size:14px;line-height:18px">${status}</b><span>Status</span></div></div>
       ${p.dl || p.pow ? `<div class="honor-row mb12">${p.dl === 'steal' ? '<span class="tag t-good">Draft steal</span>' : p.dl === 'bust' ? '<span class="tag t-bad">Draft bust</span>' : ''}${p.pow ? `<span class="tag t-gold">${p.pow}× Player of the Week</span>` : ''}</div>` : ''}
@@ -595,7 +613,7 @@ const UI = (() => {
       ${p.fa && G.phase !== 'draft' ? `<button class="btn btn-primary btn-block mb12" data-a="faOffer" data-v="${p.id}">Make an offer</button>` : ''}
       ${mine && p.expiring ? `<div class="btn-row mb12"><button class="btn btn-primary" data-a="resign" data-v="${p.id}" ${p.ask.sal > L.capRoom(t) ? 'disabled' : ''}>Re-sign ${money(p.ask.sal)}</button><button class="btn" data-a="letGo" data-v="${p.id}">Let him walk</button></div>` : ''}
       <div class="card" style="padding:12px 14px">${DATA.ATTRS.map(a => { const lbl = DATA.attrLabel(p.pos, a); const v = p.attrs[a]; return `<div class="attr"><span class="muted">${DATA.ATTR_LONG[a === 'skl' ? lbl : a]}</span><div class="bar"><i style="width:${v}%"></i></div><b class="${U.ovrClass(v)}">${v}</b></div>`; }).join('')}</div>
-      <div class="kicker mb8">Badges</div>${stkList(p)}
+      ${roleCard(p)}<div class="kicker mb8">Badges</div>${stkList(p)}${badgePath(p)}
       <div class="kicker mb8">${G.year} season</div>${statGrid(s)}
       ${hasCar ? `<div class="kicker mb8 mt16">Career (prior seasons)</div>${statGrid(c)}` : ''}
       ${p.draft ? `<div class="small muted mt12">Drafted ${p.draft.year} · Round ${p.draft.round}, pick #${p.draft.pick}${p.draft.via != null && L.team(p.draft.via) ? ` (via ${esc(L.team(p.draft.via).abbr)})` : ''} · ${esc(p.college)}</div>` : p.udfa ? `<div class="small muted mt12">Undrafted free agent out of ${esc(p.college)}</div>` : ''}
@@ -776,6 +794,36 @@ const UI = (() => {
       <div class="kicker mb8">Busts</div><div class="card flush"><div class="list">${r.busts.length ? r.busts.map(x => row(x, 't-bad')).join('') : '<div class="row small muted">Every first-rounder held up.</div>'}</div></div>
       <div class="kicker mb8">Team grades</div><div class="card flush"><table class="tbl"><thead><tr><th>Team</th><th>Draft day</th><th>Now</th></tr></thead><tbody>${teams.map(t => `<tr class="${t.user ? 'me' : ''}"><td>${tname(t)}</td><td>${r.orig[t.id] || '—'}</td><td><b>${r.grades[t.id]}</b></td></tr>`).join('')}</tbody></table></div>`);
   }
+  // ── Hot Seat: the owner's goals, job security, verdicts and firing ──
+  const secColor = s => (s >= 70 ? 'var(--good)' : s >= 45 ? 'var(--accent)' : s >= 25 ? 'var(--warn)' : 'var(--bad)');
+  const goalRow = (state, label, prog) => `<div class="goal-row ${state}"><span class="goal-ico">${state === 'met' ? '✓' : state === 'missed' ? '✕' : '○'}</span><div class="grow"><div class="r1">${esc(label)}</div>${prog ? `<div class="r2">${esc(prog)}</div>` : ''}</div></div>`;
+  const secMeter = s => `<div class="sec-meter"><i style="width:${s}%;background:${secColor(s)}"></i></div>`;
+  function ownerCard() {
+    const H = G.hot;
+    if (!G.hotSeat || !H || !H.goals || H.year !== G.year) return '';
+    return `<div class="card owner-card"><div class="card-h"><span class="kicker">Owner's goals · ${G.year}</span><span class="tag" style="color:${secColor(H.sec)}">${Career.secLabel(H.sec)}</span></div>
+      ${H.goals.map(g => { const s = Career.goalStatus(g); return goalRow(s.state, s.label, s.prog); }).join('')}
+      ${secMeter(H.sec)}<div class="tiny muted mt8">Job security ${H.sec}/100. Meeting goals raises it and missing them lowers it. At zero, you're fired.</div></div>`;
+  }
+  function jobCard() {
+    const H = G.hot;
+    if (!G.hotSeat || !H) return '';
+    const stints = H.jobs.map((j, i) => `${esc(L.team(j.team).abbr)} ${j.from}–${i < H.jobs.length - 1 ? H.jobs[i + 1].from - 1 : 'now'}`).join(' · ');
+    return `<div class="section-title"><h3>Hot Seat</h3><span class="tiny muted">${stints}</span></div>
+      <div class="card"><div class="flex between"><div style="font-weight:700">Job security</div><span class="tag" style="color:${secColor(H.sec)}">${Career.secLabel(H.sec)} · ${H.sec}/100</span></div>${secMeter(H.sec)}
+        ${H.log.slice(0, 5).map(v => `<div class="flex between small mt8"><span>${v.y} · ${esc(L.team(v.team).abbr)} · ${v.res.filter(r => r.met).length}/${v.res.length} goals met</span><b class="${v.d >= 0 ? 'good' : 'bad'}">${v.d >= 0 ? '+' : ''}${v.d}</b></div>`).join('') || '<div class="small muted mt8">The owner will judge your first season when it ends.</div>'}</div>`;
+  }
+  function verdictCard() {
+    const v = G.hotSeat && G.hot && G.hot.log[0];
+    if (!v || v.y !== G.year) return '';
+    return `<div class="card"><div class="card-h"><span class="kicker">Owner's verdict</span><span class="tag ${v.d >= 0 ? 't-good' : 't-bad'}">${v.d >= 0 ? '+' : ''}${v.d} job security</span></div>
+      ${v.res.map(r => goalRow(r.met ? 'met' : 'missed', r.label, '')).join('')}${secMeter(v.sec)}<div class="tiny muted mt8">Job security ${v.sec}/100 · ${Career.secLabel(v.sec)}</div></div>`;
+  }
+  function firedCard() {
+    if (!G.fired) return '';
+    return `<div class="card fired-card"><div class="kicker" style="color:var(--bad)">You've been fired</div><div class="h-md mt8">The owner has made a change.</div><p class="small muted">Three franchises want to talk. Pick your next job: your career, achievements and history come with you.</p>
+      <div class="list">${G.fired.offers.map(id => { const t = L.team(id), rt = L.ratings(t); return `<div class="row">${logo(t, 40)}<div class="grow"><div class="r1">${tfull(t)}</div><div class="r2">${L.recStr(t)} · ${rt.ovr} OVR · ${esc(L.divName(t))}</div></div><button class="btn btn-sm btn-primary" data-a="takeJob" data-v="${id}">Take the job</button></div>`; }).join('')}</div></div>`;
+  }
   // ── this week's development report: badges, risers, decliners on your roster ──
   const BADGE_WHY = { milestone: 'Season milestone', growth: 'Breakout season', pow: 'Player of the Week' };
   function devCard() {
@@ -891,13 +939,13 @@ const UI = (() => {
     return `<div class="hero-card" style="${teamVars(u)}"><div class="hero-stripe"></div><div class="hero-in">${logo(u, 84, 'hero-logo')}<div class="grow"><div class="kicker" style="color:rgba(255,255,255,.75)">Est. ${G.history.length ? G.history[0].year : G.year} · ${esc(u.abbr)}</div><div class="hero-name">${tfull(u)}</div><div class="hero-sub">Season ${G.season} · ${esc(L.divName(u))}</div></div></div>
       <div class="hero-stats"><div class="hero-stat"><b>${titles}</b><span>Titles</span></div><div class="hero-stat"><b>${ccs}</b><span>Conf</span></div><div class="hero-stat"><b>${mvps}</b><span>MVPs</span></div><div class="hero-stat"><b>${best ? `${best.w}-${best.l}` : '—'}</b><span>Best</span></div></div></div>
       <button class="btn btn-block mb12" data-a="brandSheet">${I.shield} Edit logo & colors</button>
-      ${staffCard()}${rivalsCard()}${achCard()}${draftClassCard()}
+      ${jobCard()}${staffCard()}${rivalsCard()}${achCard()}${draftClassCard()}
       <div class="section-title"><h3>Franchise history</h3></div>
       ${u.hist.length ? `<div class="card flush"><table class="tbl"><thead><tr><th>Season</th><th>Record</th><th>Div</th><th>Seed</th><th>Result</th></tr></thead><tbody>${u.hist.slice().reverse().map(h => `<tr><td><b>${h.year}</b></td><td>${h.w}-${h.l}</td><td>${h.dw ?? '-'}-${h.dl ?? '-'}${h.divWin ? ' <span class="tag t-accent">DIV</span>' : ''}</td><td>${h.seed ? '#' + h.seed : '—'}</td><td>${h.champ ? '<span class="tag t-gold">Champions</span>' : h.po ? `<span class="tag">${RES[h.po]}</span>` : '<span class="dim">Missed</span>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="card"><div class="small muted">Your first season is underway. History is written in January.</div></div>'}
       ${G.history.length ? `<div class="section-title"><h3>League champions</h3></div><div class="card flush"><div class="list">${G.history.slice().reverse().map(h => { const c = L.team(h.champ); return `<div class="row">${logo(c, 30)}<div class="grow"><div class="r1">${h.year} · ${tfull(c)}</div><div class="r2">MVP: ${h.mvp ? `${esc(h.mvp.name)} (${esc(h.mvp.teamName)})` : '—'}</div></div></div>`; }).join('')}</div></div>` : ''}
       <div class="section-title"><h3>Settings</h3></div>
       <div class="card">${themePicker(G.settings.theme)}
-        <div class="divider"></div>${sfxToggle()}${tutToggle()}
+        <div class="divider"></div>${sfxToggle()}${tutToggle()}${saveSection()}
         <div class="divider"></div>
         <div class="flex between"><div><div style="font-weight:700">Call every play</div><div class="small muted">Pick the offensive & defensive call each snap in live games</div></div><button class="toggle ${G.settings.callPlays !== false ? 'on' : ''}" data-a="toggleCalls" aria-label="Toggle play calling"></button></div>
         <div class="divider"></div>
@@ -1021,7 +1069,7 @@ const UI = (() => {
     const attrs = v.lv >= 3 ? DATA.ATTRS.map(a => { const lbl = DATA.attrLabel(p.pos, a); const x = p.attrs[a]; return `<div class="attr"><span class="muted">${DATA.ATTR_LONG[a === 'skl' ? lbl : a]}</span><div class="bar"><i style="width:${x}%"></i></div><b class="${U.ovrClass(x)}">${x}</b></div>`; }).join('')
       : v.lv >= 2 ? DATA.ATTRS.map(a => { const lbl = DATA.attrLabel(p.pos, a), x = Math.round(p.attrs[a] + (p.sb ? p.sb.o : 0) * 2); return `<div class="attr"><span class="muted">${DATA.ATTR_LONG[a === 'skl' ? lbl : a]}</span><div class="bar"><i style="width:${x - 4}%;opacity:.55"></i></div><b>${x - 4}–${x + 4}</b></div>`; }).join('')
       : '<div class="small muted">Spend more scouting on him to see attribute detail.</div>';
-    sheet(`<div class="pc-head" style="--team-1:#1e293b;--team-2:var(--accent)">${jersey(p, 60)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]} · ${esc(p.college)}</div><div class="tiny" style="opacity:.7;margin-top:4px">Age ${p.age} · hometown ${esc(p.home)}</div></div><div class="pc-ovr"><b>${v.exact ? '' : '~'}${v.mid}</b><span>OVR</span></div></div>
+    sheet(`<div class="pc-head" style="--team-1:#1e293b;--team-2:var(--accent)">${jersey(p, 60)}<div style="min-width:0"><div class="pc-name">${pname(p)}</div><div class="small" style="opacity:.85;margin-top:4px">${DATA.POS_NAME[p.pos]}${v.lv >= 1 && DATA.roleOf(p) ? ` · ${esc(DATA.roleOf(p).name)}` : ''} · ${esc(p.college)}</div><div class="tiny" style="opacity:.7;margin-top:4px">Age ${p.age} · hometown ${esc(p.home)}</div></div><div class="pc-ovr"><b>${v.exact ? '' : '~'}${v.mid}</b><span>OVR</span></div></div>
       <div class="kv mb12"><div><b style="font-size:13px;line-height:18px">${ovrRange(p)}</b><span>OVR range</span></div><div><b style="font-size:13px;line-height:18px">${potRange(p)}</b><span>Potential</span></div><div><b style="font-size:13px;line-height:18px">${DATA.GRADE_SHORT[p.stars]}</b><span>Grade</span></div><div><b>#${ids.indexOf(p.id) + 1}</b><span>Board</span></div></div>
       <div class="card" style="padding:12px 14px"><div class="flex between"><div><div style="font-weight:700">Scouting ${scoutDots(p)}</div><div class="tiny muted">${['Media consensus only', 'One visit: a rough read', 'Two visits: a solid read', 'Full workup: you know exactly what he is'][v.lv]}</div></div>${v.lv < 3 ? `<button class="btn btn-sm btn-primary" data-a="scoutP" data-v="${p.id}" ${(G.scoutPts || 0) <= 0 ? 'disabled' : ''}>Scout · ${G.scoutPts || 0} left</button>` : ''}</div></div>
       ${(() => { const h = Career.hintFor(p); return h ? `<div class="scout-note ${h.k}"><b>Scouts' note</b>${esc(h.text)}</div>` : ''; })()}
@@ -1493,11 +1541,12 @@ const UI = (() => {
       <div class="scroll no-tabs">
         <div class="trophy-hero">${confetti}${TROPHY}<div class="kicker" style="color:var(--gold)">${G.year} Blitz Bowl Champions</div><div style="margin:12px auto 8px;width:max-content">${logo(c, 80)}</div><div class="h-lg">${tfull(c)}</div><div class="small muted mt8">${L.recStr(c)} · ${DATA.CONFS[c.conf].long} champions</div></div>
         <div class="card"><div class="kicker mb8">Your season</div><div class="flex">${logo(u, 54)}<div class="grow"><div class="h-md">${finish}</div><div class="small muted">${uh.w}-${uh.l} (${uh.dw}-${uh.dl} division)${uh.seed ? ` · ${DATA.CONFS[u.conf].short} #${uh.seed} seed` : ''} · #${uh.rank} in final power rankings</div></div></div></div>
+        ${firedCard()}${verdictCard()}
         ${awardCard(G.awards && G.awards.mvp, 'Most Valuable Player')}${awardCard(G.awards && G.awards.roy, 'Rookie of the Year')}
         <div class="section-title"><h3>Final Power Rankings</h3></div>
         <div class="card flush"><div class="list">${G.poll.slice(0, 10).map((id, i) => { const t = L.team(id); return `<div class="row ${t.user ? 'me' : ''}"><span style="width:24px;font:700 17px/1 var(--f-display)">${i + 1}</span>${logo(t, 30)}<div class="grow"><div class="r1">${tfull(t)}</div><div class="r2">${L.recStr(t)}</div></div>${t.id === G.champion ? '<span class="tag t-gold">Champs</span>' : ''}</div>`; }).join('')}</div></div>
       </div>
-      <div class="bottom-cta"><button class="btn btn-primary btn-lg" data-a="startOffseason">Begin the Offseason ${I.chev}</button></div></div>`;
+      <div class="bottom-cta">${G.fired ? '<button class="btn btn-lg" disabled>Choose your next job above</button>' : `<button class="btn btn-primary btn-lg" data-a="startOffseason">Begin the Offseason ${I.chev}</button>`}</div></div>`;
   };
   SCREENS.graduation = () => {
     const o = G.off, u = L.user();
@@ -1647,7 +1696,7 @@ const UI = (() => {
     A.confirmNew();
   };
   A.confirmNew = () => { closeSheet(); initCreate(); S.screen = 'create'; render(); };
-  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div><div class="divider"></div>${sfxToggle()}${tutToggle()}<div class="build-line">Pro Blitz · Build ${BUILD}</div>`);
+  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div><div class="divider"></div>${sfxToggle()}${tutToggle()}${saveSection()}<div class="build-line">Pro Blitz · Build ${BUILD}</div>`);
   // sound is a device preference (localStorage), so it works before a franchise exists
   function sfxToggle() {
     return `<div class="flex between"><div><div style="font-weight:700">Sound effects</div><div class="small muted">Game sounds, crowd and menu clicks</div></div><button class="toggle ${Sfx.isOn() ? 'on' : ''}" data-a="toggleSfx" aria-label="Toggle sound effects"></button></div>
@@ -1663,6 +1712,51 @@ const UI = (() => {
   A.toggleTut = (v, el) => { Tutorial.setOn(!Tutorial.isOn()); el.classList.toggle('on', Tutorial.isOn()); };
   A.resetTut = () => { Tutorial.reset(); closeSheet(); toast('Tips reset. They will show again as you reach each screen.'); setTimeout(() => Tutorial.check(), 400); };
   A.tutHelp = v => Tutorial.help(v);
+  // the save: where it lives, and moving it in and out as a file
+  function saveSection() {
+    const inf = Store.info(), has = !!(G && G.teams && G.teams.length);
+    const where = has ? `Saved on this device${inf.size ? ` · ${(inf.size / 1048576).toFixed(1)} MB` : ''}` : 'No career saved yet';
+    return `<div class="divider"></div><div style="font-weight:700">Your save</div>
+      <div class="small muted mb8">${where} · ${inf.persisted ? 'protected from storage clean-up' : 'iOS may clear it if the phone runs low on space, so keep a backup'}</div>
+      <div class="btn-row"><button class="btn btn-sm" data-a="exportSave" ${has ? '' : 'disabled'}>Export career</button><button class="btn btn-sm" data-a="importSave">Import career</button></div>
+      <div class="tiny muted mt8">Export makes a file you can keep in Files or iCloud Drive, AirDrop or email. Import it on another device, in Safari, or after re-adding the home-screen icon.</div>`;
+  }
+  A.exportSave = async () => {
+    if (!G) return;
+    const u = L.user(), name = `pro-blitz-${u.abbr.toLowerCase()}-${G.year}.json`;
+    const file = new File([L.exportText()], name, { type: 'application/json' });
+    // the iPhone share sheet (Save to Files, AirDrop, Mail…) when it can take files; a download otherwise
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Pro Blitz career' }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    toast('Career exported');
+  };
+  A.importSave = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.json,application/json,text/plain';
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const text = await f.text(), pk = L.peekImport(text);
+      if (!pk.ok) { toast(esc(pk.why)); Sfx.play('error'); return; }
+      S.importText = text;
+      confirmSheet('Import this career?', `${esc(pk.team)} · ${pk.year} season${pk.season ? ` (year ${pk.season})` : ''}${pk.at ? ` · exported ${new Date(pk.at).toLocaleDateString()}` : ''}.${G ? ' This replaces the career on this device.' : ''}`, 'Import', 'confirmImport', !!G);
+    };
+    inp.click();
+  };
+  A.confirmImport = () => {
+    const ok = S.importText && L.importText(S.importText);
+    S.importText = null;
+    closeSheet();
+    if (!ok) { toast('That save could not be loaded.'); Sfx.play('error'); return; }
+    if (S.game) { clearTimeout(S.game.wait); clearInterval(S.game.clockIv); Live.unmount(); S.game = null; }
+    S.screen = 'menu'; render();
+    toast('Career imported. Tap Continue to pick it up.');
+  };
   // career: staff, achievements, draft classes, weekly reel
   A.staffSheet = () => staffSheet();
   A.staffRole = v => { S.staffRole = v; staffSheet(); };
@@ -1714,10 +1808,12 @@ const UI = (() => {
     if (S.brandCtx === 'program') { L.save(); render(); A.brandSheet(); } else render();
   };
   A.cfgSet = v => { const [k, val] = v.split(':'); S.create[k] = k === 'div' ? +val : val; render(); };
+  A.cfgHot = () => { S.create.hotSeat = !S.create.hotSeat; render(); };
+  A.takeJob = v => { if (!Career.takeJob(+v)) return; Sfx.play('deal'); render(); toast(`Welcome to the ${tfull(L.user())}. The owner expects results.`); };
   A.createFinish = () => {
     const c = S.create;
     localStorage.setItem('cfbblitz.theme', c.theme);
-    L.newCareer({ name: c.name.trim(), mascot: c.mascot.trim(), abbr: c.abbr, logo: { ...c.logo }, letter: c.name.trim()[0], div: c.div, difficulty: c.difficulty, aiTeams: c.aiTeams, theme: c.theme });
+    L.newCareer({ name: c.name.trim(), mascot: c.mascot.trim(), abbr: c.abbr, logo: { ...c.logo }, letter: c.name.trim()[0], div: c.div, difficulty: c.difficulty, aiTeams: c.aiTeams, theme: c.theme, hotSeat: c.hotSeat });
     S.brandCtx = null; S.create = null;
     S.draft = { pos: 'ALL', view: 'board', fast: false };
     S.screen = 'draft';
@@ -1815,7 +1911,7 @@ const UI = (() => {
     sheet(`<div class="reveal" style="--c1:${t.logo.primary};--c2:${t.logo.secondary}">
       <div class="rv-k">Round ${cur.round} · Pick #${cur.overall}</div>
       <div class="rv-card"><div class="rv-front">${logo(t, 64)}<div class="rv-q">THE PICK IS IN</div></div>
-        <div class="rv-back">${jersey(p, 84)}<div class="rv-name">${pname(p)}</div><div class="small" style="opacity:.85">${DATA.POS_NAME[p.pos]} · ${esc(p.college)}</div>
+        <div class="rv-back">${jersey(p, 84)}<div class="rv-name">${pname(p)}</div><div class="small" style="opacity:.85">${DATA.POS_NAME[p.pos]}${DATA.roleOf(p) ? ` · ${esc(DATA.roleOf(p).name)}` : ''} · ${esc(p.college)}</div>
           <div class="rv-ovr"><b>${p.ovr}</b><span>OVR</span></div>
           ${sv ? `<div class="small" style="opacity:.85">Scouted ${sv.exact ? sv.mid : `${sv.lo}–${sv.hi}`}${p.ovr > sv.hi ? ' · <b class="good">Steal!</b>' : p.ovr < sv.lo ? ' · <b class="bad">Bust risk</b>' : ''}</div>` : ''}</div></div>
       <button class="btn btn-primary btn-block mt16" data-a="closeSheet">Back to the board</button></div>`, { center: true });
@@ -1907,7 +2003,7 @@ const UI = (() => {
   };
 
   // offseason
-  A.startOffseason = () => { L.startOffseason(); S.screen = 'graduation'; render(); };
+  A.startOffseason = () => { if (G.fired) return; L.startOffseason(); S.screen = 'graduation'; render(); };
   // trade center
   const openTradeWith = (b, fn) => { S.tradeBack = S.tradeBack && S.screen === 'trade' ? S.tradeBack : { screen: S.screen, tab: S.tab }; S.trade = newOffer(b); if (fn) fn(S.trade); closeSheet(); S.screen = 'trade'; render(); };
   A.openTrade = () => { const best = G.teams.filter(t => !t.user).sort((a, b) => L.rank(a.id) - L.rank(b.id))[0]; openTradeWith(S.trade ? S.trade.b : best.id); };
@@ -1985,7 +2081,10 @@ const UI = (() => {
       if (!sideways && ((dy > 0 && atTop) || (dy < 0 && atBottom)) && e.cancelable) e.preventDefault();
     }, { passive: false });
     window.addEventListener('resize', () => { if (S.screen === 'game') Live.resize(); });
-    const persist = () => { if (G) L.flush(); };
+    const persist = () => { if (G) L.flush(true); };
+    // a save that can't be written is never silent: warn (at most once a minute) and point at Export
+    let failWarned = 0;
+    Store.setOnFail(() => { if (Date.now() - failWarned < 60000) return; failWarned = Date.now(); notice('<b>Your progress couldn’t be saved.</b> Free up space on your phone, or export your career from Settings.', 'error'); });
     window.addEventListener('pagehide', persist);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(); });
   }

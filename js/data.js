@@ -185,6 +185,7 @@ const DATA = (() => {
     { id: 'gold', label: 'Gold', mult: 2.3, proc: 0.55, color: '#fbbf24' },
     { id: 'elite', label: 'Elite', mult: 3.2, proc: 0.75, color: '#c084fc' },
   ];
+  // pos: the positions a badge can show up on (the archetype lists below decide who can actually earn it)
   const STICKERS = {
     // QB
     pocket: { name: 'Pocket Presence', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'PP', desc: 'Stays calm under pressure: smaller accuracy penalty and fewer sacks when the rush gets home.' },
@@ -193,52 +194,148 @@ const DATA = (() => {
     escape: { name: 'Escape Artist', pos: ['QB'], kind: 'proc', base: 1, glyph: 'EA', desc: 'Chance to slip a would-be sack and scramble.' },
     iceveins: { name: 'Ice in the Veins', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'IV', desc: 'Accuracy boost in the 4th quarter and OT of one-score games.' },
     trigger: { name: 'Quick Trigger', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'QT', desc: 'Lightning release on quick game, screens and against the blitz.' },
+    cannon: { name: 'Cannon Arm', pos: ['QB'], kind: 'mag', base: 0.06, glyph: 'CA', desc: 'Throws a rope: deep balls get there faster and the wind can\'t push them around.' },
+    fearless: { name: 'Fearless', pos: ['QB'], kind: 'mag', base: 0.1, glyph: 'FE', desc: 'Throws into tight windows other quarterbacks pass up, and still hits them.' },
+    playaction: { name: 'Play-Action Pro', pos: ['QB'], kind: 'mag', base: 0.15, glyph: 'PA', desc: 'Sells the fake: linebackers bite harder and receivers come open behind them.' },
+    scramble: { name: 'Scramble Drill', pos: ['QB'], kind: 'mag', base: 1.5, glyph: 'SD', desc: 'Dangerous when the pocket breaks down: slippery and productive as a runner.' },
+    ontherun: { name: 'On the Run', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'OR', desc: 'Keeps his accuracy when he\'s flushed or the rush is in his face.' },
     // RB
     wrecking: { name: 'Wrecking Ball', pos: ['RB'], kind: 'mag', base: 1.5, glyph: 'WB', desc: 'Runs through linebackers and safeties instead of around them.' },
-    jukebox: { name: 'Juke Box', pos: ['RB'], kind: 'proc', base: 1, glyph: 'JB', desc: 'Chance to make the first second-level defender miss.' },
-    homerun: { name: 'Home Run Hitter', pos: ['RB'], kind: 'mag', base: 2, glyph: 'HR', desc: 'Turns breakaways into long gains and touchdowns.' },
+    jukebox: { name: 'Juke Box', pos: ['RB', 'QB', 'WR'], kind: 'proc', base: 1, glyph: 'JB', desc: 'Chance to make the first man at the second level grab air.' },
+    homerun: { name: 'Home Run Hitter', pos: ['RB', 'WR'], kind: 'mag', base: 2, glyph: 'HR', desc: 'Turns breakaways into long gains and touchdowns.' },
     irongrip: { name: 'Iron Grip', pos: ['RB'], kind: 'mag', base: 0.18, glyph: 'IG', desc: 'Protects the football — fumbles way down, even in the rain.' },
     hammer: { name: 'Goal-Line Hammer', pos: ['RB'], kind: 'mag', base: 0.9, glyph: 'GH', desc: 'Extra push inside the 5 and on 3rd/4th & short.' },
     bellcow: { name: 'Bell Cow', pos: ['RB'], kind: 'mag', base: 0.08, glyph: 'BC', desc: 'Handles a heavy workload — tires much more slowly.' },
+    stiffarm: { name: 'Stiff Arm', pos: ['RB'], kind: 'proc', base: 1, glyph: 'SA', desc: 'Chance to shove a would-be tackler to the turf once he\'s past the line.' },
+    spin: { name: 'Spin Move', pos: ['RB'], kind: 'proc', base: 1, glyph: 'SP', desc: 'Chance to spin out of first contact in the backfield.' },
+    cutback: { name: 'Cutback', pos: ['RB'], kind: 'mag', base: 0.8, glyph: 'CU', desc: 'Patient vision: finds the backside lane when the play side clogs.' },
+    screenpro: { name: 'Screen Specialist', pos: ['RB', 'WR'], kind: 'mag', base: 1.5, glyph: 'SC', desc: 'Turns screens into big gains behind his blockers.' },
+    blitzpickup: { name: 'Blitz Pickup', pos: ['RB', 'OL'], kind: 'mag', base: 1.5, glyph: 'BP', desc: 'Spots the extra rusher and stones him.' },
     // WR / TE
-    routetech: { name: 'Route Technician', pos: ['WR', 'TE'], kind: 'mag', base: 0.4, glyph: 'RT', desc: 'Crisp breaks create separation on short and intermediate routes.' },
+    routetech: { name: 'Route Technician', pos: ['WR', 'TE', 'RB'], kind: 'mag', base: 0.4, glyph: 'RT', desc: 'Crisp breaks create separation on short and intermediate routes.' },
     burner: { name: 'Burner', pos: ['WR'], kind: 'mag', base: 0.45, glyph: 'BU', desc: 'Pure speed on the deep ball (15+ yards).' },
     gluehands: { name: 'Glue Hands', pos: ['WR', 'TE', 'RB'], kind: 'mag', base: 0.15, glyph: 'GL', desc: 'Catches it in traffic — completion boost in tight windows.' },
     mossd: { name: "Moss'd", pos: ['WR', 'TE'], kind: 'proc', base: 1, glyph: 'MO', desc: 'Chance to win a contested deep ball over the defender.' },
     yac: { name: 'YAC Monster', pos: ['WR', 'TE', 'RB'], kind: 'mag', base: 1.6, glyph: 'YM', desc: 'Breaks tackles and piles up yards after the catch.' },
     redzone: { name: 'Red Zone Target', pos: ['TE', 'WR'], kind: 'mag', base: 0.5, glyph: 'RZ', desc: 'Body-control and separation boost inside the 20.' },
-    // OL
-    brickwall: { name: 'Brick Wall', pos: ['OL'], kind: 'mag', base: 1.8, glyph: 'BW', desc: 'Pass protection anchor — rushers rarely win clean.' },
+    deeptrack: { name: 'Deep Tracker', pos: ['WR'], kind: 'mag', base: 0.08, glyph: 'DT', desc: 'Tracks the deep ball over his shoulder: a bigger catch radius on 20+ yard throws.' },
+    release: { name: 'Release Artist', pos: ['WR'], kind: 'mag', base: 0.35, glyph: 'RA', desc: 'Wins at the line against press and man coverage.' },
+    chainmover: { name: 'Chain Mover', pos: ['WR'], kind: 'mag', base: 0.07, glyph: 'CM', desc: 'Money on third down: catches everything that moves the chains.' },
+    toetap: { name: 'Toe Tapper', pos: ['WR'], kind: 'mag', base: 0.08, glyph: 'TT', desc: 'Keeps both feet in on sideline catches.' },
+    // OL / blocking
+    brickwall: { name: 'Brick Wall', pos: ['OL', 'TE'], kind: 'mag', base: 1.8, glyph: 'BW', desc: 'Pass protection anchor — rushers rarely win clean.' },
     grader: { name: 'Road Grader', pos: ['OL', 'TE'], kind: 'mag', base: 1.5, glyph: 'RG', desc: 'Drives defenders off the ball on running plays.' },
-    anchor: { name: 'Anchor', pos: ['OL'], kind: 'mag', base: 1.8, glyph: 'AN', desc: 'Sits down against power — neutralizes bull rushes.' },
+    anchor: { name: 'Anchor', pos: ['OL', 'TE'], kind: 'mag', base: 1.8, glyph: 'AN', desc: 'Sits down against power — neutralizes bull rushes.' },
     puller: { name: 'Pulling Guard', pos: ['OL'], kind: 'mag', base: 1.5, glyph: 'PG', desc: 'Leads the way on outside runs.' },
-    ironman: { name: 'Iron Man', pos: ['OL', 'DL'], kind: 'mag', base: 0.15, glyph: 'IM', desc: 'Never comes off the field — stamina drains slower.' },
+    ironman: { name: 'Iron Man', pos: ['OL', 'DL', 'TE'], kind: 'mag', base: 0.15, glyph: 'IM', desc: 'Never comes off the field — stamina drains slower.' },
+    sealer: { name: 'Edge Sealer', pos: ['TE', 'OL'], kind: 'mag', base: 1.5, glyph: 'ES', desc: 'Seals the edge so outside runs get around the corner.' },
+    mirror: { name: 'Mirror', pos: ['OL'], kind: 'mag', base: 1.5, glyph: 'MI', desc: 'Quick feet: stays in front of speed rushers and shuts down swim moves.' },
+    pancake: { name: 'Pancake Artist', pos: ['OL'], kind: 'mag', base: 1.5, glyph: 'PK', desc: 'Finishes his blocks — defenders end up on their backs.' },
     // DL
-    bender: { name: 'Edge Bender', pos: ['DL'], kind: 'mag', base: 2.5, glyph: 'EB', desc: 'Dips and bends around the edge (defensive ends).' },
+    bender: { name: 'Edge Bender', pos: ['DL', 'LB'], kind: 'mag', base: 2.5, glyph: 'EB', desc: 'Dips and bends around the edge (defensive ends and edge rushers).' },
     bullrush: { name: 'Bull Rusher', pos: ['DL', 'LB'], kind: 'mag', base: 2.0, glyph: 'BR', desc: 'Walks blockers back into the quarterback.' },
     stuffer: { name: 'Run Stuffer', pos: ['DL'], kind: 'mag', base: 2.5, glyph: 'RS', desc: 'Sheds blocks and blows up runs in the backfield.' },
     strip: { name: 'Strip Sack', pos: ['DL', 'LB'], kind: 'proc', base: 0.4, glyph: 'SS', desc: 'Chance a sack knocks the ball loose.' },
     closer: { name: 'Closer', pos: ['DL'], kind: 'mag', base: 2.5, glyph: 'CL', desc: 'Extra juice rushing in the 4th quarter with a lead.' },
+    swim: { name: 'Swim Move', pos: ['DL', 'LB'], kind: 'proc', base: 1, glyph: 'SW', desc: 'Quick hands: chance to swim right past a pass blocker. Faster rushers land it more often.' },
+    getoff: { name: 'Get-Off', pos: ['DL', 'LB'], kind: 'mag', base: 1.5, glyph: 'GO', desc: 'Explodes off the snap and reads the pass a beat sooner.' },
+    sackfinish: { name: 'Sack Artist', pos: ['DL'], kind: 'mag', base: 2, glyph: 'SK', desc: 'Finishes plays: rarely misses the quarterback or a receiver on pass plays.' },
+    longarm: { name: 'Long Arm', pos: ['DL'], kind: 'mag', base: 1.5, glyph: 'LA', desc: 'Keeps blockers off his chest and controls every rep.' },
+    eater: { name: 'Double-Team Eater', pos: ['DL'], kind: 'mag', base: 1.5, glyph: 'DX', desc: 'Takes up two blockers so the linebackers run free.' },
+    penetrator: { name: 'Gap Shooter', pos: ['DL'], kind: 'mag', base: 2, glyph: 'GS', desc: 'Shoots gaps for tackles behind the line.' },
     // LB
-    thumper: { name: 'Run Thumper', pos: ['LB'], kind: 'mag', base: 2.5, glyph: 'TH', desc: 'Fills the hole and stops runners cold at the second level.' },
+    thumper: { name: 'Run Thumper', pos: ['LB', 'S'], kind: 'mag', base: 2.5, glyph: 'TH', desc: 'Fills the hole and stops runners cold at the second level.' },
     sideline: { name: 'Sideline to Sideline', pos: ['LB', 'S'], kind: 'mag', base: 2.5, glyph: 'SL', desc: 'Range to chase down outside runs and screens.' },
-    blitzer: { name: 'Blitz Specialist', pos: ['LB', 'S'], kind: 'mag', base: 3, glyph: 'BS', desc: 'Times the snap perfectly on blitzes.' },
+    blitzer: { name: 'Blitz Specialist', pos: ['LB', 'S', 'CB'], kind: 'mag', base: 3, glyph: 'BS', desc: 'Times the snap perfectly on blitzes.' },
     covlb: { name: 'Coverage Linebacker', pos: ['LB'], kind: 'mag', base: 0.8, glyph: 'CV', desc: 'Blankets tight ends and backs in coverage.' },
     enforcer: { name: 'Enforcer', pos: ['LB', 'S'], kind: 'proc', base: 0.25, glyph: 'EN', desc: 'Chance a big hit jars the ball loose.' },
+    shedder: { name: 'Block Shedder', pos: ['LB'], kind: 'mag', base: 2, glyph: 'SH', desc: 'Sheds blockers at the second level to make the stop.' },
+    robber: { name: 'Robber', pos: ['LB', 'CB', 'S'], kind: 'mag', base: 0.6, glyph: 'RO', desc: 'Lurks underneath and jumps short throws.' },
     // CB / S
     lockdown: { name: 'Lockdown', pos: ['CB'], kind: 'mag', base: 0.6, glyph: 'LD', desc: 'Smothers receivers in man coverage.' },
-    ballhawk: { name: 'Ballhawk', pos: ['CB', 'S'], kind: 'proc', base: 0.6, glyph: 'BH', desc: 'Chance to jump contested throws for interceptions.' },
+    ballhawk: { name: 'Ballhawk', pos: ['CB', 'S', 'LB'], kind: 'proc', base: 0.6, glyph: 'BH', desc: 'Chance to jump contested throws for interceptions.' },
     zonehawk: { name: 'Zone Hawk', pos: ['CB', 'S', 'LB'], kind: 'mag', base: 0.6, glyph: 'ZH', desc: 'Reads the QB and closes windows in Cover 3.' },
     centerfield: { name: 'Center Fielder', pos: ['S', 'CB'], kind: 'mag', base: 0.7, glyph: 'CF', desc: 'Takes away the deep ball over the top.' },
-    suretackle: { name: 'Sure Tackler', pos: ['CB', 'S', 'LB'], kind: 'mag', base: 2.5, glyph: 'ST', desc: 'Wraps up — receivers rarely break his tackles.' },
+    suretackle: { name: 'Sure Tackler', pos: ['CB', 'S', 'LB', 'DL'], kind: 'mag', base: 2.5, glyph: 'ST', desc: 'Wraps up — ball carriers rarely break his tackles.' },
     pick6: { name: 'Pick-Six Artist', pos: ['CB', 'S'], kind: 'mag', base: 0.03, glyph: 'P6', desc: 'Interceptions turn into long returns and touchdowns.' },
+    press: { name: 'Press Corner', pos: ['CB'], kind: 'mag', base: 0.6, glyph: 'PR', desc: 'Jams receivers at the line and throws off their timing.' },
+    recovery: { name: 'Recovery Speed', pos: ['CB', 'S'], kind: 'mag', base: 0.6, glyph: 'RC', desc: 'Closes fast when beaten and makes up ground on deep routes.' },
     // K
     bigleg: { name: 'Big Leg', pos: ['K'], kind: 'mag', base: 0.03, glyph: 'BL', desc: 'Range on 45+ yard field goals and longer punts.' },
     icecold: { name: 'Ice Cold', pos: ['K'], kind: 'mag', base: 0.04, glyph: 'IC', desc: 'Money in the 4th quarter and overtime.' },
     allweather: { name: 'All-Weather', pos: ['K'], kind: 'mag', base: 0.3, glyph: 'AW', desc: 'Wind, rain and snow barely affect his kicks.' },
     coffin: { name: 'Coffin Corner', pos: ['K'], kind: 'proc', base: 1, glyph: 'CC', desc: 'Chance to pin punts inside the 10 instead of a touchback.' },
+    automatic: { name: 'Automatic', pos: ['K'], kind: 'mag', base: 0.03, glyph: 'AU', desc: 'Short field goals and extra points are a sure thing.' },
+    touchback: { name: 'Touchback Machine', pos: ['K'], kind: 'mag', base: 0.08, glyph: 'TB', desc: 'Kickoffs sail through the end zone.' },
+    hangtime: { name: 'Hang Time', pos: ['K'], kind: 'mag', base: 2, glyph: 'HT', desc: 'Towering punts the coverage gets under: fewer return yards.' },
   };
   const stickersFor = pos => Object.keys(STICKERS).filter(id => STICKERS[id].pos.includes(pos));
+
+  // ── ARCHETYPES ──
+  // Every player is born into one archetype, chosen from how his attributes lean, and never changes it.
+  // It decides which badges he can earn and which attributes his growth leans toward (focus).
+  // fit: weights on his attributes relative to his own average, so it reads his strengths, not his overall level.
+  const ROLES = {
+    QB: [
+      { id: 'qb_general', bias: -2.9, name: 'Field General', desc: 'Reads defenses and delivers on time from the pocket.', fit: { awr: 0.55, skl: 0.45 }, focus: ['awr', 'skl'], badges: ['pocket', 'general', 'dime', 'iceveins', 'trigger'] },
+      { id: 'qb_gunslinger', bias: 1.1, name: 'Gunslinger', desc: 'Big arm, bigger confidence: pushes the ball downfield into any window.', fit: { str: 0.6, skl: 0.4 }, focus: ['str', 'skl'], badges: ['cannon', 'fearless', 'dime', 'playaction', 'iceveins'] },
+      { id: 'qb_dual', bias: 1.8, name: 'Dual Threat', desc: 'Extends plays with his legs and hurts you as a runner.', fit: { spd: 0.75, skl: 0.25 }, focus: ['spd', 'skl'], badges: ['escape', 'scramble', 'ontherun', 'jukebox', 'trigger'] },
+    ],
+    RB: [
+      { id: 'rb_power', name: 'Power Back', desc: 'Runs through contact and closes out games.', fit: { str: 0.7, awr: 0.3 }, focus: ['str', 'awr'], badges: ['wrecking', 'hammer', 'stiffarm', 'irongrip', 'bellcow'] },
+      { id: 'rb_elusive', bias: -2.1, name: 'Elusive Back', desc: 'Makes people miss and turns small creases into long runs.', fit: { spd: 0.5, skl: 0.5 }, focus: ['spd', 'skl'], badges: ['jukebox', 'spin', 'cutback', 'homerun', 'yac'] },
+      { id: 'rb_receiving', bias: 2.1, name: 'Receiving Back', desc: 'A weapon in the passing game and a reliable protector.', fit: { awr: 0.55, skl: 0.45 }, focus: ['awr', 'skl'], badges: ['gluehands', 'routetech', 'screenpro', 'blitzpickup', 'yac'] },
+    ],
+    WR: [
+      { id: 'wr_deep', bias: -0.2, name: 'Deep Threat', desc: 'Takes the top off the defense.', fit: { spd: 0.85, skl: 0.15 }, focus: ['spd', 'skl'], badges: ['burner', 'deeptrack', 'mossd', 'release', 'homerun'] },
+      { id: 'wr_possession', bias: -0.3, name: 'Possession Receiver', desc: 'Reliable hands and precise routes that move the chains.', fit: { awr: 0.55, skl: 0.45 }, focus: ['awr', 'skl'], badges: ['routetech', 'gluehands', 'chainmover', 'toetap', 'redzone'] },
+      { id: 'wr_slot', bias: 0.4, name: 'Slot Playmaker', desc: 'Quick underneath and dangerous with the ball in his hands.', fit: { spd: 0.5, awr: 0.5 }, focus: ['spd', 'awr'], badges: ['yac', 'jukebox', 'screenpro', 'release', 'chainmover'] },
+    ],
+    TE: [
+      { id: 'te_receiving', name: 'Receiving TE', desc: 'A big target who creates mismatches in the middle of the field.', fit: { skl: 0.55, spd: 0.45 }, focus: ['skl', 'spd'], badges: ['routetech', 'gluehands', 'redzone', 'mossd', 'yac'] },
+      { id: 'te_blocking', name: 'Blocking TE', desc: 'An extra lineman who sets the edge in the run game.', fit: { str: 0.7, awr: 0.3 }, focus: ['str', 'awr'], badges: ['grader', 'sealer', 'brickwall', 'anchor', 'ironman'] },
+    ],
+    OL: [
+      { id: 'ol_pass', bias: -0.9, name: 'Pass Protector', desc: 'Keeps the quarterback clean against any rush.', fit: { skl: 0.55, awr: 0.45 }, focus: ['skl', 'awr'], badges: ['brickwall', 'anchor', 'mirror', 'blitzpickup', 'ironman'] },
+      { id: 'ol_mauler', bias: 0.9, name: 'Road Mauler', desc: 'Moves people in the run game and finishes blocks.', fit: { str: 0.75, spd: 0.25 }, focus: ['str', 'spd'], badges: ['grader', 'pancake', 'puller', 'sealer', 'ironman'] },
+    ],
+    DL: [
+      { id: 'dl_rush', bias: -1.6, name: 'Pass Rusher', desc: 'Quick off the ball, wins with speed and hands, and finishes at the quarterback.', fit: { spd: 0.6, skl: 0.4 }, focus: ['spd', 'skl'], badges: ['bender', 'swim', 'getoff', 'sackfinish', 'strip', 'closer'] },
+      { id: 'dl_power', bias: -1.1, name: 'Power Rusher', desc: 'Collapses the pocket with brute strength.', fit: { str: 0.75, skl: 0.25 }, focus: ['str', 'skl'], badges: ['bullrush', 'longarm', 'sackfinish', 'strip', 'ironman'] },
+      { id: 'dl_run', bias: 2.7, name: 'Run Stopper', desc: 'Anchors the front and blows up the run game.', fit: { awr: 0.6, str: 0.4 }, focus: ['str', 'awr'], badges: ['stuffer', 'eater', 'penetrator', 'ironman', 'suretackle'] },
+    ],
+    LB: [
+      { id: 'lb_thumper', bias: -0.2, name: 'Run Thumper', desc: 'Downhill, physical, and a sure tackler in the hole.', fit: { str: 0.6, awr: 0.4 }, focus: ['str', 'awr'], badges: ['thumper', 'shedder', 'suretackle', 'enforcer', 'sideline'] },
+      { id: 'lb_coverage', bias: 0.2, name: 'Coverage LB', desc: 'Runs with tight ends and backs and reads the quarterback.', fit: { awr: 0.55, spd: 0.45 }, focus: ['awr', 'spd'], badges: ['covlb', 'zonehawk', 'robber', 'ballhawk', 'sideline'] },
+      { id: 'lb_edge', bias: -0.1, name: 'Edge Rusher', desc: 'A linebacker who lives in the backfield.', fit: { spd: 0.55, skl: 0.45 }, focus: ['spd', 'skl'], badges: ['blitzer', 'bender', 'swim', 'getoff', 'strip', 'bullrush'] },
+    ],
+    CB: [
+      { id: 'cb_lockdown', bias: -1.5, name: 'Lockdown Corner', desc: 'Takes away one side of the field in man coverage.', fit: { spd: 0.55, skl: 0.45 }, focus: ['spd', 'skl'], badges: ['lockdown', 'press', 'recovery', 'ballhawk', 'pick6'] },
+      { id: 'cb_zone', bias: -1.1, name: 'Zone Hawk', desc: 'Reads the quarterback and breaks on the ball.', fit: { awr: 0.7, skl: 0.3 }, focus: ['awr', 'skl'], badges: ['zonehawk', 'robber', 'ballhawk', 'suretackle', 'pick6'] },
+      { id: 'cb_slot', bias: 2.7, name: 'Slot Corner', desc: 'Physical nickel defender who blitzes and tackles.', fit: { str: 0.6, awr: 0.4 }, focus: ['str', 'awr'], badges: ['press', 'robber', 'blitzer', 'suretackle', 'recovery'] },
+    ],
+    S: [
+      { id: 's_center', bias: -2.1, name: 'Center Fielder', desc: 'Patrols the deep middle and erases big plays.', fit: { spd: 0.55, awr: 0.45 }, focus: ['spd', 'awr'], badges: ['centerfield', 'ballhawk', 'zonehawk', 'pick6', 'recovery'] },
+      { id: 's_box', bias: 2.1, name: 'Box Safety', desc: 'An extra linebacker near the line: hits, blitzes and covers short.', fit: { str: 0.6, skl: 0.4 }, focus: ['str', 'skl'], badges: ['enforcer', 'suretackle', 'thumper', 'blitzer', 'robber'] },
+    ],
+    K: [
+      { id: 'k_accurate', bias: -2.3, name: 'Accurate Kicker', desc: 'Automatic on field goals and extra points.', fit: { awr: 0.6, skl: 0.4 }, focus: ['awr', 'skl'], badges: ['automatic', 'icecold', 'allweather', 'bigleg', 'touchback'] },
+      { id: 'k_field', bias: 2.3, name: 'Field Position Specialist', desc: 'Booming kicks and punts that flip the field.', fit: { str: 0.65, skl: 0.35 }, focus: ['str', 'skl'], badges: ['coffin', 'hangtime', 'bigleg', 'allweather', 'touchback'] },
+    ],
+  };
+  const ROLE_BY_ID = Object.fromEntries(Object.values(ROLES).flat().map(r => [r.id, r]));
+  const roleOf = p => (p && p.role ? ROLE_BY_ID[p.role] || null : null);
+  // the badges a player can earn: his archetype's list (players from before archetypes fall back to the position pool)
+  const roleBadges = p => { const r = roleOf(p); return r ? r.badges : stickersFor(p.pos); };
+  // how well a player's attribute profile fits an archetype: weighted lean of each attribute above his own average
+  // bias: a calibrated offset so each position spreads evenly across its archetypes (some positions' attribute
+  // patterns would otherwise pile most players into one)
+  function roleFit(p, r) {
+    const a = p.attrs, mean = (a.spd + a.str + a.awr + a.skl) / 4;
+    let s = r.bias || 0;
+    for (const k in r.fit) s += r.fit[k] * (a[k] - mean);
+    return s;
+  }
 
   const WEEK_LABEL = w => (w <= SEASON.REG ? `Week ${w}` : w === SEASON.WC ? 'Wild Card Round' : w === SEASON.CC ? 'Conference Championships' : 'The Blitz Bowl');
   const WEEK_SHORT = w => (w <= SEASON.REG ? `Wk ${w}` : w === SEASON.WC ? 'WC' : w === SEASON.CC ? 'CONF' : 'BOWL');
@@ -246,7 +343,7 @@ const DATA = (() => {
   return {
     FIRST, LAST, TOWNS, POSITIONS, POS_NAME, OFFENSE, ROSTER_QUOTA, STARTERS, ROSTER_MAX, OFF_ROSTER_MAX, SEASON, CAP, FA_DAYS, SCOUT_PTS, expLabel, GRADE, GRADE_SHORT,
     ATTRS, ATTR_LONG, OVR_W, NUMBERS, FRANCHISES, COLLEGES, COLORS, CONFS, DIVS, DIFFICULTY,
-    STICKER_TIERS, STICKERS, stickersFor, WEATHER, WEATHER_TIME, TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
+    STICKER_TIERS, STICKERS, stickersFor, ROLES, roleOf, roleBadges, roleFit, WEATHER, WEATHER_TIME, TRAINING, ALL_GROUPS, groupById, sideOfGroup, INTENSITY, CAMP_SESSIONS, PLANS, WEEK_LABEL, WEEK_SHORT,
     attrLabel: (pos, a) => (a === 'skl' ? SKILL_LABEL[pos] : ATTR_LABEL[a]),
   };
 })();

@@ -48,8 +48,12 @@ const Tutorial = (() => {
       { target: '[data-a="practiceSheet"]', title: 'Weekly practice', text: 'Choose a position group to get extra reps each week. Players develop week by week during the season: young players climb, veterans slowly decline, and badges come from milestones, breakout years and Player of the Week honors.' },
       { target: '.tabbar', title: 'Getting around', text: 'Roster has your depth chart and player cards. Season has the schedule, standings and stats. BlitzBoard is the league\'s fan forum, where every story lands. Franchise covers history, your coaching staff, rivalries, achievements and settings.' },
     ] },
+    { id: 'owner', when: () => on('hub', 'home') && !!document.querySelector('.owner-card'), steps: [
+      { target: '.owner-card', title: 'The Hot Seat', text: 'The owner set these goals for the season. Each one shows its progress: ✓ met, ✕ missed, ○ still in play. When the season ends, met goals raise your job security and misses lower it. If it hits zero, you\'re fired and pick a new job from the teams that call.' },
+    ] },
     { id: 'roster', when: () => on('hub', 'roster'), steps: [
       { title: 'Roster & depth chart', text: 'Starters are listed first at each position. Tap any player for his ratings, badges, contract and stats. From his card you can move him up or down the depth chart, shop him in a trade or release him.' },
+      { title: 'Archetypes', text: 'Every player has an archetype, like Pass Rusher, Possession Receiver or Box Safety. It\'s set when he enters the league and never changes. It decides which badges he can earn and which ratings he grows fastest in. His card shows the badges he has and the ones still to earn.' },
     ] },
     { id: 'season', when: () => on('hub', 'season'), steps: [
       { title: 'The season', text: 'Fourteen games, then four teams from each conference make the playoffs: two division winners and two wild cards. Win the conference title to reach the Blitz Bowl. This tab has the schedule, standings, power rankings and league leaders.' },

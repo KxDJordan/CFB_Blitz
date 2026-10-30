@@ -986,3 +986,14 @@ body[data-theme="day"] .stk-t-silver { color: #475569; } body[data-theme="day"] 
 .tut-skip { font-size: 12px; color: var(--dim); padding: 8px 2px; }
 /* the ? next to "Your call" that explains Edge */
 .pb-help { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 8px; border-radius: 50%; border: 1px solid currentColor; font: 700 11px/1 var(--f-body); vertical-align: 1px; color: var(--accent); }
+
+/* ── archetypes ── */
+.role-card { padding: 12px 14px; border-radius: 14px; margin-bottom: 12px; background: color-mix(in srgb, var(--accent) 9%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); }
+.role-card b { font: 700 16px/1.2 var(--f-display); text-transform: uppercase; letter-spacing: .03em; }
+.role-card .small { margin-top: 4px; }
+.bp-list { display: flex; flex-direction: column; gap: 8px; }
+.bp-row { display: flex; align-items: flex-start; gap: 10px; opacity: .72; }
+.bp-n { font-weight: 650; font-size: 13.5px; }
+.bp-d { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.stk.stk-locked { background: var(--surface-3); color: var(--dim); border: 1px dashed var(--line-strong); box-shadow: none; flex-shrink: 0; }
+.bp-row .stk.stk-locked { width: 30px; height: 30px; font-size: 10px; }
