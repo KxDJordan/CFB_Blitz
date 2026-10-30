@@ -18,7 +18,6 @@ const L = (() => {
   const rank = id => G.poll.indexOf(id) + 1;
   const ranked = id => { const r = rank(id); return r > 0 && r <= 10 ? r : 0; };
   const recStr = t => `${t.rec.w}-${t.rec.l}`;
-  const confRecStr = t => `${t.rec.cw}-${t.rec.cl}`;
   const divRecStr = t => `${t.rec.dw}-${t.rec.dl}`;
   const divName = t => DATA.DIVS[t.div].name;
   const blankRec = () => ({ w: 0, l: 0, cw: 0, cl: 0, dw: 0, dl: 0, pf: 0, pa: 0, streak: 0 });
@@ -60,8 +59,8 @@ const L = (() => {
     return d;
   }
   // face sprite (rebuilt by tools/cut-faces.js, which also rewrites these two lines)
-  const FACES = 278;
-  const FACE_MAP_V1 = [0,1,2,3,4,1,5,6,7,8,9,10,11,12,13,14,15,16,17,18,1,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,1,43,44,45,46,47,23,48,49,50,1,51,52,53,43,54,55,27,58,56,57,58,59,52,60,61,62,63,46,64,65,66,35,24,67,68,69,70,71,72,73,74,75,76,79,77,78,79,80,71,81,82,83,84,85,86,198,53,87,88,89,90,91,92,66,93,94,95,96,97,15,98,99,100,44];
+  const FACES = 337;
+  const FACE_MAP_V1 = [0,1,2,3,4,1,5,6,7,8,9,10,11,12,13,14,15,16,17,18,1,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,1,43,44,45,46,47,23,48,49,50,1,51,52,53,43,54,55,27,58,56,57,58,59,52,60,61,62,63,46,64,65,66,35,24,67,68,69,70,71,72,73,74,75,76,79,77,78,79,80,71,81,82,83,84,85,86,230,53,87,88,89,90,91,92,66,93,94,95,96,97,15,98,99,100,44];
   // no two teammates share a face: a newcomer whose face is taken gets a fresh one
   function uniqueFace(p, t) { if (t && roster(t).some(x => x !== p && x.face === p.face)) p.face = pickFace(t); }
   function pickFace(t) {
@@ -665,7 +664,7 @@ const L = (() => {
   // offer: { a: user team id, b: AI team id, aP: [pids], bP: [pids], aK: [pick indexes], bK: [pick indexes] }
   function evalTrade(o) {
     const A = team(o.a), B = team(o.b);
-    const aOut = new Set(o.aP), bOut = new Set(o.bP);
+    const bOut = new Set(o.bP);
     const pk = i => G.picks[i];
     const bGets = o.aP.reduce((s, id) => s + sideValue(B, G.players[id], true, bOut), 0) + o.aK.reduce((s, i) => s + pickValue(pk(i)), 0);
     const bGives = o.bP.reduce((s, id) => s + sideValue(B, G.players[id], false, bOut), 0) + o.bK.reduce((s, i) => s + pickValue(pk(i)), 0);
@@ -1091,7 +1090,7 @@ const L = (() => {
     let g = seasonGrowth(p, t, p.sr) / SEA.REG;
     if (p.starts > (p.wkStarts || 0) && p.pot > p.ovr) g += 0.6 / SEA.REG * Career.devMult(t, p);
     p.wkStarts = p.starts;
-    p.gAcc = (p.gAcc || 0) + g;
+    p.gAcc = Math.round(((p.gAcc || 0) + g) * 1000) / 1000;
     let d = 0;
     while (Math.abs(p.gAcc) >= 1) { const s = Math.sign(p.gAcc); d += addOvr(p, s); p.gAcc -= s; }
     p.pot = Math.max(p.pot, p.ovr);
@@ -1178,7 +1177,7 @@ const L = (() => {
     rebuildDepth(user());
     for (const t of G.teams) { t.rec = blankRec(); t.qw = 0; }
     // a fresh season: new development luck, OVR change measured from here
-    for (const p of Object.values(G.players)) { p.ovr0 = p.ovr; p.sr = Math.random(); p.wkStarts = p.starts || 0; }
+    for (const p of Object.values(G.players)) { p.ovr0 = p.ovr; p.sr = Math.round(Math.random() * 1000) / 1000; p.wkStarts = p.starts || 0; }
     G.week = 1; G.champion = null; G.confChamps = []; G.awards = null; G.camp = null; G.draft = null; G.seeds = null;
     buildSchedule();
     G.poll = [];
@@ -1199,8 +1198,17 @@ const L = (() => {
   }
 
   // ── persistence ──
-  function save() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(G)); } catch (e) { console.warn('Save failed', e); }
+  // Saves are coalesced: a burst of changes (a pick, a week of results, a trade) writes the save once, a moment
+  // later, instead of re-serializing the whole league on every tap. flush() writes right away; the UI calls it
+  // when the app is hidden or closed. Season and career stat lines are mostly zeros, so only their non-zero
+  // entries are stored (load() fills the rest back in).
+  let saveT = 0;
+  function save() { clearTimeout(saveT); saveT = setTimeout(flush, 400); }
+  const packStats = (k, v) => ((k === 'st' || k === 'car') && v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([, x]) => x)) : v);
+  function flush() {
+    clearTimeout(saveT); saveT = 0;
+    if (!G) return;
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(G, packStats)); } catch (e) { console.warn('Save failed', e); }
   }
   function load() {
     try {
@@ -1208,6 +1216,7 @@ const L = (() => {
       if (!s) return false;
       G = JSON.parse(s);
       for (const p of Object.values(G.players)) {
+        p.st = Object.assign(blankStats(), p.st); p.car = Object.assign(blankStats(), p.car);
         if (!p.stk) rollStickers(p);
         if (p.gr == null) { p.gr = rollGrowth(p.pot); p.xp = {}; }
         if (p.ovr0 == null) p.ovr0 = p.ovr;
@@ -1225,18 +1234,18 @@ const L = (() => {
     } catch (e) { return false; }
   }
   const hasSave = () => { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } };
-  function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } G = null; }
+  function wipe() { clearTimeout(saveT); saveT = 0; try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } G = null; }
 
   return {
-    FACES, rollStickers, growSticker, logBadge, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, confRecStr, divRecStr, divName,
-    calcOvr, posCounts, rebuildDepth, depthHealthy, moveDepth, setAutoDepth, isStarter,
-    units, power, powerFromUnits, offRating, defRating, ratings, groupAvg, needs,
+    FACES, growSticker, logBadge, weather, weatherLine, team, user, player, roster, isUser, fullName, rank, ranked, recStr, divRecStr, divName,
+    depthHealthy, moveDepth, setAutoDepth, isStarter,
+    power, powerFromUnits, ratings, groupAvg, needs,
     newCareer, draftCur, draftPick, draftAI, bestPickFor, finishDraft, prospectValue,
-    rosterLimit, cutPreview, marketSalary, payroll, capRoom, salOf, deadMoney, freeAgents, offerFA, resign, letGo, startFA, advanceFA, isFA,
-    scoutView, scout, perceivedValue, teamPicks, pickLabel, pickValue, pickOverall, nextDraftYear, tradeValue, tradeOpen, evalTrade, executeTrade, aiTrade, release,
-    trainGroup, runCamp, buildSchedule, standings, divStandings, confSeeds, seedOf, postDepth, userGame, gameLabel, winnerOf,
-    updatePoll, applyResult, createUserGame, finishWeek, mvpList, seasonLine,
+    rosterLimit, cutPreview, marketSalary, payroll, capRoom, deadMoney, freeAgents, offerFA, resign, letGo, startFA, advanceFA,
+    scoutView, scout, teamPicks, pickLabel, pickValue, pickOverall, nextDraftYear, tradeValue, tradeOpen, evalTrade, executeTrade, release,
+    runCamp, divStandings, confSeeds, seedOf, userGame, gameLabel, winnerOf,
+    applyResult, createUserGame, finishWeek, mvpList, seasonLine,
     startOffseason, beginAnnualDraft, startSeason, leaders, teamLeader,
-    save, load, hasSave, wipe,
+    save, flush, load, hasSave, wipe,
   };
 })();

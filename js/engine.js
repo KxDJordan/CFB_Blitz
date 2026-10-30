@@ -1156,8 +1156,8 @@ const Engine = (() => {
   }
 
   return {
-    create, step, prepare, commit, ratings, catOf, simToEnd, winProb, preWinProb, fourthInfo, needsCall, suggestOff, aiDefCall, callEdges, canKneel,
-    spot, downTxt, qName, nm, slots, stam, QLEN, OFF_CALLS, DEF_CALLS,
-    stk: { sm, sp, soft, tierOf, clutch, redZone, shortYd, wxPass, tailwind, crosswind, wet },
+    create, step, prepare, commit, ratings, simToEnd, winProb, preWinProb, fourthInfo, needsCall, suggestOff, aiDefCall, callEdges, canKneel,
+    spot, downTxt, slots, stam, OFF_CALLS, DEF_CALLS,
+    stk: { sm, sp, tierOf, clutch, redZone, shortYd, wxPass },
   };
 })();

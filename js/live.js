@@ -13,9 +13,8 @@
 
 const Live = (() => {
   const FW = 53.33, CX = FW / 2, DT = 1 / 60;
-  const CAM_H = 8.2, CAM_BACK = 15.5;
-  let cv = null, ctx = null, W = 0, H = 0, dpr = 1, raf = 0, last = 0, F = 200, HOR = 30;
-  let gs = null, kit = null, logoImg = null, crowd = null;
+  let cv = null, ctx = null, W = 0, H = 0, dpr = 1, raf = 0, last = 0;
+  let gs = null, kit = null, logoImg = null;
   let speed = 1, paused = false, acc = 0;
   let S = null; // current scene
   const cam = { x: CX, y: 30 };
@@ -81,30 +80,6 @@ const Live = (() => {
     W = r.width; H = r.height;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     sc = W / VIEW_W;
-  }
-  function buildCrowd() {
-    if (!kit || W < 10) return;
-    crowd = document.createElement('canvas');
-    crowd.width = Math.round(W * 1.6 * dpr); crowd.height = Math.round(Math.max(20, HOR) * dpr);
-    const c = crowd.getContext('2d');
-    const g = c.createLinearGradient(0, 0, 0, crowd.height);
-    g.addColorStop(0, '#05070d'); g.addColorStop(0.45, '#141b2b'); g.addColorStop(1, '#252e40');
-    c.fillStyle = g; c.fillRect(0, 0, crowd.width, crowd.height);
-    const cols = [kit[0].jersey, kit[1].jersey, '#e2e8f0', '#94a3b8', '#475569', '#cbd5e1'];
-    for (let i = 0; i < crowd.width * crowd.height / 18; i++) {
-      const y = Math.random() * crowd.height;
-      if (y < crowd.height * 0.35) continue;
-      c.fillStyle = cols[Math.floor(Math.random() * cols.length)];
-      c.globalAlpha = 0.25 + Math.random() * 0.5;
-      c.fillRect(Math.random() * crowd.width, y, 1.6 * dpr, 1.6 * dpr);
-    }
-    c.globalAlpha = 1;
-    for (let i = 0; i < 6; i++) {
-      const x = (i + 0.5) / 6 * crowd.width;
-      const rg = c.createRadialGradient(x, crowd.height * 0.12, 0, x, crowd.height * 0.12, crowd.height * 0.6);
-      rg.addColorStop(0, 'rgba(255,255,240,.55)'); rg.addColorStop(1, 'rgba(255,255,240,0)');
-      c.fillStyle = rg; c.fillRect(x - crowd.height, 0, crowd.height * 2, crowd.height);
-    }
   }
   function frame(now) {
     raf = requestAnimationFrame(frame);
@@ -187,17 +162,6 @@ const Live = (() => {
       }
     }
     return seek(a, px, py, frac, 0.6);
-  }
-  function avoid(a, radius = 1.9, k = 3.2, only) {
-    let ax = 0, ay = 0;
-    for (const b of S.list) {
-      if (b === a || b.down > 0 || (only && !only(b))) continue;
-      const dx = a.x - b.x, dy = a.y - b.y, d = hyp(dx, dy);
-      if (d < radius && d > 0.01) { const f = (radius - d) / radius * k; ax += dx / d * f; ay += dy / d * f; }
-    }
-    a.wx += ax * a.vmax / 4; a.wy += ay * a.vmax / 4;
-    const s = hyp(a.wx, a.wy);
-    if (s > a.vmax) { a.wx *= a.vmax / s; a.wy *= a.vmax / s; }
   }
 
   // engagements: two bodies locked together, moving as a pair.
@@ -460,7 +424,6 @@ const Live = (() => {
     S.stkPops = (S.stkPops || 0) + 1;
     pop(a.x, a.y + 0.6, '★ ' + DATA.STICKERS[id].name.toUpperCase(), DATA.STICKER_TIERS[t].color, { life: 1.8 });
   }
-  const opps = a => S.list.filter(d => d.side !== a.side);
   const mates = a => S.list.filter(d => d.side === a.side);
   // where the ball is spotted: the front of the carrier
   const spotOf = c => c.y + (S.fp ? S.fp.cdir : 1) * 0.3;
@@ -693,22 +656,6 @@ const Live = (() => {
     confetti(a.x, a.y, [kit[a.side].jersey, team.logo.secondary, '#facc15', '#ffffff']);
     shake = 0.6;
     for (const m of S.list) if (m.side === a.side && d2(m, a) < 18) m.celebrate = true;
-  }
-  // a player with no specific job: find the nearest free opponent and block him (kneels, field goals)
-  function blocker(a, exclude, rate = 0.25) {
-    a.blockT = null;
-    a.brain = b => {
-      if (!b.blockT || b.blockT.eng || b.blockT.down > 0) {
-        let best = null, bd = 9;
-        for (const d of S.list) { if (d.side === b.side || d.eng || d.down > 0 || (exclude && exclude.has(d))) continue; const dd = d2(b, d); if (dd < bd) { bd = dd; best = d; } }
-        b.blockT = best;
-      }
-      if (!b.blockT) return chase(b, S.carrier || b, 3, 0.5);
-      const t = b.blockT, c = S.carrier;
-      const px = c ? (t.x + c.x) / 2 : t.x, py = c ? (t.y + c.y) / 2 : t.y;
-      seek(b, t.x * 0.7 + px * 0.3, t.y * 0.7 + py * 0.3, 0.95, 0.4);
-    };
-    a.blockOn = (b, d) => engage(b, d, { dir: [0, (S.dirUp || 1) * 0.6], rate, shed: S.t + U.rand(1.6, 3) });
   }
 
   // ── per-tick rules of the game ──
@@ -1536,7 +1483,6 @@ const Live = (() => {
     const k = det.kickSide, r = det.o;
     const kicker = S.ag.kK;
     const land = 100 - det.land, landX = clampX(CX + U.rand(-8, 8));
-    const endK = 100 - (det.end ?? 25);
     const recv = sideAgents(r), ret = recv[recv.length - 1];
     if (det.returner != null) { const p = P(det.returner); if (p) { ret.pid = p.id; ret.num = p.num; } }
     const cover = sideAgents(k).filter(a => a !== kicker);
@@ -1608,6 +1554,14 @@ const Live = (() => {
       at(1.55, () => {
         pop(punter.x, punter.y, 'PUNT', '#ffffff', { life: 0.6 });
         for (const l of S.list.filter(a => a.key[0] === 'l')) if (!l.eng) l.brain = x => seek(x, x.x * 0.8 + landX * 0.2, land - 8, 0.95);
+        // the ball's away: the return unit peels back and races downfield to set a wall in front of the catch
+        // (rushers still tied up in a block follow once they're free), and the deep man sets up as the personal protector
+        const peel = S.list.filter(a => a.side === d && a.key[0] === 'x' && a.key !== 'x6').sort((a, b) => a.x - b.x);
+        peel.forEach((b, i) => {
+          const lane = (i - (peel.length - 1) / 2) * 4.2;
+          b.brain = x => { seek(x, clampX(landX * 0.6 + CX * 0.4 + lane), Math.max(L0 + 4, land - 14 - Math.abs(lane) * 0.4), 1, 1.5); x.faceT = -Math.PI / 2; };
+        });
+        S.ag.x6.brain = x => { seek(x, clampX(landX + (landX < CX ? 2.5 : -2.5)), land - 6, 0.9, 1.2); x.faceT = -Math.PI / 2; };
         throwBall({ x: punter.x, y: punter.y }, [landX, land], 3.6, 19, () => {
           const coverTeam = S.list.filter(a => a.side === o && a !== punter);
           if (det.touchback) { const b = S.ball; b.vx = 0; b.vy = 4; b.vz = 3; pop(landX, land, 'TOUCHBACK', '#cbd5e1'); at(S.t + 1.0, () => dead()); return; }
@@ -1774,7 +1728,7 @@ const Live = (() => {
     for (let i = 0; i < 26; i++) decals.wear.push({ x: CX + (rnd() - 0.5) * 16, y: 8 + rnd() * 84, rx: 1.2 + rnd() * 2.6, ry: 0.6 + rnd() * 1.4, a: rnd() * Math.PI });
     for (let i = 0; i < 22; i++) decals.puddles.push({ x: 3 + rnd() * (FW - 6), y: 3 + rnd() * 94, rx: 1.2 + rnd() * 3.2, ry: 0.5 + rnd() * 1.2, a: (rnd() - 0.5) * 0.6 });
     for (let i = 0; i < 40; i++) decals.drifts.push({ x: rnd() * FW, y: -8 + rnd() * 116, rx: 2 + rnd() * 6, ry: 1 + rnd() * 3, a: rnd() * Math.PI });
-    wxp = { drops: [], flakes: [], streaks: [], leaves: [], splashes: [], tracks: [], fog: [], bolt: 0, boltT: U.rand(4, 9), trackT: 0 };
+    wxp = { drops: [], flakes: [], streaks: [], leaves: [], splashes: [], tracks: [], fog: [], bolt: 0, boltT: U.rand(4, 9), trackT: 0, clock: 0 };
     const n = { rain: 150, storm: 280 }[wx.type] || 0;
     for (let i = 0; i < n; i++) wxp.drops.push({ x: Math.random(), y: Math.random(), l: U.rand(10, 22), v: U.rand(0.9, 1.4) });
     if (wx.type === 'snow') for (let i = 0; i < 170; i++) wxp.flakes.push({ x: Math.random(), y: Math.random(), r: U.rand(0.8, 2.6), v: U.rand(0.05, 0.13), ph: Math.random() * 6 });
@@ -1913,13 +1867,13 @@ const Live = (() => {
     }
     // footprints in the snow
     if (wx.type === 'snow' && S && !paused) {
-      wxp.trackT += dt * speed;
+      // each print remembers when it was made, so fading needs no per-frame pass over thousands of them
+      wxp.clock += dt * speed; wxp.trackT += dt * speed;
       if (wxp.trackT > 0.12) {
         wxp.trackT = 0;
-        for (const a of S.list) if (hyp(a.vx, a.vy) > 1.2 && a.down <= 0) wxp.tracks.push({ x: a.x, y: a.y, o: S.o, age: 0 });
+        for (const a of S.list) if (hyp(a.vx, a.vy) > 1.2 && a.down <= 0) wxp.tracks.push({ x: a.x, y: a.y, o: S.o, t0: wxp.clock });
         if (wxp.tracks.length > 2600) wxp.tracks.splice(0, wxp.tracks.length - 2600);
       }
-      for (const t of wxp.tracks) t.age += dt * speed;
     }
   }
   function lineAlpha() { return wx && wx.type === 'snow' ? 0.55 : 0.85; }
@@ -2097,7 +2051,7 @@ const Live = (() => {
       for (const tr of wxp.tracks) {
         const x = tr.o === o ? tr.x : FW - tr.x, y = tr.o === o ? tr.y : 100 - tr.y;
         if (y < yBot || y > yTop) continue;
-        ctx.fillStyle = `rgba(90,120,100,${Math.max(0.08, 0.42 - tr.age * 0.004)})`;
+        ctx.fillStyle = `rgba(90,120,100,${Math.max(0.08, 0.42 - (wxp.clock - tr.t0) * 0.004)})`;
         ctx.beginPath(); ctx.ellipse(SX(x), SY(y), sc * 0.28, sc * 0.18, 0, 0, Math.PI * 2); ctx.fill();
       }
     } else if (t === 'heat') {

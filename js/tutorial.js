@@ -201,6 +201,5 @@ const Tutorial = (() => {
     isOn: () => !st.off,
     setOn: v => { st.off = !v; persist(); if (v) check(); },
     reset: () => { st = { seen: {}, off: false }; persist(); },
-    showing: () => !!cur,
   };
 })();

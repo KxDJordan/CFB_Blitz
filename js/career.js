@@ -464,9 +464,9 @@ const Career = (() => {
   }
 
   return {
-    ACH, achList, unlock, setOnUnlock: fn => { onUnlock = fn; },
-    ROLES, TRAITS, stars, coachBonus, devMult, vetMult, injMult, quickHeal, scoutBonus, marketOpen, interested, hire, fire, staffSeasonStart,
-    rivalLevel, rivalOf, rivalList, topRival, rivalGame, rivalryHype, RIVAL_MIN,
+    achList, setOnUnlock: fn => { onUnlock = fn; },
+    ROLES, TRAITS, stars, coachBonus, devMult, vetMult, injMult, quickHeal, marketOpen, interested, hire, fire, staffSeasonStart,
+    rivalLevel, rivalList, rivalGame, rivalryHype,
     rollArc, applyArc, hintFor, rememberDraft,
     onGame, weekWrap, seasonEnd, offseason, onTrade, onSign, ensure,
   };

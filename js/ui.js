@@ -88,7 +88,7 @@ const UI = (() => {
   const posCls = pos => (pos === 'K' ? 'pos-st' : DATA.OFFENSE.includes(pos) ? 'pos-off' : 'pos-def');
   const posBadge = pos => `<span class="pos-badge ${posCls(pos)}">${pos}</span>`;
   // player face from the portrait sprite (12 x 10 grid), ringed in team colours, jersey number tag
-  const FACE_COLS = 12, FACE_ROWS = 24;
+  const FACE_COLS = 12, FACE_ROWS = 29;
   const jersey = (p, size = 40) => {
     const t = p.teamId != null ? L.team(p.teamId) : null;
     const f = (p.face ?? p.id) % (FACE_COLS * FACE_ROWS), c = f % FACE_COLS, r = Math.floor(f / FACE_COLS);
@@ -102,7 +102,6 @@ const UI = (() => {
   const pname = p => `${esc(p.first)} ${esc(p.last)}`;
   const tname = t => esc(t.name);
   const tfull = t => esc(`${t.name} ${t.mascot}`);
-  const planLabel = (k, id) => DATA.PLANS[k].find(p => p.id === id).short;
 
   // ── badges ──
   const stkChip = (s, big) => { const d = DATA.STICKERS[s.id], t = DATA.STICKER_TIERS[s.tier]; return `<span class="stk stk-${t.id}${big ? ' big' : ''}" title="${d.name} — ${t.label}">${d.glyph}</span>`; };
@@ -1651,9 +1650,11 @@ const UI = (() => {
   A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div><div class="divider"></div>${sfxToggle()}${tutToggle()}<div class="build-line">Pro Blitz · Build ${BUILD}</div>`);
   // sound is a device preference (localStorage), so it works before a franchise exists
   function sfxToggle() {
-    return `<div class="flex between"><div><div style="font-weight:700">Sound effects</div><div class="small muted">Game sounds, crowd and menu clicks · muted by the silent switch</div></div><button class="toggle ${Sfx.isOn() ? 'on' : ''}" data-a="toggleSfx" aria-label="Toggle sound effects"></button></div>`;
+    return `<div class="flex between"><div><div style="font-weight:700">Sound effects</div><div class="small muted">Game sounds, crowd and menu clicks</div></div><button class="toggle ${Sfx.isOn() ? 'on' : ''}" data-a="toggleSfx" aria-label="Toggle sound effects"></button></div>
+      <div class="flex between mt12"><div><div style="font-weight:700">Play in silent mode</div><div class="small muted">Off: the iPhone's silent switch mutes the game. On: sounds play anyway (pauses other audio)</div></div><button class="toggle ${Sfx.isLoud() ? 'on' : ''}" data-a="toggleLoud" aria-label="Play sounds in silent mode"></button></div>`;
   }
   A.toggleSfx = (v, el) => { Sfx.setOn(!Sfx.isOn()); el.classList.toggle('on', Sfx.isOn()); };
+  A.toggleLoud = (v, el) => { Sfx.setLoud(!Sfx.isLoud()); el.classList.toggle('on', Sfx.isLoud()); };
   // tutorial tips: on/off, start over, and on-demand help
   function tutToggle() {
     return `<div class="divider"></div><div class="flex between"><div><div style="font-weight:700">Tutorial tips</div><div class="small muted">Pop-up walkthroughs the first time you reach each screen</div></div><button class="toggle ${Tutorial.isOn() ? 'on' : ''}" data-a="toggleTut" aria-label="Toggle tutorial tips"></button></div>
@@ -1984,7 +1985,7 @@ const UI = (() => {
       if (!sideways && ((dy > 0 && atTop) || (dy < 0 && atBottom)) && e.cancelable) e.preventDefault();
     }, { passive: false });
     window.addEventListener('resize', () => { if (S.screen === 'game') Live.resize(); });
-    const persist = () => { if (G) L.save(); };
+    const persist = () => { if (G) L.flush(); };
     window.addEventListener('pagehide', persist);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(); });
   }
@@ -1999,5 +2000,5 @@ const UI = (() => {
     if (st.resume) { const fn = st.resume; st.resume = null; fn(); }
   }
 
-  return { S, render, wire, toast, holdGame };
+  return { S, render, wire, holdGame };
 })();

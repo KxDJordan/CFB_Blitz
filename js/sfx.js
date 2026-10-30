@@ -1,21 +1,26 @@
 'use strict';
 // ── SOUND ─────────────────────────────────────────────────────────
 // Every sound is synthesised with Web Audio (no files to load). The on/off choice is per device,
-// kept in localStorage like the theme. iOS only lets audio start inside a tap, so the context is
-// created/resumed on the first touch and the iPhone ring/silent switch mutes it.
+// kept in localStorage like the theme. iOS only lets audio start from a completed tap (touchend/click,
+// not touchstart), and parks it as 'interrupted' after the app is backgrounded, so every tap re-arms it.
+// The ring/silent switch mutes web audio unless the player opts into playing through it.
 
 const Sfx = (() => {
-  const KEY = 'cfbblitz.sfx';
-  let on = localStorage.getItem(KEY) !== 'off';
+  const KEY = 'cfbblitz.sfx', LOUD_KEY = 'cfbblitz.sfxLoud';
+  let on = localStorage.getItem(KEY) !== 'off', loud = localStorage.getItem(LOUD_KEY) === 'on';
+  // iOS 17+: 'playback' plays through the silent switch, 'ambient' respects it (and mixes with your music)
+  const session = () => { try { if (navigator.audioSession) navigator.audioSession.type = loud ? 'playback' : 'ambient'; } catch (e) { /* unsupported */ } };
   let ctx = null, master = null, noiseBuf = null;
   let crowd = null, crowdT = 0;
   const last = {};
 
   function init() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    if (ctx) { if (ctx.state !== 'running') ctx.resume().catch(() => {}); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
+    session();
     ctx = new AC();
+    ctx.resume().catch(() => {});
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 4;
     master = ctx.createGain(); master.gain.value = 0.7;
@@ -23,8 +28,10 @@ const Sfx = (() => {
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    // a silent blip inside the gesture fully unlocks output on older iOS
+    const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); s.connect(ctx.destination); s.start(0);
   }
-  ['touchstart', 'pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (on) init(); }, { passive: true, capture: true }));
+  ['touchend', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (on) init(); }, { passive: true, capture: true }));
 
   const ready = () => on && ctx && ctx.state === 'running';
 
@@ -119,5 +126,12 @@ const Sfx = (() => {
     if (on) { init(); play('toggle'); } else if (crowd) crowd.g.gain.setValueAtTime(0, ctx.currentTime);
   }
 
-  return { play, crowd: crowdLevel, isOn: () => on, setOn };
+  function setLoud(v) {
+    loud = !!v;
+    localStorage.setItem(LOUD_KEY, loud ? 'on' : 'off');
+    session();
+    if (on) { init(); play('toggle'); }
+  }
+
+  return { play, crowd: crowdLevel, isOn: () => on, setOn, isLoud: () => loud, setLoud };
 })();
