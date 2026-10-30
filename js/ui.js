@@ -268,6 +268,7 @@ const UI = (() => {
     S.lastKey = key;
     if (S.screen === 'draft') scheduleDraft();
     if (S.screen === 'game') gameMount();
+    Tutorial.check();
   }
   // numbers in rings, hero stats and unit bars count up when a screen opens
   function countUp(root) {
@@ -897,7 +898,7 @@ const UI = (() => {
       ${G.history.length ? `<div class="section-title"><h3>League champions</h3></div><div class="card flush"><div class="list">${G.history.slice().reverse().map(h => { const c = L.team(h.champ); return `<div class="row">${logo(c, 30)}<div class="grow"><div class="r1">${h.year} · ${tfull(c)}</div><div class="r2">MVP: ${h.mvp ? `${esc(h.mvp.name)} (${esc(h.mvp.teamName)})` : '—'}</div></div></div>`; }).join('')}</div></div>` : ''}
       <div class="section-title"><h3>Settings</h3></div>
       <div class="card">${themePicker(G.settings.theme)}
-        <div class="divider"></div>${sfxToggle()}
+        <div class="divider"></div>${sfxToggle()}${tutToggle()}
         <div class="divider"></div>
         <div class="flex between"><div><div style="font-weight:700">Call every play</div><div class="small muted">Pick the offensive & defensive call each snap in live games</div></div><button class="toggle ${G.settings.callPlays !== false ? 'on' : ''}" data-a="toggleCalls" aria-label="Toggle play calling"></button></div>
         <div class="divider"></div>
@@ -1325,7 +1326,8 @@ const UI = (() => {
       cards = list.map(p => `<button class="call-card pb-card k-def ${st.sugg === p.id ? 'sugg' : ''}" data-a="gcall" data-v="${p.id}">${Playbook.svgDef(p)}<div class="cc-top"><span class="cc-kind">${CAT[p.cat]}</span>${st.sugg === p.id ? '<span class="cc-pick">DC PICK</span>' : ''}</div><div class="cc-name">${esc(p.name)}</div><div class="cc-form">${esc(p.desc)}</div></button>`).join('');
     }
     const minBtn = `<button class="pb-min" data-a="gpanelMin" aria-label="${st.panelMin ? 'Expand' : 'Collapse'} play calls">${st.panelMin ? '▴' : '▾'}</button>`;
-    const head = `<div class="call-head"><div class="grow"><div class="kicker" style="color:var(--accent)">Your call · ${need === 'off' ? 'Offense' : 'Defense'}</div><div class="call-sit">${sit}</div></div>${st.panelMin ? '' : extra}${clock}${minBtn}</div>`;
+    const help = need === 'off' && !st.panelMin ? '<button class="pb-help" data-a="tutHelp" data-v="edge" aria-label="What do the Edge numbers mean?">?</button>' : '';
+    const head = `<div class="call-head"><div class="grow"><div class="kicker" style="color:var(--accent)">Your call · ${need === 'off' ? 'Offense' : 'Defense'}${help}</div><div class="call-sit">${sit}</div></div>${st.panelMin ? '' : extra}${clock}${minBtn}</div>`;
     if (st.panelMin) return head + `<div class="call-quick"><button class="btn btn-primary btn-block" data-a="gcall" data-v="${st.sugg}">${need === 'off' ? 'OC' : 'DC'} pick: ${esc(callName(st.sugg))} ${I.chev}</button></div>`;
     return head + `<div class="call-intel">${intel}</div><div class="pb-tabs">${tabs}</div><div class="call-scroll">${cards}</div>`;
   }
@@ -1344,6 +1346,7 @@ const UI = (() => {
     if (!el) return;
     if (st.mode === 'call') { el.innerHTML = callPanel(); el.classList.add('show'); const cs = el.querySelector('.call-scroll'); if (cs) cs.scrollLeft = 0; Live.setInset(el.offsetHeight * 0.92); }
     else { el.classList.remove('show'); Live.setInset(0); }
+    Tutorial.check();
   }
   // Play-by-play / stamina / stats sheet
   function pbpSheet() {
@@ -1459,6 +1462,7 @@ const UI = (() => {
     Live.bigText(won ? 'VICTORY' : 'FINAL', won ? '#facc15' : '#e2e8f0');
     toast(won ? `${I.trophy.replace('<svg', '<svg style="width:16px;height:16px;color:var(--gold)"')} Victory! ${esc(res.W.abbr)} ${res.ws}–${res.ls}` : `Final: ${esc(res.W.abbr)} ${res.ws}–${res.ls}`);
     U.vibrate(won ? [30, 60, 30] : 20);
+    Tutorial.check();
     Sfx.play(won ? (st.g.type === 'final' ? 'champ' : 'win') : 'lose');
   }
 
@@ -1644,12 +1648,20 @@ const UI = (() => {
     A.confirmNew();
   };
   A.confirmNew = () => { closeSheet(); initCreate(); S.screen = 'create'; render(); };
-  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div><div class="divider"></div>${sfxToggle()}<div class="build-line">Pro Blitz · Build ${BUILD}</div>`);
+  A.settings = () => sheet(`<div class="h-lg mb12">Settings</div><div class="kicker mb8">Theme</div>${themePicker((G && G.settings.theme) || localStorage.getItem('cfbblitz.theme') || 'night')}<div class="small muted mt12">Your team colors become the accent color once your franchise is created.</div><div class="divider"></div>${sfxToggle()}${tutToggle()}<div class="build-line">Pro Blitz · Build ${BUILD}</div>`);
   // sound is a device preference (localStorage), so it works before a franchise exists
   function sfxToggle() {
     return `<div class="flex between"><div><div style="font-weight:700">Sound effects</div><div class="small muted">Game sounds, crowd and menu clicks · muted by the silent switch</div></div><button class="toggle ${Sfx.isOn() ? 'on' : ''}" data-a="toggleSfx" aria-label="Toggle sound effects"></button></div>`;
   }
   A.toggleSfx = (v, el) => { Sfx.setOn(!Sfx.isOn()); el.classList.toggle('on', Sfx.isOn()); };
+  // tutorial tips: on/off, start over, and on-demand help
+  function tutToggle() {
+    return `<div class="divider"></div><div class="flex between"><div><div style="font-weight:700">Tutorial tips</div><div class="small muted">Pop-up walkthroughs the first time you reach each screen</div></div><button class="toggle ${Tutorial.isOn() ? 'on' : ''}" data-a="toggleTut" aria-label="Toggle tutorial tips"></button></div>
+      <button class="btn btn-block btn-sm mt12" data-a="resetTut">Show all tips again</button>`;
+  }
+  A.toggleTut = (v, el) => { Tutorial.setOn(!Tutorial.isOn()); el.classList.toggle('on', Tutorial.isOn()); };
+  A.resetTut = () => { Tutorial.reset(); closeSheet(); toast('Tips reset. They will show again as you reach each screen.'); setTimeout(() => Tutorial.check(), 400); };
+  A.tutHelp = v => Tutorial.help(v);
   // career: staff, achievements, draft classes, weekly reel
   A.staffSheet = () => staffSheet();
   A.staffRole = v => { S.staffRole = v; staffSheet(); };
@@ -1956,6 +1968,7 @@ const UI = (() => {
       if (fn) { e.preventDefault(); Sfx.play(el.classList.contains('toggle') ? 'toggle' : 'tap'); fn(el.dataset.v, el, e); }
     });
     wireSheetDrag();
+    Tutorial.wire();
     Career.setOnUnlock(a => notice(`<span class="ach-toast">${a.icon}</span><b>Achievement unlocked</b> · ${esc(a.name)}`, 'achievement'));
     document.addEventListener('input', e => { const el = e.target.closest('[data-bind]'); if (el) A.bind(el); });
     // iOS: stop swipes from leaking past an open sheet (backdrop, or the sheet already at its scroll limit)
@@ -1976,5 +1989,15 @@ const UI = (() => {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(); });
   }
 
-  return { S, render, wire, toast };
+  // a tutorial tip holds the live game (and the play clock) while it's up, then lets it go on exactly as before
+  function holdGame(on) {
+    const st = S.game;
+    if (!st || S.screen !== 'game') return;
+    if (on) { if (!st.paused) { st.paused = true; st.tutHold = true; Live.setPaused(true); } return; }
+    if (!st.tutHold) return;
+    st.tutHold = false; st.paused = false; Live.setPaused(false);
+    if (st.resume) { const fn = st.resume; st.resume = null; fn(); }
+  }
+
+  return { S, render, wire, toast, holdGame };
 })();
