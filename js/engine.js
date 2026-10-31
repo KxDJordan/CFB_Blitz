@@ -603,15 +603,22 @@ const Engine = (() => {
     const mod = { runstop: -4, blitz: oc === 'inside' ? -1 : 2, cover: 4, base: 0 }[dc] + (oc === 'outside' && dc === 'runstop' ? -2 : 0) + (gs._rpo ? 2 : 0); // a right RPO read gives the back a soft box
     const pairs = side === 'M' ? [['LG', 'DT1'], ['RG', 'DT2'], ['C', dc === 'runstop' ? 'S1' : dc === 'blitz' ? 'LB1' : 'MLB']]
       : side === 'L' ? [['LT', 'DE1'], ['LG', 'LB1'], ['WR3', 'CB1']] : [['RT', 'DE2'], ['TE', 'LB2'], ['WR2', 'CB2']];
+    // Double-Team Eater (inside runs): the center leaves his man to double the Eater. The Eater holds his ground (that
+    // block is a stalemate) and the man the center left runs free — the run is far more likely to be stopped at the second level.
+    const eaterK = side === 'M' ? ['DT1', 'DT2'].find(k => D[k].pos === 'DL' && tierOf(D[k], 'eater') >= 0) : null;
+    const eT = eaterK ? tierOf(D[eaterK], 'eater') : -1;
+    if (eaterK) sm(gs, det, D[eaterK], 'eater');
     let sum = 0, tfl = null;
     for (const [ok, dk] of pairs) {
       const ob = O[ok], db = D[dk];
       const off = ob.pos === 'WR' ? A(gs, o, ob, 'str') * 0.6 + A(gs, o, ob, 'awr') * 0.4 - 6 : runBlk(gs, o, ob);
       const def = db.pos === 'DL' ? runDef(gs, d, db) : tackleR(gs, d, db);
-      const stkO = sm(gs, det, ob, 'grader', side === 'M') + sm(gs, det, ob, 'puller', side !== 'M' && ob.pos === 'OL') + sm(gs, det, ob, 'anchor', db.pos === 'DL') * 0.5
+      const stkO = sm(gs, det, ob, 'grader') + sm(gs, det, ob, 'puller', side !== 'M' && ob.pos === 'OL') + sm(gs, det, ob, 'anchor', db.pos === 'DL') * 0.5
         + sm(gs, det, ob, 'pancake') * 0.6 + sm(gs, det, ob, 'sealer', side !== 'M');
-      const stkD = sm(gs, det, db, 'stuffer') + sm(gs, det, db, 'eater', side === 'M') + sm(gs, det, db, 'longarm') * 0.5;
-      const m = gap(off - def) * 0.58 + U.gauss(0, 9) + mod + soft(stkO, 2.5) - soft(stkD, 2.5);
+      const stkD = sm(gs, det, db, 'stuffer') + sm(gs, det, db, 'longarm') * 0.5;
+      let m = gap(off - def) * 0.58 + U.gauss(0, 9) + mod + soft(stkO, 2.5) - soft(stkD, 2.5);
+      if (dk === eaterK) m = m * 0.35 - 1;           // two on one, and he doesn't budge
+      else if (eaterK && ok === 'C') m -= 6 + eT * 1.5; // the center's man is unblocked
       det.blocks.push({ o: ok, d: dk, m: Math.round(m), win: m >= 0 });
       sum += m;
       if (m < -11 + sm(gs, det, db, 'penetrator') && !tfl) tfl = dk;
@@ -630,18 +637,21 @@ const Engine = (() => {
       const l2k = side === 'M' ? (dc === 'blitz' ? 'LB2' : 'MLB') : side === 'L' ? (det.blocks[1].win ? 'MLB' : 'LB1') : (det.blocks[1].win ? 'MLB' : 'LB2');
       const l2 = D[l2k];
       const m2 = gap(elusR(gs, o, rb) - tackleR(gs, d, l2)) * 0.5 + U.gauss(0, 10) + laneQ * 4 + ({ cover: 3, runstop: -3, blitz: 1, base: 0 }[dc]) + (side !== 'M' ? gap(A(gs, o, rb, 'spd') - A(gs, d, l2, 'spd')) * 0.3 : 0) + (l2k === 'MLB' && side !== 'M' ? 3 : 0)
-        + soft(sm(gs, det, rb, 'wrecking'), 3) - soft(sm(gs, det, l2, 'thumper') + sm(gs, det, l2, 'sideline', side !== 'M') + sm(gs, det, l2, 'shedder', l2.pos === 'LB'), 3);
+        - soft(sm(gs, det, l2, 'thumper') + sm(gs, det, l2, 'sideline', side !== 'M') + sm(gs, det, l2, 'shedder', l2.pos === 'LB'), 3)
+        - (eaterK ? 3 + eT : 0); // the free backer is waiting in the hole
       const juke = m2 < 8 && sp(gs, det, rb, 'jukebox', true, 0.35);
       // Truck Stick: the backer meets him square and gets run over
       const truck = m2 < 8 && !juke && sp(gs, det, rb, 'truck', true, truckOdds(A(gs, o, rb, 'str')));
-      levels.push({ d: l2k, win: m2 >= 8 || juke || truck, y: g1 });
-      if (m2 < 8 && !juke && !truck) { yards = g1 + U.ri(0, 2); tackler = l2k; }
+      // Wrecking Ball: a chance (5 / 8 / 11 / 15%) to run straight through the backer or safety
+      const wreck = m2 < 8 && !juke && !truck && (l2.pos === 'LB' || l2.pos === 'S') && sp(gs, det, rb, 'wrecking', true, 0.2);
+      levels.push({ d: l2k, win: m2 >= 8 || juke || truck || wreck, y: g1 });
+      if (m2 < 8 && !juke && !truck && !wreck) { yards = g1 + U.ri(0, 2); tackler = l2k; }
       else {
         const g2 = g1 + U.ri(2, 6);
         const l3k = dc === 'runstop' ? 'S2' : side === 'R' ? 'S2' : 'S1';
-        const m3 = gap(elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.5 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) + sm(gs, det, rb, 'wrecking') * 0.4 - sm(gs, det, D[l3k], 'suretackle') * 0.6 - sm(gs, det, D[l3k], 'thumper') * 0.4;
+        const m3 = gap(elusR(gs, o, rb) - tackleR(gs, d, D[l3k])) * 0.5 + U.gauss(0, 10) - 11 + ({ runstop: 5, cover: -3, blitz: 2, base: 0 }[dc]) - sm(gs, det, D[l3k], 'suretackle') * 0.6 - sm(gs, det, D[l3k], 'thumper') * 0.4;
         // Stiff Arm: the last man between him and daylight hits the turf
-        const stiff = m3 < 0 && sp(gs, det, rb, 'stiffarm', true, 0.4);
+        const stiff = m3 < 0 && (sp(gs, det, rb, 'stiffarm', true, 0.4) || ((D[l3k].pos === 'S' || D[l3k].pos === 'LB') && sp(gs, det, rb, 'wrecking', true, 0.2)));
         levels.push({ d: l3k, win: m3 >= 0 || stiff, y: g2 });
         if (m3 < 0 && !stiff) { yards = g2 + U.ri(0, 4); tackler = l3k; }
         else { yards = g2 + U.ri(8, 40) + Math.round(sm(gs, det, rb, 'homerun') * U.rand(0.5, 1.5)); tackler = side === 'R' ? 'CB2' : 'CB1'; }
@@ -654,7 +664,9 @@ const Engine = (() => {
     det.td = gs.ball + yards >= 100;
     det.tackler = det.td ? null : tackler;
     const dir = side === 'M' ? U.pick(['up the middle', 'through the A-gap', 'off the guard']) : side === 'L' ? U.pick(['around the left end', 'off left tackle']) : U.pick(['around the right end', 'off right tackle']);
-    const blockNote = det.blocks.filter(b => b.m >= 10).map(b => `${nm(O[b.o])} pancakes ${nm(D[b.d])}`)[0];
+    // a dominant block ends with a pancake — a Pancake Artist needs less of an edge to put his man down
+    const pkT = b => tierOf(O[b.o], 'pancake');
+    const blockNote = det.blocks.filter(b => b.m >= 10 - (pkT(b) >= 0 ? [2, 3, 4, 5][pkT(b)] : 0)).map(b => `${nm(O[b.o])} pancakes ${nm(D[b.d])}`)[0];
     const fatX = { [rb.id]: 1.5 };
     // fumble on contact
     const grip = U.clamp(1 - sm(gs, null, rb, 'irongrip'), 0.25, 1);
@@ -773,6 +785,10 @@ const Engine = (() => {
     if (!target) {
       let sackP = U.clamp(0.55 - (A(gs, o, qb, 'spd') - 60) * 0.012 - sm(gs, det, qb, 'pocket') * 0.6 + sm(gs, det, D[presser], 'sackfinish') * 0.03, 0.1, 0.8);
       if (sp(gs, det, qb, 'escape', true, 0.7)) sackP = 0;
+      // Scramble Drill: he bails out before the sack (more often when a rusher came free) and takes off
+      const free = rushRes.some(x => x.b === null), sdT = tierOf(qb, 'scramble');
+      const drill = sdT >= 0 && U.chance([0.5, 0.65, 0.8, 0.95][sdT] * (free ? 1 : 0.6));
+      if (drill) { sackP = 0; sm(gs, det, qb, 'scramble'); }
       det.throwT = null;
       if (U.chance(sackP)) {
         const sk = D[presser], ss = st(gs, sk, d);
@@ -782,7 +798,7 @@ const Engine = (() => {
         if (sp(gs, det, sk, 'strip', true, 0.35)) return stripSack(gs, det, O, D, qb, sk, y, fatX);
         fin(y, `${nm(qb)} is SACKED by ${nm(sk)} for a loss of ${-y}.${stkNote(det, false)}`, { kind: 'sack' });
         injury(gs, qb, o, 0.004);
-      } else if (U.chance(0.5)) {
+      } else if (drill || U.chance(0.5)) {
         const y = Math.max(-3, Math.round(U.gauss(2 + (A(gs, o, qb, 'spd') - 65) * 0.12 + sm(gs, det, qb, 'scramble'), 3.5)));
         qs.ra++;
         Object.assign(det, { outcome: 'scramble', yards: Math.min(y, 100 - gs.ball), escapeT: pressT, td: gs.ball + y >= 100 });
@@ -794,7 +810,8 @@ const Engine = (() => {
       }
       return det;
     }
-    if (pressT - Math.max(target.ready, 0.85) < 0.35 && presser && U.chance(0.3 - (A(gs, o, qb, 'awr') - 70) * 0.006 - sm(gs, det, qb, 'pocket') * 0.4 + sm(gs, det, D[presser], 'sackfinish') * 0.03) && !sp(gs, det, qb, 'escape', true, 0.5)) {
+    if (pressT - Math.max(target.ready, 0.85) < 0.35 && presser && U.chance(0.3 - (A(gs, o, qb, 'awr') - 70) * 0.006 - sm(gs, det, qb, 'pocket') * 0.4 + sm(gs, det, D[presser], 'sackfinish') * 0.03) && !sp(gs, det, qb, 'escape', true, 0.5)
+      && !(tierOf(qb, 'scramble') >= 0 && rushRes.some(x => x.b === null) && U.chance([0.5, 0.65, 0.8, 0.95][tierOf(qb, 'scramble')]) && sm(gs, det, qb, 'scramble') >= 0)) {
       const sk = D[presser], ss = st(gs, sk, d);
       ss.sk++; ss.tk++; gs.ts[d].sk++;
       const y = -U.ri(2, 9);
@@ -810,7 +827,7 @@ const Engine = (() => {
     det.pressured = pressured;
     const acc = qbAcc(gs, o, qb), dpt = target.depth, rec0 = O[target.slot];
     const cov0 = target.def ? D[target.def] : null;
-    const qbStk = sm(gs, det, qb, 'dime', dpt >= 15) + sm(gs, det, qb, 'iceveins', clutch(gs)) + sm(gs, det, qb, 'trigger', oc === 'quick' || oc === 'screen') * 0.6
+    const qbStk = sm(gs, det, qb, 'dime', dpt >= 15) + sm(gs, det, qb, 'iceveins', clutch(gs)) + sm(gs, det, qb, 'trigger', oc === 'quick' || oc === 'screen' || dc === 'blitz') * 0.6
       + sm(gs, det, qb, 'cannon', dpt >= 15) + sm(gs, det, qb, 'fearless', target.sep < 1)
       + (pressured ? (sm(gs, det, qb, 'pocket') + sm(gs, det, qb, 'ontherun')) * 2.5 : 0);
     const recStk = sm(gs, det, rec0, 'gluehands', target.sep < 0) + sm(gs, det, rec0, 'redzone', redZone(gs)) * 0.2

@@ -226,7 +226,9 @@ const Live = (() => {
           if (e.mode === 'pass' && F && F.mode === 'pass' && D.rushing) pop(D.x, D.y, `BEAT ${A.key.slice(1)}`, '#fca5a5', { life: 0.9 });
           continue;
         }
-        if (e.m > 11 && Math.random() < (e.mode === 'pass' ? 0.04 : 0.3) * DT) { D.down = 1.4; D.vx = A.vx * 1.5; D.vy = A.vy * 1.5 + (S.dirUp || 1) * 1.2; release(e); pop(D.x, D.y, 'PANCAKE', '#86efac'); continue; }
+        // Pancake Artist: finishes more blocks on the ground — needs less of an edge and puts them down more often
+        const pk = stkQ(A, 'pancake');
+        if (e.m > 11 - pk * 1.5 && Math.random() < (e.mode === 'pass' ? 0.04 : 0.3) * (1 + pk * 0.4) * DT) { D.down = 1.4; D.vx = A.vx * 1.5; D.vy = A.vy * 1.5 + (S.dirUp || 1) * 1.2; release(e); pop(D.x, D.y, 'PANCAKE', '#86efac'); continue; }
       }
       if (e.shed != null && S.t >= e.shed) {
         const side = Math.sign(D.x - A.x) || (Math.random() < 0.5 ? -1 : 1);
@@ -488,11 +490,12 @@ const Live = (() => {
     const sacking = F.qb === c && F.mode === 'pass';
     const beyond = F.L0 == null || (c.y - F.L0) * F.cdir > 0;
     let z = 1.75 + (d.R.tackle - c.R.elus) * 0.022 + Math.min(gang, 2) * 0.5 - (fromBehind ? 0.6 : 0) - Math.max(0, csp - 6) * 0.1 + mod;
-    if (sacking) z += 1.2 - (c.R.elus - 55) * 0.02;
+    // Pocket Presence: he feels it and slides — when the rush gets home, fewer of those hits finish as sacks
+    if (sacking) z += 1.2 - (c.R.elus - 55) * 0.02 - stkM(c, 'pocket') * 5;
     const rp = P(c.pid), rb = rp && rp.pos === 'RB';
-    const offS = (F.kind === 'run' && beyond ? stkM(c, 'wrecking', rb) : 0) + (F.caught ? stkM(c, 'yac') : 0) + (F.kind === 'run' && Engine.stk.shortYd(gs) ? stkM(c, 'hammer', rb) : 0)
-      + stkM(c, 'scramble', c === F.qb && F.mode === 'scramble') + stkM(c, 'screenpro', !!(F.play && F.play.screen) && F.caught);
-    const defS = stkM(d, 'thumper', F.kind === 'run' && (d.pos === 'LB' || d.pos === 'S')) + stkM(d, 'sideline', F.kind === 'run' && Math.abs(c.x - CX) > 8)
+    const offS = (F.caught ? stkM(c, 'yac') : 0) + (F.kind === 'run' && Engine.stk.shortYd(gs) ? stkM(c, 'hammer', rb) : 0)
+      + stkM(c, 'scramble', c === F.qb && (F.mode === 'scramble' || !!(F.qbp && F.qbp.esc))) + stkM(c, 'screenpro', !!(F.play && F.play.screen) && F.caught);
+    const defS = stkM(d, 'thumper', F.kind === 'run' && (d.pos === 'LB' || d.pos === 'S')) + stkM(d, 'sideline', (F.kind === 'run' && Math.abs(c.x - CX) > 8) || (F.caught && !!(F.play && F.play.screen)))
       + stkM(d, 'sackfinish', F.kind === 'pass');
     // runner badges make him harder to bring down, tackler badges make the tackle stick; Sure Tackler has its own scale:
     // an even tackle is missed ~15% of the time, ~11% with Bronze, ~10% Silver, ~9% Gold, ~8% Elite
@@ -504,20 +507,23 @@ const Live = (() => {
     // Spin Move: once, at first contact in the backfield. Stiff Arm: once, past the line
     if (z > -9 && !beyond && F.kind === 'run' && !F.spun) { F.spun = true; if (stkP(c, 'spin', true, 0.6)) z = -9; }
     if (z > -9 && beyond && (F.kind === 'run' || F.mode === 'scramble') && !F.stiffed) { F.stiffed = true; if (stkP(c, 'stiffarm', true, 0.5)) z = -9; }
+    // Wrecking Ball: a chance (5 / 8 / 11 / 15% Bronze-Elite) to run straight through a linebacker or safety
+    let wrecked = false;
+    if (z > -9 && beyond && rb && F.kind === 'run' && (d.pos === 'LB' || d.pos === 'S') && stkP(c, 'wrecking', true, 0.2)) { z = -9; wrecked = true; }
     // Truck Stick: once a run, square up the man in front of him and go straight through
     let trucked = false;
     if (z > -9 && beyond && rb && !fromBehind && !F.trucked && (F.kind === 'run' || F.caught)) { F.trucked = true; if (stkP(c, 'truck', true, Engine.stk.truckOdds(c.R.str))) { z = -9; trucked = true; } }
     if (Math.random() < sig(z)) { tackle(c, d); return true; }
     // a power back who wins head-on runs through the man instead of around him
-    const powerRole = rp && (rp.role === 'rb_power' || hasBadge(c, 'wrecking'));
-    if (trucked || (powerRole && rb && !fromBehind && beyond)) return runThrough(c, d, nx, ny, trucked, mod);
+    const powerRole = rp && rp.role === 'rb_power';
+    if (trucked || wrecked || (powerRole && rb && !fromBehind && beyond)) return runThrough(c, d, nx, ny, trucked, mod);
     // broken tackle
     d.down = 0.3 + Math.random() * 0.3; d.stayDown = false;
     d.vx = -nx * 1.2 + c.vx * 0.25; d.vy = -ny * 1.2 + c.vy * 0.25;
     c.vx *= 0.74; c.vy *= 0.74;
     c.vx += (Math.sign(c.x - d.x) || 1) * 1.3;
     F.broke = (F.broke || 0) + (mod <= -0.6 ? 0 : 1);
-    if (offS > 0 && soft(offS, 3) > 1) stkPop(c, rb ? 'wrecking' : 'yac', 2);
+    if (F.caught && soft(offS, 3) > 1) stkPop(c, 'yac', 2);
     if (S.t - (S.lastWhiff || -9) > 0.8) { S.lastWhiff = S.t; pop(c.x, c.y, sacking ? 'ESCAPES!' : U.pick(['BROKE TACKLE', 'JUKE!', 'SPIN MOVE', 'STIFF ARM', 'MISSED TACKLE']), '#facc15', { life: 1 }); }
     burst(c.x, c.y, 'rgba(250,204,21,.8)', 6);
     ring(c.x, c.y, '#facc15', 0.7, 0);
@@ -548,7 +554,6 @@ const Live = (() => {
     ring(mx, my, trucked ? '#fb923c' : '#ffffff', trucked ? 2 : 1.3, trucked ? 12 : 7);
     burst(mx, my, 'rgba(255,255,255,.9)', trucked ? 18 : 10, trucked ? 5 : 3);
     if (trucked) { for (let i = 0; i < 8; i++) { const a = Math.random() * Math.PI * 2, v = U.rand(1, 3.5); parts.push({ x: d.x, y: d.y, z: 0.2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: U.rand(2, 5), age: 0, life: U.rand(0.5, 0.9), s: U.rand(5, 8), c: U.pick(['#3f7d3a', '#2f6b2e', '#6b4f2a']) }); } excite = Math.max(excite, 0.6); }
-    if (!trucked) stkPop(c, 'wrecking', 2);
     addMom(c.side, trucked ? 0.08 : 0.04);
     if (S.t - (S.lastWhiff || -9) > 0.8) { S.lastWhiff = S.t; pop(c.x, c.y, trucked ? 'TRUCKED!' : 'RUNS THROUGH HIM', trucked ? '#fb923c' : '#facc15', { big: trucked, life: 1.2 }); }
     return false;
@@ -691,6 +696,8 @@ const Live = (() => {
     let k = 0.94 * (a.secureT > S.t ? 0.72 : 1); // carrying the ball costs a step
     if (open && (F.kind === 'run' || F.caught)) k += soft(stkM(a, 'homerun'), 5) * 0.012;
     if (F.mode === 'intret') k += stkM(a, 'pick6') * 0.8;
+    // Scramble Drill: the same burst once he takes off running (+6 / 9 / 12 / 16% speed, Bronze-Elite)
+    if (F.mode === 'scramble' && a === F.qb) { const st = Engine.stk.tierOf(P(a.pid), 'scramble'); if (st >= 0) { a.vk = [1.06, 1.09, 1.12, 1.16][st]; k *= a.vk; } }
     a.wx = Math.cos(a.lane) * a.vmax * k; a.wy = Math.sin(a.lane) * a.vmax * k;
     // QB slides once he has his yards
     if (F.mode === 'scramble' && !F.over && (a.y - F.L0) >= 2) {
@@ -777,17 +784,32 @@ const Live = (() => {
       const mirror = stkQ(blk, 'mirror') > 0;
       m = blk.R.pblk - def.R.rush
         + soft(stkQ(blk, 'brickwall') + stkQ(blk, 'anchor') * 0.5 + stkQ(blk, 'mirror', def.R.spd > 75) + stkQ(blk, 'blitzpickup', !!def.blitz), 3)
-        - soft((stkQ(def, 'bender', def.key === 'dDE1' || def.key === 'dDE2' || def.pos === 'LB') + stkQ(def, 'bullrush') + stkQ(def, 'closer', lead) + stkQ(def, 'blitzer', !!def.blitz)
+        - soft((stkQ(def, 'bender', def.key === 'dDE1' || def.key === 'dDE2' || def.pos === 'LB') + stkQ(def, 'bullrush') * (stkQ(blk, 'anchor') > 0 ? 0.3 : 1) + stkQ(def, 'closer', lead) + stkQ(def, 'blitzer', !!def.blitz)
           + stkQ(def, 'getoff') + stkQ(def, 'longarm')) * (mirror ? 0.75 : 1), 3.5);
     } else {
       const wide = F.hole != null && Math.abs(F.hole - CX) > 5;
-      m = blk.R.rblk - def.R.rdef + soft(stkQ(blk, 'grader') + stkQ(blk, 'puller', !!blk.pulling) + stkQ(blk, 'pancake') * 0.6 + stkQ(blk, 'sealer', wide), 2.5)
-        - soft(stkQ(def, 'stuffer') + stkQ(def, 'eater', !wide) + stkQ(def, 'longarm') * 0.5 + stkQ(def, 'penetrator') * 0.5 + stkQ(def, 'shedder', def.pos === 'LB'), 2.5);
+      m = blk.R.rblk - def.R.rdef + soft(stkQ(blk, 'grader') + stkQ(blk, 'puller', !!blk.pulling || (wide && blk.pos === 'OL')) + stkQ(blk, 'pancake') * 0.6 + stkQ(blk, 'sealer', wide), 2.5)
+        - soft(stkQ(def, 'stuffer') + stkQ(def, 'eater', !wide) + stkQ(def, 'longarm') * 0.5 + stkQ(def, 'shedder', def.pos === 'LB'), 2.5);
       if (F.kind !== 'ret' && (blk.pos === 'WR' || blk.pos === 'RB' || blk.pos === 'CB' || blk.pos === 'S')) m -= 6;
     }
     m += U.gauss(0, 5);
     const away = F.hole != null ? (Math.sign(def.x - F.hole) || 1) : 0;
     const e = engage(blk, def, { free: true, mode, m, dir: mode === 'run' ? [away * 0.5, F.cdir * 0.6] : [0, 0] });
+    // Anchor: he sits down against power — a bull rush never walks him back onto his back
+    if (e && mode === 'pass' && stkQ(blk, 'anchor') > 0) e.bull = false;
+    // Gap Shooter: early in a run, a chance (8 / 13 / 18 / 26%, Bronze-Elite) to shoot straight through the block
+    if (e && mode === 'run' && !(F.dbl && F.dbl.has(def)) && S.t - S.snapT < 0.8) {
+      const pq = stkQ(def, 'penetrator');
+      if (pq > 0 && Math.random() < pq * 0.04) { stkM(def, 'penetrator'); e.shed = S.t + U.rand(0.15, 0.35); stkPop(def, 'penetrator'); }
+    }    // a double-teamed Eater holds his ground: the pile doesn't move him, and with two men on him he isn't shedding
+    // either — he's soaking up both blockers
+    if (e && mode === 'run' && F.dbl && F.dbl.has(def)) {
+      e.sd = Math.min(e.sd, 0.5); e.m = Math.max(e.m, 6); e.dir = [0, 0];
+      const t = Engine.stk.tierOf(P(def.pid), 'eater');
+      stkM(def, 'eater');
+      auraFx(def, DATA.STICKER_TIERS[t].color, DATA.STICKERS.eater.glyph);
+      pop(def.x, def.y + 0.6, 'DOUBLE TEAM', '#fcd34d', { life: 1.1 });
+    }
     // Swim Move: one try per rush; when it lands he's past his man in a heartbeat
     if (e && mode === 'pass' && F.mode === 'pass' && !def.swum) {
       def.swum = true;
@@ -982,6 +1004,8 @@ const Live = (() => {
     }
   }
   // ── defense ──
+  // how deep a receiver's route goes (yards past the line)
+  const rDepth = r => (r && r.route && r.route.length ? Math.max(...r.route.map(p => p[1])) - S.fp.L0 : 0);
   function assignDefense(dplay, F) {
     // in the red zone everything compresses: deep zones sit on the end line, underneath zones shrink with them
     const zoneAbs = z => { const [x, y] = Playbook.ZONES[z], room = 108 - F.L0; return [clampX(CX + x), F.L0 + Math.min(y, Math.max(2, room * (y / 19)))]; };
@@ -1000,7 +1024,8 @@ const Live = (() => {
       else if (asg[0] === 'man') {
         const r = S.ag['o' + asg[1]];
         const tau = U.clamp(0.24 + ((r ? r.R.route : 60) - a.R.cover) * 0.005 + U.gauss(0, 0.05)
-          + (r ? (stkQ(r, 'routetech') + stkQ(r, 'burner') * 0.8 + stkQ(r, 'redzone', Engine.stk.redZone(gs))) * 0.05 : 0)
+          // Route Technician on short and intermediate routes, Burner on routes that go 15+ downfield
+          + (r ? (stkQ(r, 'routetech', rDepth(r) < 15) + stkQ(r, 'burner', rDepth(r) >= 15) * 0.8 + stkQ(r, 'redzone', Engine.stk.redZone(gs))) * 0.05 : 0)
           + (r ? stkQ(r, 'release') * 0.05 : 0)
           - (stkQ(a, 'lockdown') + stkQ(a, 'covlb', r && (r.pos === 'TE' || r.pos === 'RB')) + stkQ(a, 'press') * 0.6) * 0.06, 0.05, 0.62);
         a.job = { type: 'man', r, tau, cush: Math.max(0.8, a.y - (r ? r.y : a.y)), lev: (r && r.x < CX ? 0.7 : -0.7) };
@@ -1199,7 +1224,7 @@ const Live = (() => {
     }
     return out;
   }
-  const flightT = (qb, dist) => dist / ballSpeed(qb) * (dist > 25 ? 1.1 : 1) + 0.1;
+  const flightT = (qb, dist) => dist / ballSpeed(qb, dist) * (dist > 25 ? 1.1 : 1) + 0.1;
   // where a receiver will be in tf seconds if he keeps running his route
   // (runs the same steering + acceleration limits as the real body, so cuts cost time)
   function predict(a, tf) {
@@ -1218,7 +1243,8 @@ const Live = (() => {
     }
     return [clampX(x), y];
   }
-  function ballSpeed(qb) { return 17 + qb.R.str * 0.07 + stkQ(qb, 'cannon') * 15; }
+  // Cannon Arm only puts extra zip on the long ball (throws of 17+ yards)
+  function ballSpeed(qb, dist = 0) { return 17 + qb.R.str * 0.07 + (dist >= 17 ? stkQ(qb, 'cannon') * 15 : 0); }
   // how open a receiver will be when the ball gets there (yards of cushion; < 0 = covered)
   function openness(r) {
     const F = S.fp, qb = F.qb, v = ballSpeed(qb);
@@ -1258,6 +1284,18 @@ const Live = (() => {
     if (!Q.dropped) { if (seek(a, Q.drop[0], Q.drop[1], 0.95, 0.5) < 0.6) Q.dropped = true; }
     else if (rush && rd < 4) { seek(a, clampX(a.x - (rush.x - a.x) * 0.5), U.clamp(a.y + 0.4, F.L0 - 9, F.L0 - 2.5), 0.55, 0.6); }
     else seek(a, Q.drop[0], Q.drop[1], 0.3, 1);
+    // Scramble Drill: an unblocked rusher bearing down — he bails out of the pocket away from the sack with a burst
+    // (50 / 65 / 80 / 95% of the time, Bronze-Elite) and keeps his eyes downfield to throw on the move or take off
+    if (!Q.drillChecked && rush && rush.rushing && rd < 3.6 && hasBadge(a, 'scramble')) {
+      Q.drillChecked = true;
+      const st = Engine.stk.tierOf(P(a.pid), 'scramble');
+      if (Math.random() < [0.5, 0.65, 0.8, 0.95][st]) {
+        Q.esc = { dir: Math.sign(a.x - rush.x) || (Math.random() < 0.5 ? -1 : 1), until: S.t + 1.5, k: [1.06, 1.09, 1.12, 1.16][st] };
+        stkPop(a, 'scramble');
+        pop(a.x, a.y - 0.6, 'ESCAPES THE POCKET', '#facc15', { life: 1 });
+      }
+    }
+    if (Q.esc && S.t < Q.esc.until) { a.vk = Q.esc.k; seek(a, clampX(CX + Q.esc.dir * 10), Math.max(F.L0 - 7, Math.min(a.y, F.L0 - 3)), 1, 0.4); }
     a.faceT = Math.PI / 2;
     if (t < Q.readStart || S.ball.mode !== 'held') return;
     const pressured = rd < 2.4;
@@ -1312,7 +1350,10 @@ const Live = (() => {
   function throwTo(r, op, pressured) {
     const F = S.fp, qb = F.qb, p = P(qb.pid);
     const depth = op.P[1] - F.L0;
-    const qbS = stkM(qb, 'dime', depth >= 15) + stkM(qb, 'iceveins', Engine.stk.clutch(gs)) + stkM(qb, 'trigger', F.play.cat === 'quick' || F.play.cat === 'screen') * 0.6 + (pressured ? stkM(qb, 'pocket') * 2.5 : 0);
+    // Quick Trigger: quick passes, screens and anything thrown against a blitz — with a pop when it's in play
+    const trig = F.play.cat === 'quick' || F.play.cat === 'screen' || (F.dplay && F.dplay.cat === 'blitz');
+    if (trig && hasBadge(qb, 'trigger')) stkPop(qb, 'trigger');
+    const qbS = stkM(qb, 'dime', depth >= 15) + stkM(qb, 'iceveins', Engine.stk.clutch(gs)) + stkM(qb, 'trigger', trig) * 0.6 + (pressured ? stkM(qb, 'pocket') * 2.5 : 0);
     const wxp = Math.max(0, -Engine.stk.wxPass(gs, depth)) * (1 - Math.min(0.8, stkM(qb, 'cannon', depth >= 15) * 4));
     let sig2 = (0.27 + op.dist * 0.029 + Math.max(0, op.dist - 18) * 0.035) * (1 + (72 - qb.R.acc) * 0.03) * (pressured ? Math.max(1.1, 1.65 - stkM(qb, 'ontherun') * 3.5) : 1) * (1 + wxp * 1.8) * (1 - soft(qbS, 0.35));
     sig2 = Math.max(0.08, sig2);
@@ -1327,6 +1368,9 @@ const Live = (() => {
     const flight = flightT(qb, hyp(tx - qb.x, ty - qb.y));
     F.mode = 'air'; F.throwT = S.t; F.target = r; F.aimPt = op.P; F.pressured = F.pressured || pressured;
     F.res.target = r.key.slice(1); F.res.air = ty - F.L0;
+    // ...and against zone, the same badges make the zone defenders a beat late breaking on the throw to him
+    const rbz = depth < 15 ? stkQ(r, 'routetech') : stkQ(r, 'burner') * 0.8;
+    if (rbz > 0) for (const d of S.list) if (d.side !== r.side && d.job && d.job.type === 'zone') d.ballReact = (d.ballReact || 0.3) + rbz * 0.05;
     if (pressured) pop(qb.x, qb.y, 'PRESSURE', '#fca5a5');
     throwBall(qb, [clampX(tx), ty], flight, 0.8 + Math.min(6, op.dist * 0.12), () => catchBall(r), 2.0, 1.4);
     // how the throw looks in the air: a laser from a Cannon Arm, a glowing rainbow from a Dime Dropper, else a spiral
@@ -1416,7 +1460,7 @@ const Live = (() => {
     F.qbp = {
       drop: [play.boot ? clampX(CX + fl * 7) : CX, play.boot ? L0 - 6 : dropY],
       mesh: [CX + (A('oRB').x >= CX ? 0.8 : -0.8), under ? L0 - 4 : L0 - 5],
-      readStart: ({ 1: 0.3, 3: 0.7, 5: 1.05, 6: 1.3, 7: 1.45 }[play.drop] || 1.05) + (play.pa ? 0.35 : 0) - stkQ(qb, 'trigger', play.cat === 'quick' || play.cat === 'screen') * 0.8,
+      readStart: ({ 1: 0.3, 3: 0.7, 5: 1.05, 6: 1.3, 7: 1.45 }[play.drop] || 1.05) + (play.pa ? 0.35 : 0) - stkQ(qb, 'trigger', play.cat === 'quick' || play.cat === 'screen' || dplay.cat === 'blitz') * 0.8,
       reads: play.reads.map(s => A('o' + s)).filter(Boolean), ri: 0, riT: 0, lastLook: 0,
       dwell: U.clamp(0.62 - (qb.R.awr - 70) * 0.007 - stkQ(qb, 'general') * 1.5, 0.28, 0.85),
     };
@@ -1582,6 +1626,33 @@ const Live = (() => {
       setBlocker(ol, 'run');
       ol.blockT = best;
     }
+    // Double-Team Eater: on an inside run the next lineman over leaves his linebacker to double the Eater. The Eater
+    // holds his ground against the two of them (see engageFree), and that linebacker — still marked as taken, so no
+    // one else picks him up — runs free to the ball.
+    F.dbl = new Map();
+    if (sc !== 'draw' && sc !== 'toss' && Math.abs(holeX - CX) <= 5) {
+      for (const ea of cand.filter(d => d.pos === 'DL' && hasBadge(d, 'eater') && Math.abs(d.x - CX) < 6)) {
+        const prim = order.find(o => o.blockT === ea);
+        if (!prim) continue;
+        // the better the Eater, the more the offense respects him: how often they double him, how long the helper stays,
+        // and how quickly the backer they leave alone sees it (Bronze / Silver / Gold / Elite)
+        const et = Engine.stk.tierOf(P(ea.pid), 'eater');
+        if (Math.random() >= [0.6, 0.75, 0.9, 1][et]) continue;
+        const hold = [1.2, 1.4, 1.6, 1.8][et], read = [0.2, 0.13, 0.07, 0.02][et];
+        const helper = order.filter(o => o !== prim && !o.dblOn && !(o.blockT && o.blockT.pos === 'DL')).sort((p, q) => Math.abs(p.x - ea.x) - Math.abs(q.x - ea.x))[0];
+        if (!helper || Math.abs(helper.x - ea.x) > 3.6) continue;
+        const freed = helper.blockT, sx = Math.sign(helper.x - ea.x) || side;
+        helper.blockT = null; helper.blockOn = null; helper.dblOn = ea;
+        helper.brain = b => {
+          const c = S.carrier, past = c && c !== F.qb && (c.y - L0) * F.cdir > 1.5;
+          // the double lasts until the back is past the line (or the Eater is free or down): then climb to the next man
+          if (ea.down > 0 || past || S.t - S.snapT > hold || (S.t - S.snapT > 0.6 && !ea.eng)) { b.dblOn = null; setBlocker(b, 'run'); return; }
+          seek(b, clampX(ea.x + sx * 1.05), ea.y - 0.2, 1, 0.2); // shoulder to shoulder with the man already on him
+          b.faceT = ang(ea.x - b.x, ea.y - b.y);
+        };
+        F.dbl.set(ea, { helper, freed, read });
+      }
+    }
     for (const k of ['TE', 'WR1', 'WR2', 'WR3', 'RB']) {
       const a = A('o' + k);
       if (!a || a === car || (teDown && a === te)) continue;
@@ -1626,6 +1697,8 @@ const Live = (() => {
     });
     assignDefense(dplay, F);
     setReads(sc === 'draw' ? 0.7 : 0.3); // a draw sells pass: the defense reads it late
+    // the backer nobody blocked (his man is on the double team) sees the run right away
+    for (const v of F.dbl.values()) if (v.freed && v.freed.pos !== 'DL') v.freed.readT = Math.min(v.freed.readT, S.t + v.read);
     S.focus = () => { const p = ballPos(); return [p.x, p.y + 4]; };
     S.onTackle = () => finalePop();
   }
