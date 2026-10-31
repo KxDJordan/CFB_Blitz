@@ -1321,9 +1321,13 @@ const UI = (() => {
     const sit = `${Engine.downTxt(gs)} · ${esc(gs.abbr[gs.poss])} ball at ${esc(Engine.spot(gs))} · ${gs.qtr <= 4 ? `Q${gs.qtr} ${U.clock(gs.clock)}` : `OT${gs.qtr - 4}`}`;
     const clock = `<div class="pclock" id="pclock" style="--p:1"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><circle class="pc-fg" cx="20" cy="20" r="17"/></svg><b>${Math.ceil(st.clock || CLOCK_SECS[st.speed])}</b></div>`;
     let cards = '', intel = '', tabs = '', extra = '';
-    const tab = st.pbTab || 'picks';
+    const tab = st.pbTab || 'picks', sub = st.pbSub || (st.pbSub = {});
     const tabBtn = (id, label) => `<button class="pb-tab ${tab === id ? 'on' : ''}" data-a="gpbTab" data-v="${id}">${label}</button>`;
-    const CAT = { inside: 'Inside run', outside: 'Outside run', quick: 'Quick pass', pa: 'Play action', deep: 'Downfield', screen: 'Screen', base: 'Base', blitz: 'Blitz', cover: 'Coverage', runstop: 'Run stop' };
+    // second row: grouped chips (formations under their family, or play types) — tap to switch without losing your place
+    const chip = (key, id, label, n) => `<button class="pb-chip ${sub[key] === id ? 'on' : ''}" data-a="gpbSub" data-v="${key}|${id}">${esc(label)}${n != null ? `<i>${n}</i>` : ''}</button>`;
+    const famLbl = l => `<span class="pb-fam">${esc(l)}</span>`;
+    let subRow = '';
+    const CAT = { inside: 'Inside run', outside: 'Outside run', rpo: 'RPO', quick: 'Quick pass', pa: 'Play action', deep: 'Downfield', screen: 'Screen', base: 'Base', blitz: 'Blitz', cover: 'Coverage', runstop: 'Run stop' };
     if (need === 'off') {
       const raw = Engine.callEdges(gs, us), t = gs.tend[1 - us];
       const mean = U.avg(Object.values(raw)), e = {};
@@ -1338,22 +1342,30 @@ const UI = (() => {
         if (Engine.canKneel(gs)) special.push({ id: 'kneel', label: 'Victory Formation', desc: 'Take a knee, burn clock.' });
       }
       const bk = myBook(), forms = Playbook.BOOKS[bk].forms || Object.keys(Playbook.FORMS);
-      tabs = tabBtn('picks', 'OC Picks') + (special.length ? tabBtn('st', 'Special') : '') + forms.map(id => tabBtn(id, Playbook.FORMS[id].name.replace('Shotgun ', 'Gun ').replace('Singleback ', 'Single '))).join('');
+      const inBk = Playbook.OFF.filter(q => Playbook.inBook(q, bk)), sp = Playbook.offById(st.sugg);
+      tabs = tabBtn('picks', 'OC Picks') + tabBtn('form', 'Formation') + tabBtn('type', 'Play Type') + (special.length ? tabBtn('st', 'Special') : '');
       let list;
       if (tab === 'st' && special.length) list = null;
-      else if (tab === 'picks') {
+      else if (tab === 'form') {
+        if (!forms.includes(sub.oform)) sub.oform = sp && forms.includes(sp.form) ? sp.form : forms[0];
+        subRow = Playbook.OFF_FAMS.map(fm => { const ids = Object.keys(Playbook.FORMS).filter(id => forms.includes(id) && Playbook.FORMS[id].fam === fm); return ids.length ? famLbl(fm) + ids.map(id => chip('oform', id, Playbook.FORMS[id].short, Playbook.OFF.filter(p => p.form === id).length)).join('') : ''; }).join('');
+        list = Playbook.OFF.filter(p => p.form === sub.oform);
+      } else if (tab === 'type') {
+        const TY = ['inside', 'outside', 'rpo', 'quick', 'pa', 'deep', 'screen'].filter(c => inBk.some(p => p.cat === c));
+        if (!TY.includes(sub.otype)) sub.otype = sp && TY.includes(sp.cat) ? sp.cat : TY[0];
+        subRow = TY.map(c => chip('otype', c, CAT[c], inBk.filter(p => p.cat === c).length)).join('');
+        list = inBk.filter(p => p.cat === sub.otype);
+      } else {
         // the coordinator's pick plus the best-looking play from each other family
         if (st.picksKey !== st.suggKey) {
           const fam = {};
-          for (const p of U.shuffle(Playbook.OFF.filter(q => Playbook.inBook(q, bk)))) { if (p.run?.scheme === 'sneak' && gs.togo > 2) continue; if (!fam[p.cat]) fam[p.cat] = p; }
-          const sp0 = Playbook.offById(st.sugg);
-          st.picks = Object.values(fam).filter(p => !sp0 || p.cat !== sp0.cat).sort((a, b) => e[b.cat] - e[a.cat]).slice(0, 4).map(p => p.id);
+          for (const p of U.shuffle(inBk.slice())) { if (p.run?.scheme === 'sneak' && gs.togo > 2) continue; if (!fam[p.cat]) fam[p.cat] = p; }
+          st.picks = Object.values(fam).filter(p => !sp || p.cat !== sp.cat).sort((a, b) => e[b.cat] - e[a.cat]).slice(0, 4).map(p => p.id);
           st.picksKey = st.suggKey;
         }
-        const sp = Playbook.offById(st.sugg);
         list = st.picks.map(Playbook.offById);
         if (sp) list.unshift(sp);
-      } else list = Playbook.OFF.filter(p => p.form === tab);
+      }
       const flip = !!st.flip;
       const card = p => `<button class="call-card pb-card k-${p.kind} ${st.sugg === p.id ? 'sugg' : ''}" data-a="gcall" data-v="${p.id}">${Playbook.svgOff(p, flip)}<div class="cc-top"><span class="cc-kind">${CAT[p.cat]}</span>${st.sugg === p.id ? '<span class="cc-pick">OC PICK</span>' : ''}</div><div class="cc-name">${esc(p.name)}</div><div class="cc-form">${esc(Playbook.FORMS[p.form].name)}</div>${edgeTag(e[p.cat] || 0)}</button>`;
       const stCard = c => `<button class="call-card k-st ${st.sugg === c.id ? 'sugg' : ''}" data-a="gcall" data-v="${c.id}"><div class="cc-top"><span class="cc-kind">SPECIAL</span>${st.sugg === c.id ? '<span class="cc-pick">OC PICK</span>' : ''}</div><div class="cc-name">${c.label}</div><div class="cc-desc">${c.desc}</div></button>`;
@@ -1365,23 +1377,26 @@ const UI = (() => {
       const O = Engine.slots(gs, 1 - us, true);
       const threat = ['WR1', 'WR2', 'RB', 'TE', 'QB'].map(k => O[k]).filter(p => p.id >= 0).sort((a, b) => b.ovr - a.ovr)[0];
       intel = `Offense: pass ${pr}% · run ${100 - pr}%${t.last ? ` · last: ${CAT[t.last] || callName(t.last)}` : ''}${threat ? ` · top threat ${threat.pos} ${esc(threat.last)} (${threat.ovr})` : ''}`;
-      // browse by play type or by formation (personnel), then pick the call
-      const by = st.defBy || 'type', DF = Playbook.DFORMS;
+      const DF = Playbook.DFORMS, sp = Playbook.defById(st.sugg);
       const TYPES = { zone: 'Zone', man: 'Man', blitz: 'Blitz', runstop: 'Run Stop' };
-      tabs = tabBtn('picks', 'DC Picks') + (by === 'type' ? Object.entries(TYPES).map(([id, l]) => tabBtn('t:' + id, l)).join('') : Playbook.DFORM_ORDER.map(id => tabBtn('f:' + id, DF[id].short)).join(''));
+      tabs = tabBtn('picks', 'DC Picks') + tabBtn('form', 'Formation') + tabBtn('type', 'Play Type');
       let list;
-      if (tab.startsWith('t:')) list = Playbook.DEF.filter(p => Playbook.defType(p) === tab.slice(2));
-      else if (tab.startsWith('f:')) list = Playbook.DEF.filter(p => p.form === tab.slice(2));
-      else { const sp = Playbook.defById(st.sugg); list = [sp, ...Playbook.DEF.filter(p => p !== sp)]; }
-      if (tab.startsWith('f:') && DF[tab.slice(2)]) intel = `${esc(DF[tab.slice(2)].name)} personnel: ${DF[tab.slice(2)].desc}`;
+      if (tab === 'form') {
+        if (!DF[sub.dform]) sub.dform = sp ? sp.form : '43';
+        subRow = Object.entries(Playbook.DEF_FAMS).map(([fm, ids]) => famLbl(fm) + ids.map(id => chip('dform', id, DF[id].short, Playbook.DEF.filter(p => p.form === id).length)).join('')).join('');
+        list = Playbook.DEF.filter(p => p.form === sub.dform);
+        intel = `${esc(DF[sub.dform].name)} personnel: ${DF[sub.dform].desc}`;
+      } else if (tab === 'type') {
+        if (!TYPES[sub.dtype]) sub.dtype = sp ? Playbook.defType(sp) : 'zone';
+        subRow = Object.entries(TYPES).map(([id, l]) => chip('dtype', id, l, Playbook.DEF.filter(p => Playbook.defType(p) === id).length)).join('');
+        list = Playbook.DEF.filter(p => Playbook.defType(p) === sub.dtype);
+      } else list = [sp, ...Playbook.DEF.filter(p => p !== sp)];
       cards = list.map(p => `<button class="call-card pb-card k-def ${st.sugg === p.id ? 'sugg' : ''}" data-a="gcall" data-v="${p.id}" title="${esc(p.desc)}">${Playbook.svgDef(p)}<div class="cc-top"><span class="cc-kind">${CAT[p.cat]}</span>${st.sugg === p.id ? '<span class="cc-pick">DC PICK</span>' : ''}</div><div class="cc-name">${esc(p.name)}</div><div class="cc-form">${esc(DF[p.form].short)} · ${esc(p.desc)}</div></button>`).join('');
-      extra = `<button class="pb-flip on" data-a="gdefBy">${by === 'type' ? 'By Type' : 'By Formation'} ⇄</button>`;
-    }
-    const minBtn = `<button class="pb-min" data-a="gpanelMin" aria-label="${st.panelMin ? 'Expand' : 'Collapse'} play calls">${st.panelMin ? '▴' : '▾'}</button>`;
+    }    const minBtn = `<button class="pb-min" data-a="gpanelMin" aria-label="${st.panelMin ? 'Expand' : 'Collapse'} play calls">${st.panelMin ? '▴' : '▾'}</button>`;
     const help = need === 'off' && !st.panelMin ? '<button class="pb-help" data-a="tutHelp" data-v="edge" aria-label="What do the Edge numbers mean?">?</button>' : '';
     const head = `<div class="call-head"><div class="grow"><div class="kicker" style="color:var(--accent)">Your call · ${need === 'off' ? 'Offense' : 'Defense'}${help}</div><div class="call-sit">${sit}</div></div>${st.panelMin ? '' : extra}${clock}${minBtn}</div>`;
     if (st.panelMin) return head + `<div class="call-quick"><button class="btn btn-primary btn-block" data-a="gcall" data-v="${st.sugg}">${need === 'off' ? 'OC' : 'DC'} pick: ${esc(callName(st.sugg))} ${I.chev}</button></div>`;
-    return head + `<div class="call-intel">${intel}</div><div class="pb-tabs">${tabs}</div><div class="call-scroll">${cards}</div>`;
+    return head + `<div class="call-intel">${intel}</div><div class="pb-tabs">${tabs}</div>${subRow ? `<div class="pb-sub">${subRow}</div>` : ''}<div class="call-scroll">${cards}</div>`;
   }
   function fatiguePanel() {
     const st = S.game, gs = st.gs, us = gs.userSide;
@@ -1396,7 +1411,25 @@ const UI = (() => {
   function renderPanel() {
     const st = S.game, el = document.getElementById('callpanel');
     if (!el) return;
-    if (st.mode === 'call') { el.innerHTML = callPanel(); el.classList.add('show'); const cs = el.querySelector('.call-scroll'); if (cs) cs.scrollLeft = 0; Live.setInset(el.offsetHeight * 0.92); }
+    if (st.mode === 'call') {
+      // keep every row where the player left it: the tab row and chip row never jump back to the start, and the play
+      // cards only rewind when a different list is showing
+      const at = sel => { const x = el.querySelector(sel); return x ? x.scrollLeft : 0; };
+      const tabsL = at('.pb-tabs'), subL = at('.pb-sub'), cardsL = at('.call-scroll');
+      el.innerHTML = callPanel(); el.classList.add('show');
+      const set = (sel, v) => { const x = el.querySelector(sel); if (x) x.scrollLeft = v; };
+      const listKey = `${st.need}|${st.pbTab}|${JSON.stringify(st.pbSub || {})}`, subKey = `${st.need}|${st.pbTab}`;
+      set('.pb-tabs', tabsL);
+      const sub = el.querySelector('.pb-sub');
+      if (sub) {
+        if (st.subKey === subKey) sub.scrollLeft = subL;
+        else { const c = sub.querySelector('.pb-chip.on'); if (c) sub.scrollLeft = Math.max(0, c.offsetLeft - sub.clientWidth / 2 + c.offsetWidth / 2); }
+      }
+      st.subKey = subKey;
+      set('.call-scroll', st.listKey === listKey ? cardsL : 0);
+      st.listKey = listKey;
+      Live.setInset(el.offsetHeight * 0.92);
+    }
     else { el.classList.remove('show'); Live.setInset(0); }
     Tutorial.check();
   }
@@ -1971,7 +2004,7 @@ const UI = (() => {
   A.gpanelMin = () => { S.game.panelMin = !S.game.panelMin; renderPanel(); };
   A.gpbTab = v => { const st = S.game; st.pbTab = v; renderPanel(); };
   A.gflip = () => { const st = S.game; st.flip = !st.flip; renderPanel(); };
-  A.gdefBy = () => { const st = S.game; st.defBy = st.defBy === 'form' ? 'type' : 'form'; st.pbTab = st.defBy === 'form' ? 'f:43' : 't:zone'; renderPanel(); };
+  A.gpbSub = v => { const st = S.game, [k, id] = v.split('|'); (st.pbSub = st.pbSub || {})[k] = id; renderPanel(); };
   A.gfourth = () => { G.settings.askFourth = !G.settings.askFourth; S.game.gs.askFourth = G.settings.askFourth; L.save(); const tg = document.querySelector('.sheet [data-a="gfourth"]'); if (tg) tg.classList.toggle('on', G.settings.askFourth); };
   A.gtab = v => { S.game.tab = v; pbpSheet(); };
   A.gpbp = () => pbpSheet();

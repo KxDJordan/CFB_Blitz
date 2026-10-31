@@ -787,6 +787,15 @@ body[data-theme="day"] .stk-t-silver { color: #475569; } body[data-theme="day"] 
 .pb-tabs::-webkit-scrollbar { display: none; }
 .pb-tab { flex: 0 0 auto; padding: 6px 11px; border-radius: 999px; font: 700 11px/1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); }
 .pb-tab.on { color: var(--on-accent); background: var(--accent); border-color: transparent; }
+/* second row of the call sheet: grouped chips (formation families / play types) */
+.pb-sub { position: relative; display: flex; align-items: center; gap: 5px; overflow-x: auto; padding: 0 12px 8px; margin-top: -2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.pb-sub::-webkit-scrollbar { display: none; }
+.pb-fam { flex: 0 0 auto; font: 700 9px/1 var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: #64748b; padding: 0 2px 0 6px; }
+.pb-fam:first-child { padding-left: 0; }
+.pb-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 9px; font: 600 12px/1 var(--f-body, inherit); color: #cbd5e1; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .1); }
+.pb-chip i { font-style: normal; font-size: 10px; font-weight: 700; color: #64748b; }
+.pb-chip.on { color: #0b1220; background: #e2e8f0; border-color: transparent; }
+.pb-chip.on i { color: #475569; }
 .pb-flip { flex-shrink: 0; padding: 7px 10px; border-radius: 10px; font: 700 11px/1 var(--f-display); letter-spacing: .06em; color: #cbd5e1; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); }
 .pb-flip.on { color: var(--on-accent); background: var(--accent); }
 .call-scroll .call-card.pb-card { flex: 0 0 164px; padding: 6px 6px 8px 8px; gap: 3px; }

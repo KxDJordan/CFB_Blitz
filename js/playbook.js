@@ -9,22 +9,25 @@
 
 const Playbook = (() => {
   const OL = { LT: [-3.4, -0.9], LG: [-1.7, -0.9], C: [0, -0.7], RG: [1.7, -0.9], RT: [3.4, -0.9] };
+  // fam groups formations on the call sheet (Shotgun / Pistol / Under Center); short is the chip label
   const FORMS = {
-    gun_doubles: { name: 'Shotgun Doubles', skill: { QB: [0, -5], RB: [1.5, -5.1], WR1: [-14, -0.8], WR3: [-8, -1.2], TE: [8, -1.2], WR2: [14, -0.8] } },
-    gun_trips: { name: 'Shotgun Trips', skill: { QB: [0, -5], RB: [-1.5, -5.1], WR1: [-14, -0.8], TE: [5.3, -1.0], WR3: [9.5, -1.2], WR2: [15, -0.8] } },
-    gun_bunch: { name: 'Shotgun Bunch', skill: { QB: [0, -5], RB: [-1.5, -5.1], WR1: [-14, -0.8], WR2: [9.2, -0.8], WR3: [10.8, -2.1], TE: [7.6, -2.1] } },
-    single: { name: 'Singleback Ace', skill: { QB: [0, -1.3], RB: [0, -6.6], WR1: [-14, -0.8], WR3: [-8, -1.2], TE: [5.3, -1.0], WR2: [14, -0.8] } },
-    pistol: { name: 'Pistol', skill: { QB: [0, -3.8], RB: [0, -6.9], WR1: [-14, -0.8], WR3: [-8.5, -1.2], TE: [5.3, -1.0], WR2: [14, -0.8] } },
-    empty: { name: 'Empty Trey', skill: { QB: [0, -5], RB: [-9, -1.2], WR1: [-15, -0.8], TE: [5.3, -1.0], WR3: [9.5, -1.2], WR2: [15, -0.8] } },
-    gun_wing: { name: 'Shotgun Wing', skill: { QB: [0, -5], RB: [-1.5, -5.1], WR1: [-14, -0.8], WR3: [-8.5, -1.2], TE: [4.6, -2.1], WR2: [14, -0.8] } },
-    single_tight: { name: 'Singleback Tight', skill: { QB: [0, -1.3], RB: [0, -6.6], WR1: [-14, -0.8], WR3: [-5.8, -1.6], TE: [5.3, -1.0], WR2: [12, -0.8] } },
-    iform: { name: 'I-Form Slot', skill: { QB: [0, -1.3], TE: [0, -4.3], RB: [0, -7.2], WR1: [-14, -0.8], WR3: [-8, -1.2], WR2: [14, -0.8] } },
-    heavy: { name: 'Heavy', skill: { QB: [0, -1.3], RB: [0, -6.6], WR3: [-5.2, -1.0], TE: [5.3, -1.0], WR1: [-10, -0.8], WR2: [10, -0.8] } },
+    gun_doubles: { name: 'Shotgun Doubles', fam: 'Shotgun', short: 'Doubles', skill: { QB: [0, -5], RB: [1.5, -5.1], WR1: [-14, -0.8], WR3: [-8, -1.2], TE: [8, -1.2], WR2: [14, -0.8] } },
+    gun_trips: { name: 'Shotgun Trips', fam: 'Shotgun', short: 'Trips', skill: { QB: [0, -5], RB: [-1.5, -5.1], WR1: [-14, -0.8], TE: [5.3, -1.0], WR3: [9.5, -1.2], WR2: [15, -0.8] } },
+    gun_spread: { name: 'Shotgun Spread', fam: 'Shotgun', short: 'Spread', skill: { QB: [0, -5], RB: [-1.5, -5.1], WR1: [-15, -0.8], WR3: [-8.5, -1.2], TE: [8.5, -1.2], WR2: [15, -0.8] } },
+    gun_bunch: { name: 'Shotgun Bunch', fam: 'Shotgun', short: 'Bunch', skill: { QB: [0, -5], RB: [-1.5, -5.1], WR1: [-14, -0.8], WR2: [9.2, -0.8], WR3: [10.8, -2.1], TE: [7.6, -2.1] } },
+    gun_wing: { name: 'Shotgun Wing', fam: 'Shotgun', short: 'Wing', skill: { QB: [0, -5], RB: [-1.5, -5.1], WR1: [-14, -0.8], WR3: [-8.5, -1.2], TE: [4.6, -2.1], WR2: [14, -0.8] } },
+    empty: { name: 'Empty Trey', fam: 'Shotgun', short: 'Empty', skill: { QB: [0, -5], RB: [-9, -1.2], WR1: [-15, -0.8], TE: [5.3, -1.0], WR3: [9.5, -1.2], WR2: [15, -0.8] } },
+    pistol: { name: 'Pistol', fam: 'Pistol', short: 'Pistol', skill: { QB: [0, -3.8], RB: [0, -6.9], WR1: [-14, -0.8], WR3: [-8.5, -1.2], TE: [5.3, -1.0], WR2: [14, -0.8] } },
+    pistol_trips: { name: 'Pistol Trips', fam: 'Pistol', short: 'P. Trips', skill: { QB: [0, -3.8], RB: [0, -6.9], WR1: [-14, -0.8], TE: [5.3, -1.0], WR3: [9.5, -1.2], WR2: [15, -0.8] } },
+    single: { name: 'Singleback Ace', fam: 'Under Center', short: 'Ace', skill: { QB: [0, -1.3], RB: [0, -6.6], WR1: [-14, -0.8], WR3: [-8, -1.2], TE: [5.3, -1.0], WR2: [14, -0.8] } },
+    single_tight: { name: 'Singleback Tight', fam: 'Under Center', short: 'Tight', skill: { QB: [0, -1.3], RB: [0, -6.6], WR1: [-14, -0.8], WR3: [-5.8, -1.6], TE: [5.3, -1.0], WR2: [12, -0.8] } },
+    iform: { name: 'I-Form Slot', fam: 'Under Center', short: 'I-Form', skill: { QB: [0, -1.3], TE: [0, -4.3], RB: [0, -7.2], WR1: [-14, -0.8], WR3: [-8, -1.2], WR2: [14, -0.8] } },
+    heavy: { name: 'Heavy', fam: 'Under Center', short: 'Heavy', skill: { QB: [0, -1.3], RB: [0, -6.6], WR3: [-5.2, -1.0], TE: [5.3, -1.0], WR1: [-10, -0.8], WR2: [10, -0.8] } },
   };
   // offensive playbooks: which formations a team carries
   const BOOKS = {
-    spread: { name: 'Spread', desc: 'Shotgun everything: spacing, tempo and the quick game.', forms: ['gun_doubles', 'gun_trips', 'gun_bunch', 'gun_wing', 'empty', 'pistol'] },
-    pro: { name: 'Pro Style', desc: 'Under center, play action and a downhill run game.', forms: ['single', 'single_tight', 'iform', 'heavy', 'pistol', 'gun_doubles'] },
+    spread: { name: 'Spread', desc: 'Shotgun everything: spacing, tempo, RPOs and the quick game.', forms: ['gun_doubles', 'gun_trips', 'gun_spread', 'gun_bunch', 'gun_wing', 'empty', 'pistol', 'pistol_trips'] },
+    pro: { name: 'Pro Style', desc: 'Under center, play action and a downhill run game.', forms: ['single', 'single_tight', 'iform', 'heavy', 'pistol', 'pistol_trips', 'gun_doubles'] },
     multiple: { name: 'Multiple', desc: 'The whole book: every formation.', forms: null },
   };
   const inBook = (p, book) => { const b = BOOKS[book]; return !b || !b.forms || b.forms.includes(p.form); };
@@ -44,6 +47,9 @@ const Playbook = (() => {
   // routes: slot → [kind, depth]; prot: slots that stay in to block; reads: progression order
   // run: { carrier, hole (x of the aiming point), scheme }
   const R = (id, name, form, cat, desc, run) => ({ id, name, form, kind: 'run', cat, desc, run });
+  // RPO: a run play where one receiver runs a quick route instead of blocking; at the mesh the QB reads the
+  // conflict defender and hands it off or pulls it and throws
+  const RPO = (id, name, form, desc, run, rpo, align) => ({ id, name, form, kind: 'run', cat: 'rpo', desc, run, rpo, align: align || null });
   const PS = (id, name, form, cat, desc, routes, reads, o = {}) => ({ id, name, form, kind: 'pass', cat, desc, routes, reads, prot: o.prot || [], drop: o.drop || 5, pa: !!o.pa, boot: !!o.boot, screen: o.screen || null, align: o.align || null });
   const OFF = [
     // Shotgun Doubles
@@ -107,6 +113,29 @@ const Playbook = (() => {
     R('hv_iso', 'Heavy Zone', 'heavy', 'inside', 'Downhill zone behind the extra tight end.', { carrier: 'RB', hole: -1.4, scheme: 'zone' }),
     R('hv_sneak', 'Heavy Sneak', 'heavy', 'inside', 'Wedge behind the center for the last yard.', { carrier: 'QB', hole: 0.4, scheme: 'sneak' }),
     PS('hv_paflat', 'PA TE Flat', 'heavy', 'pa', 'Sell the run at the goal line, the tight end leaks to the flat.', { TE: ['flat', 3], WR3: ['corner', 6], WR1: ['fade', 0], WR2: ['fade', 0], RB: ['block', 0] }, ['TE', 'WR3', 'WR1', 'WR2'], { prot: ['RB'], drop: 6, pa: true }),
+    PS('hv_boot', 'Goal Line Boot', 'heavy', 'pa', 'Fake the dive, QB boots out: the TE drags across, the slot sneaks to the flat.', { TE: ['drag', 4], WR3: ['flat', 2], WR1: ['corner', 6], WR2: ['post', 8], RB: ['block', 0] }, ['WR3', 'TE', 'WR1', 'WR2'], { prot: ['RB'], drop: 6, pa: true, boot: true }),
+    // RPOs
+    RPO('gd_rpobub', 'RPO Zone Bubble', 'gun_doubles', 'Inside zone — if the overhang crashes, flip it to the bubble.', { carrier: 'RB', hole: -1.8, scheme: 'zone' }, { slot: 'WR3', route: 'bubble', d: 0 }, { WR3: [-8.5, -2.6] }),
+    RPO('gt_rpoglance', 'RPO Glance', 'gun_trips', 'Zone to the boundary, the outside man runs a glance behind the backer.', { carrier: 'RB', hole: -1.8, scheme: 'zone' }, { slot: 'WR2', route: 'glance', d: 5 }),
+    RPO('gs_rposlant', 'RPO Slant', 'gun_spread', 'Zone read the backer: he fills, the slot slant is open behind him.', { carrier: 'RB', hole: 1.6, scheme: 'zone' }, { slot: 'WR3', route: 'slant', d: 0 }),
+    RPO('pi_rpostick', 'RPO Stick', 'pistol', 'Downhill zone from the pistol with a stick route on the backer.', { carrier: 'RB', hole: 1.4, scheme: 'zone' }, { slot: 'WR3', route: 'stick', d: 5 }),
+    RPO('pt_rpopop', 'RPO Pop Pass', 'pistol_trips', 'Power look — the tight end pops up the seam if the safety comes down.', { carrier: 'RB', hole: -2.8, scheme: 'power' }, { slot: 'TE', route: 'pop', d: 0 }),
+    // Shotgun Spread
+    R('gs_draw', 'Spread Draw', 'gun_spread', 'inside', 'Four wide empties the box — the back waits, then hits it.', { carrier: 'RB', hole: -0.6, scheme: 'draw' }),
+    R('gs_zone', 'Spread Zone', 'gun_spread', 'inside', 'Inside zone with four receivers spreading the box thin.', { carrier: 'RB', hole: 1.8, scheme: 'zone' }),
+    PS('gs_verts', 'Spread Verts', 'gun_spread', 'deep', 'Four verticals from a 2x2 — the seams split the safeties.', { WR1: ['go', 0], WR3: ['seam', 0], TE: ['seam', 0], WR2: ['go', 0], RB: ['check', 2] }, ['WR3', 'TE', 'WR1', 'WR2'], { drop: 7 }),
+    PS('gs_shallow', 'Shallow Cross', 'gun_spread', 'quick', 'A shallow crosser under a dig, sit routes outside.', { WR3: ['drag', 2.5], TE: ['dig', 11], WR1: ['hitch', 6], WR2: ['curl', 10], RB: ['flat', 2] }, ['WR3', 'TE', 'RB', 'WR1'], { drop: 5 }),
+    PS('gs_switch', 'Switch Verticals', 'gun_spread', 'deep', 'The slot and outside man cross on the release — a wheel and a seam.', { WR1: ['seam', 0], WR3: ['wheel', 0], TE: ['corner', 12], WR2: ['go', 0], RB: ['check', 2] }, ['WR3', 'TE', 'WR1', 'WR2'], { drop: 7 }),
+    // Pistol Trips
+    R('pt_power', 'Pistol Power', 'pistol_trips', 'inside', 'Downhill power away from the trips — the guard pulls through.', { carrier: 'RB', hole: -2.8, scheme: 'power' }),
+    R('pt_stretch', 'Trips Stretch', 'pistol_trips', 'outside', 'Outside zone toward the trips side, cut it up or bounce it.', { carrier: 'RB', hole: 7, scheme: 'stretch' }),
+    PS('pt_smash', 'Trips Smash', 'pistol_trips', 'quick', 'Hitch-corner to the trips with a dig from the single side.', { WR2: ['hitch', 5], WR3: ['corner', 11], TE: ['flat', 3], WR1: ['dig', 12], RB: ['block', 0] }, ['WR3', 'TE', 'WR2', 'WR1'], { prot: ['RB'], drop: 5 }),
+    PS('pt_paflood', 'PA Trips Flood', 'pistol_trips', 'pa', 'Fake the power, flood the trips side: go, out, flat.', { WR2: ['go', 0], WR3: ['out', 12], TE: ['flat', 4], WR1: ['post', 14], RB: ['block', 0] }, ['WR3', 'TE', 'WR1', 'WR2'], { prot: ['RB'], drop: 7, pa: true }),
+    // more from the base sets
+    PS('sb_slants', 'Ace Slants', 'single', 'quick', 'Three-step slants with the tight end sitting over the middle.', { WR1: ['slant', 0], WR3: ['slant', 0], TE: ['stick', 5], WR2: ['slant', 0], RB: ['flat', 2] }, ['WR3', 'WR1', 'TE', 'WR2', 'RB'], { drop: 3 }),
+    R('if_power', 'I-Form Power', 'iform', 'inside', 'The fullback kicks out the end, the guard pulls up to the backer.', { carrier: 'RB', hole: 2.8, scheme: 'power' }),
+    PS('gb_spacing', 'Bunch Spacing', 'gun_bunch', 'quick', 'Five receivers settle in a line of windows underneath.', { WR2: ['hitch', 6], WR3: ['snag', 5], TE: ['flat', 2], WR1: ['curl', 8], RB: ['swing', 0] }, ['WR3', 'TE', 'WR2', 'RB', 'WR1'], { drop: 3 }),
+    PS('em_stick', 'Empty Stick', 'empty', 'quick', 'Stick-flat on both sides — the ball is out on the third step.', { WR1: ['stick', 5], RB: ['flat', 2], TE: ['stick', 5], WR3: ['flat', 2], WR2: ['go', 0] }, ['TE', 'WR3', 'WR1', 'RB'], { drop: 3 }),
   ];
 
   // ── defense ──
@@ -224,6 +253,9 @@ const Playbook = (() => {
       case 'wheel': return [[X(o * 3.5), 0.5], [X(o * 6.5), 4], [X(o * 7.5), 30]];
       case 'fade': return [[X(o * 1.5), 6], [X(o * 3.5), 32]];
       case 'fadein': return [[X(inn * 1.4), 6], [X(inn * 2.4), 32]];
+      case 'cross': return [[X(inn * 1), d * 0.45], [X(inn * 6), d], [X(inn * 24), d + 1.5]];
+      case 'glance': return [[X(0), Math.max(d, 4)], [X(inn * 3), Math.max(d, 4) + 6], [X(inn * 6), Math.max(d, 4) + 14]];
+      case 'pop': return [[X(inn * 0.4), 3], [X(inn * 0.8), 10], [X(inn * 1.2), 22]];
       case 'swing': return [[X(o * 3), -1.6], [X(o * 7), -0.6], [X(o * 10), 1]];
       case 'angle': return [[X(o * 2.5), 1.5], [X(inn * 2), 5], [X(inn * 6), 6]];
       case 'whip': return [[X(inn * 2.5), d], [X(o * 3), d], [X(o * 8), d]];
@@ -285,6 +317,8 @@ const Playbook = (() => {
       }
       for (const k of ['WR1', 'WR2', 'WR3', 'TE']) {
         const [x, y] = F[k];
+        // the RPO read: his route is the throw option (dashed until the QB pulls it)
+        if (play.rpo && play.rpo.slot === k) { g += line([[x, y], ...routePts(play.rpo.route, play.rpo.d, x, inward(x, k))], RC[k], 1.8, '2.2 1.4'); continue; }
         if (k === 'TE' && sc === 'iso') g += line([[x, y], [h, -0.2], [h + play_ * 0.3, 2.6]], '#cbd5e1', 1.4);
         else g += blockT(x, y, (x < 0 ? 0.6 : -0.6), 2.2);
       }
@@ -390,5 +424,8 @@ const Playbook = (() => {
     return out;
   }
 
-  return { FORMS, BOOKS, inBook, OFF, DEF, DFORMS, DFORM_ORDER, ZONES, ZKIND, OL, formPos, playPos, routePts, inward, hole, offById, defById, pickOff, pickDef, defType, svgOff, svgDef, defAlign };
+  // call-sheet groups: formations in display order with their family headers
+  const OFF_FAMS = ['Shotgun', 'Pistol', 'Under Center'];
+  const DEF_FAMS = { '4-Man Front': ['43', 'nickel', 'dime'], '3-Man Front': ['34', '335'], 'Short Yardage': ['goal'] };
+  return { FORMS, BOOKS, OFF_FAMS, DEF_FAMS, inBook, OFF, DEF, DFORMS, DFORM_ORDER, ZONES, ZKIND, OL, formPos, playPos, routePts, inward, hole, offById, defById, pickOff, pickDef, defType, svgOff, svgDef, defAlign };
 })();

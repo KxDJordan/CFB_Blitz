@@ -16,6 +16,7 @@ const Engine = (() => {
     { id: 'pa', label: 'Play Action', kind: 'pass', desc: 'Sell the run, hit it behind the LBs.' },
     { id: 'deep', label: 'Deep Shot', kind: 'pass', desc: 'Max protect. Take the top off.' },
     { id: 'screen', label: 'RB Screen', kind: 'pass', desc: 'Let them rush, dump it off.' },
+    { id: 'rpo', label: 'RPO', kind: 'run', desc: 'Run or throw — the QB reads the defender at the mesh.' },
   ];
   const DEF_CALLS = [
     { id: 'base', label: 'Base 4-3', desc: 'Sound gap control, safety help.' },
@@ -69,6 +70,68 @@ const Engine = (() => {
         used.add(p.id);
         out[slot] = p;
       }
+    }
+    return out;
+  }
+  // ── smart alignment: the defensive coordinator puts each man where his archetype fits the call ──
+  // Players only trade slots with teammates of the same position who are already on the field: on a Mike blitz the
+  // edge rusher or run-stopping backer takes the blitzing spot and the coverage backer slides over to take the back
+  // in man; on the edges the speed rushers line up at end and the run stuffers inside; the center fielder plays deep.
+  const JOB_FIT = {
+    lb_edge: { blitz: 3, edge: 3, box: 1, under: -1, deep: -2, manBack: -1.5, manSlot: -2, interior: 0.5 },
+    lb_thumper: { blitz: 1.5, box: 3, edge: 1, interior: 1, under: 0, deep: -1.5, manBack: -1, manSlot: -1.5 },
+    lb_coverage: { blitz: -1.5, box: -1, edge: -2, under: 2.5, deep: 1, manBack: 3, manSlot: 1.5 },
+    dl_rush: { edge: 2.5, interior: -0.5, under: -1 },
+    dl_power: { edge: 0.5, interior: 1.5 },
+    dl_run: { edge: -1, interior: 2, box: 1 },
+    cb_lockdown: { manWR: 3, manSlot: 1, deep: 1.5, under: 0, blitz: -1.5 },
+    cb_zone: { deep: 2.5, under: 2, manWR: 0.5, manSlot: 0.5, blitz: -1 },
+    cb_slot: { manSlot: 3, blitz: 2.5, under: 1, box: 1, manWR: -0.5, deep: -1 },
+    s_center: { deep: 3, under: 0, manSlot: 0.5, manBack: 0, blitz: -2, box: -2 },
+    s_box: { box: 3, blitz: 2.5, under: 1.5, manBack: 2, manSlot: 1, deep: -1.5 },
+  };
+  // the job a slot has on this call
+  function jobOf(dplay, k) {
+    const a = dplay && dplay.a[k];
+    if (!a) return null;
+    if (a === 'rush') { const f = (Playbook.DFORMS[dplay.form] || Playbook.DFORMS['43']).front[k]; return k === 'DE1' || k === 'DE2' || (f && Math.abs(f[0]) > 4.2) ? 'edge' : 'interior'; }
+    if (a[0] === 'blitz') return 'blitz';
+    if (a[0] === 'box') return 'box';
+    if (a[0] === 'man') return a[1] === 'WR3' ? 'manSlot' : a[1] === 'TE' || a[1] === 'RB' ? 'manBack' : 'manWR';
+    return Playbook.ZKIND(a[1]) === 'deep' ? 'deep' : 'under';
+  }
+  // archetype fit plus the badges that pay off in that job
+  function jobFit(p, job) {
+    if (!p || p.id < 0 || !job) return 0;
+    const r = DATA.roleOf(p), t = id => { const x = tierOf(p, id); return x < 0 ? 0 : 0.8 + x * 0.4; };
+    let v = r && JOB_FIT[r.id] ? JOB_FIT[r.id][job] || 0 : 0;
+    if (job === 'blitz') v += t('blitzer') + t('getoff') * 0.5;
+    else if (job === 'edge') v += t('bender') + t('swim') * 0.6 + t('getoff') * 0.5;
+    else if (job === 'interior') v += t('stuffer') * 0.6 + t('bullrush') * 0.6 + t('eater') * 0.6;
+    else if (job === 'box') v += t('thumper') + t('stuffer') * 0.6;
+    else if (job === 'manWR') v += t('lockdown') + t('press') * 0.6;
+    else if (job === 'manSlot') v += t('press') + t('lockdown') * 0.6;
+    else if (job === 'manBack') v += t('covlb');
+    else if (job === 'deep') v += t('centerfield') + t('ballhawk') * 0.5;
+    else if (job === 'under') v += t('zonehawk') + t('robber') * 0.6;
+    return v;
+  }
+  function perms(a) { if (a.length <= 1) return [a]; const out = []; a.forEach((x, i) => { for (const r of perms(a.slice(0, i).concat(a.slice(i + 1)))) out.push([x, ...r]); }); return out; }
+  const PERMS = {};
+  const permsOf = n => PERMS[n] || (PERMS[n] = perms([...Array(n).keys()]));
+  function arrange(D, dplay) {
+    if (!dplay) return D;
+    const groups = {};
+    for (const k in D) (groups[D[k].pos] = groups[D[k].pos] || []).push(k);
+    const out = { ...D };
+    for (const keys of Object.values(groups)) {
+      if (keys.length < 2) continue;
+      const jobs = keys.map(k => jobOf(dplay, k)), men = keys.map(k => D[k]);
+      // a small bonus for staying put, so nobody shuffles around unless the fit is clearly better
+      const fit = men.map((p, i) => jobs.map((j, s) => jobFit(p, j) + (i === s ? 0.4 : 0)));
+      let best = null, bv = -1e9;
+      for (const pm of permsOf(keys.length)) { let v = 0; pm.forEach((pi, s) => { v += fit[pi][s]; }); if (v > bv) { bv = v; best = pm; } }
+      best.forEach((pi, s) => { out[keys[s]] = men[pi]; });
     }
     return out;
   }
@@ -134,18 +197,18 @@ const Engine = (() => {
     if (gs.qtr >= 4 && diff >= 10) p.def = 'cover';
   }
   const PLAN_W = {
-    ground: { inside: 0.34, outside: 0.22, quick: 0.14, pa: 0.14, deep: 0.08, screen: 0.08 },
-    balanced: { inside: 0.25, outside: 0.16, quick: 0.21, pa: 0.14, deep: 0.13, screen: 0.11 },
-    air: { inside: 0.17, outside: 0.11, quick: 0.27, pa: 0.15, deep: 0.16, screen: 0.14 },
+    ground: { inside: 0.34, outside: 0.22, quick: 0.14, pa: 0.14, deep: 0.08, screen: 0.08, rpo: 0.07 },
+    balanced: { inside: 0.25, outside: 0.16, quick: 0.21, pa: 0.14, deep: 0.13, screen: 0.11, rpo: 0.09 },
+    air: { inside: 0.17, outside: 0.11, quick: 0.27, pa: 0.15, deep: 0.16, screen: 0.14, rpo: 0.08 },
   };
   function late(gs) { return !gs.ot && gs.qtr >= 4 && gs.clock < 300; }
   function aiOffCall(gs, side = gs.poss) {
     const w = { ...PLAN_W[gs.plan[side].off] };
     const diff = gs.score[side] - gs.score[1 - side];
     const mul = (k, m) => { w[k] *= m; };
-    if (gs.down >= 3 && gs.togo >= 7) { mul('inside', 0.25); mul('outside', 0.35); mul('quick', 1.4); mul('deep', 1.6); mul('screen', 1.4); mul('pa', 0.6); }
+    if (gs.down >= 3 && gs.togo >= 7) { mul('inside', 0.25); mul('outside', 0.35); mul('quick', 1.4); mul('deep', 1.6); mul('screen', 1.4); mul('pa', 0.6); mul('rpo', 0.4); }
     else if (gs.togo <= 2) { mul('inside', 2.2); mul('outside', 1.2); mul('deep', 0.5); mul('screen', 0.4); mul('pa', 1.2); }
-    if (late(gs) && diff < 0) { mul('quick', 1.6); mul('deep', 1.7); mul('inside', 0.4); mul('outside', 0.4); }
+    if (late(gs) && diff < 0) { mul('quick', 1.6); mul('deep', 1.7); mul('inside', 0.4); mul('outside', 0.4); mul('rpo', 0.6); }
     if (late(gs) && diff > 0) { mul('inside', 1.8); mul('outside', 1.5); mul('deep', 0.4); }
     if (!gs.ot && gs.qtr === 2 && gs.clock < 120) { mul('quick', 1.5); mul('deep', 1.4); mul('inside', 0.5); }
     const t = gs.tend[1 - side];
@@ -181,8 +244,10 @@ const Engine = (() => {
     const deep = U.avg(['WR1', 'WR2'].map(k => A(gs, side, O[k], 'spd'))) - U.avg(['CB1', 'CB2', 'S2'].map(k => A(gs, d, D[k], 'spd'))) + (pb - pr) * 0.5 + (wxPass(gs, 20) - gs.wxm.pass) * 12 + gs.wxm.pass * 6;
     const screen = elusR(gs, side, O.RB) - U.avg(['LB1', 'MLB', 'LB2'].map(k => tackleR(gs, d, D[k]))) + (pr - pb) * 0.4;
     const pa = quick * 0.6 + inside * 0.4 + (gs.tend[side].run > gs.tend[side].pass ? 2 : 0);
+    // RPO: takes the better of the run and the quick throw — if the QB reads it right
+    const rpo = Math.max(inside, quick) - 1.5 + (rpoOdds(A(gs, side, O.QB, 'awr'), tierOf(O.QB, 'rpo')) - 0.75) * 10;
     const r = x => Math.round(x * 10) / 10;
-    return { inside: r(inside), outside: r(outside), quick: r(quick), pa: r(pa), deep: r(deep), screen: r(screen) };
+    return { inside: r(inside), outside: r(outside), quick: r(quick), pa: r(pa), deep: r(deep), screen: r(screen), rpo: r(rpo) };
   }
 
   // ── creation ──
@@ -269,6 +334,9 @@ const Engine = (() => {
   const swimOdds = (spd, mirrored) => U.clamp((spd - 55) / 30, 0.2, 1) * (mirrored ? 0.5 : 1) * 0.4;
   // Truck Stick lands more for stronger backs
   const truckOdds = str => U.clamp((str - 55) / 30, 0.2, 1) * 0.35;
+  // RPO: chance the QB makes the right give-or-throw read — Awareness 50 is a coin flip, 90 almost always right;
+  // RPO Maestro adds 6 / 9 / 12 / 16 points (Bronze-Elite)
+  const rpoOdds = (awr, tier = -1) => Math.min(0.99, U.clamp(0.5 + (awr - 50) * 0.0115, 0.45, 0.96) + (tier >= 0 ? [0.06, 0.09, 0.12, 0.16][tier] : 0));
   const clutch = gs => (gs.ot || gs.qtr >= 4) && Math.abs(gs.score[0] - gs.score[1]) <= 8;
   const redZone = gs => gs.ball >= 80;
   const shortYd = gs => (gs.down >= 3 && gs.togo <= 2) || gs.ball >= 95;
@@ -526,13 +594,13 @@ const Engine = (() => {
 
   // ── RUN ──
   function resolveRun(gs, oc, dc) {
-    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = slots(gs, d, false, gs._dform);
+    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = arrange(slots(gs, d, false, gs._dform), gs._dplay);
     const side = oc === 'outside' ? (U.chance(0.5) ? 'L' : 'R') : 'M';
     const det = { type: 'run', call: oc, dcall: dc, o, los: gs.ball, O: idsOf(O), D: idsOf(D), side, carrier: 'RB', blocks: [] };
     const rb2 = who(gs, o, 'RB', 1);
     const rb = U.chance(0.1) && oc === 'inside' ? O.QB : rb2 && rb2 !== O.RB && rb2.ovr >= O.RB.ovr - 15 && U.chance(0.32) ? rb2 : O.RB;
     det.carrier = slotOf(O, rb);
-    const mod = { runstop: -4, blitz: oc === 'inside' ? -1 : 2, cover: 4, base: 0 }[dc] + (oc === 'outside' && dc === 'runstop' ? -2 : 0);
+    const mod = { runstop: -4, blitz: oc === 'inside' ? -1 : 2, cover: 4, base: 0 }[dc] + (oc === 'outside' && dc === 'runstop' ? -2 : 0) + (gs._rpo ? 2 : 0); // a right RPO read gives the back a soft box
     const pairs = side === 'M' ? [['LG', 'DT1'], ['RG', 'DT2'], ['C', dc === 'runstop' ? 'S1' : dc === 'blitz' ? 'LB1' : 'MLB']]
       : side === 'L' ? [['LT', 'DE1'], ['LG', 'LB1'], ['WR3', 'CB1']] : [['RT', 'DE2'], ['TE', 'LB2'], ['WR2', 'CB2']];
     let sum = 0, tfl = null;
@@ -628,7 +696,7 @@ const Engine = (() => {
     screen: [['RB', 'screen', -2, 1.3]],
   };
   function resolvePass(gs, oc, dc) {
-    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = slots(gs, d, false, gs._dform);
+    const o = gs.poss, d = 1 - o, O = slots(gs, o, true), D = arrange(slots(gs, d, false, gs._dform), gs._dplay);
     const det = { type: 'pass', call: oc, dcall: dc, o, los: gs.ball, O: idsOf(O), D: idsOf(D), rush: [], routes: [] };
     const qb = O.QB, qs = st(gs, qb, o);
     // protection
@@ -652,7 +720,9 @@ const Engine = (() => {
     });
     let pressT = 4.2, presser = null;
     for (const x of rushRes) {
-      x.t = x.b === null ? U.clamp(1.9 - (A(gs, d, D[x.r], 'spd') - 70) * 0.01 + U.rand(0, 0.3), 1.4, 2.4) : x.m > 7 ? U.clamp(3.0 - (x.m - 7) * 0.06, 1.5, 3.0) : x.m > 0 ? 3.7 : 99;
+      // an unblocked Blitz Specialist who crept up and jumped the snap gets home sooner
+      const bzT = x.b === null && dc === 'blitz' ? tierOf(D[x.r], 'blitzer') : -1;
+      x.t = x.b === null ? U.clamp(1.9 - (A(gs, d, D[x.r], 'spd') - 70) * 0.01 + U.rand(0, 0.3) - (bzT >= 0 ? 0.15 + bzT * 0.05 : 0), 1.2, 2.4) : x.m > 7 ? U.clamp(3.0 - (x.m - 7) * 0.06, 1.5, 3.0) : x.m > 0 ? 3.7 : 99;
       x.win = x.t < 99;
       if (x.t < pressT) { pressT = x.t; presser = x.r; }
     }
@@ -673,10 +743,13 @@ const Engine = (() => {
         if (depth >= 15) sep += { base: -3, cover: -5, blitz: 2, runstop: 3 }[dc];
         else if (depth < 10) sep += { base: 0, cover: 2.5, blitz: 0, runstop: 1 }[dc];
         if (oc === 'pa') { if (dc !== 'cover') sep += 3; sep += sm(gs, det, qb, 'playaction') * 7.5; }
+        if (gs._rpo && depth < 12) sep += 1.5; // the conflict defender bit on the run
         const cd = D[dk];
-        sep += soft(sm(gs, det, rec, 'routetech', depth < 15) + sm(gs, det, rec, 'burner', depth >= 15) + sm(gs, det, rec, 'redzone', redZone(gs)) + sm(gs, det, rec, 'release', dc !== 'cover' && depth < 15), 1);
-        sep -= soft(sm(gs, det, cd, 'lockdown', dc !== 'cover') + sm(gs, det, cd, 'zonehawk', dc === 'cover') + sm(gs, det, cd, 'centerfield', depth >= 15)
-          + sm(gs, det, cd, 'covlb', rec.pos === 'TE' || rec.pos === 'RB') + sm(gs, det, cd, 'press', dc !== 'cover' && depth < 15) + sm(gs, det, cd, 'robber', depth < 12) + sm(gs, det, cd, 'recovery', depth >= 15), 1.1);
+        // man or zone comes from this defender's actual assignment on the call (a Dime Man is man even though it's a coverage call)
+        const asg = gs._dplay && gs._dplay.a[dk], isMan = asg && asg !== 'rush' && (asg[0] === 'man' || asg[0] === 'zone') ? asg[0] === 'man' : dc !== 'cover';
+        sep += soft(sm(gs, det, rec, 'routetech', depth < 15) + sm(gs, det, rec, 'burner', depth >= 15) + sm(gs, det, rec, 'redzone', redZone(gs)) + sm(gs, det, rec, 'release', isMan && depth < 15), 1);
+        sep -= soft(sm(gs, det, cd, 'lockdown', isMan) + sm(gs, det, cd, 'zonehawk', !isMan) + sm(gs, det, cd, 'centerfield', depth >= 15)
+          + sm(gs, det, cd, 'covlb', rec.pos === 'TE' || rec.pos === 'RB') + sm(gs, det, cd, 'press', isMan && depth < 15) + sm(gs, det, cd, 'robber', depth < 12) + sm(gs, det, cd, 'recovery', depth >= 15), 1.1);
       }
       return { slot, kind, depth, ready: ready + U.rand(-0.1, 0.1), def: dk, sep: Math.round(sep * 10) / 10 };
     });
@@ -743,7 +816,8 @@ const Engine = (() => {
     const recStk = sm(gs, det, rec0, 'gluehands', target.sep < 0) + sm(gs, det, rec0, 'redzone', redZone(gs)) * 0.2
       + sm(gs, det, rec0, 'deeptrack', dpt >= 20) + sm(gs, det, rec0, 'chainmover', gs.down === 3) + sm(gs, det, rec0, 'toetap', ['out', 'corner', 'go'].includes(target.kind));
     const pC = sig(0.1 + target.sep * 0.15 + gap(acc - 70) * 0.03 - Math.max(0, dpt) * 0.04 - (pressured ? 0.55 : 0) + (oc === 'screen' ? 1.2 : 0) + wxPass(gs, dpt) + soft(qbStk + recStk, 0.32));
-    const hawk = (cov0 && target.sep < 1 && sp(gs, det, cov0, 'ballhawk', true, 0.5) ? 1.1 : 0) + (cov0 && dpt < 12 ? sm(gs, det, cov0, 'robber') * 0.8 : 0);
+    // Ballhawk fires 13-40% (Bronze-Elite) for a big swing; Robber's always-on edge on short throws tops out a little below it
+    const hawk = (cov0 && target.sep < 1 && sp(gs, det, cov0, 'ballhawk', true, 0.5333) ? 1.28 : 0) + (cov0 && dpt < 12 ? sm(gs, det, cov0, 'robber') * 0.57 : 0);
     const pI = sig(-4.4 - target.sep * 0.2 - gap(acc - 70) * 0.03 + dpt * 0.025 + (pressured ? 0.5 : 0) + gs.wxm.int + hawk);
     // Moss'd: a contested deep ball the receiver simply goes up and takes
     const mossd = dpt >= 15 && target.sep < 2 && sp(gs, det, O[target.slot], 'mossd', true, 0.35);
@@ -915,7 +989,7 @@ const Engine = (() => {
     const td = gs.tend[d];
     if (dc === 'blitz') td.blitz++;
     td.lastDef = dc;
-    const O = slots(gs, o, true), D = slots(gs, d, false, dplay.form);
+    const O = slots(gs, o, true), D = arrange(slots(gs, d, false, dplay.form), dplay);
     const det = { type: 'snap', live: true, kind: play.kind, call: cat, dcall: dc, play: play.id, dplay: dplay.id, flip, o, los: gs.ball, togo: gs.togo, O: idsOf(O), D: idsOf(D), down: gs.lastSit };
     gs.lastPlay = det;
     return det;
@@ -958,7 +1032,7 @@ const Engine = (() => {
     if (!det || !det.live || gs.over) return;
     if (det.type === 'kickoff') return commitKick(gs, det, res);
     if (det.type === 'punt') return commitPunt(gs, det, res);
-    if (!res) { const dp0 = Playbook.defById(det.dplay); gs._dform = dp0 ? dp0.form : null; const fb = det.kind === 'run' ? resolveRun(gs, det.call, det.dcall) : resolvePass(gs, det.call, det.dcall); Object.assign(det, fb, { type: 'snap', live: true }); gs.wpH.push(winProb(gs)); return; }
+    if (!res) { const dp0 = Playbook.defById(det.dplay); gs._dform = dp0 ? dp0.form : null; gs._dplay = dp0 || null; gs._rpo = 0; const fb = det.kind === 'run' ? resolveRun(gs, det.call === 'rpo' ? 'inside' : det.call, det.dcall) : resolvePass(gs, det.call, det.dcall); Object.assign(det, fb, { type: 'snap', live: true }); gs.wpH.push(winProb(gs)); return; }
     const o = gs.poss, d = 1 - o;
     const P = id => (id != null && id >= 0 && G.players[id]) || GHOST('WR');
     const O = {}, Dd = {};
@@ -977,6 +1051,8 @@ const Engine = (() => {
     fatigue(gs, O, Dd, fatX);
     // fumble lost on a run/catch/sack: the defense takes over at the spot
     const lost = res.fumble && res.fumble.lost;
+    // RPO: which way the QB went, and whether it was the right read
+    const rpoTxt = res.rpo ? ` RPO: .` : '';
     if (res.outcome === 'int') {
       const pk = dP(res.picker), rec = oP(res.target);
       qs.pa++; qs.pint++; st(gs, pk, d).int++; gs.ts[o].to++; gs.ts[o].plays++;
@@ -1023,7 +1099,7 @@ const Engine = (() => {
       const text = res.outcome === 'throwaway' ? `${nm(qb)} is flushed and throws it away.`
         : pbu ? `${nm(qb)} throws for ${nm(rec)} — broken up by ${nm(pbu)}!${stkNote(det, false)}`
           : res.drop ? `${nm(qb)} hits ${nm(rec)} in the hands... dropped.` : `${nm(qb)}${res.pressured ? ' under pressure,' : ''} throws for ${nm(rec)}... incomplete.`;
-      gain(gs, 0, text, { kind: 'pass', inc: true });
+      gain(gs, 0, text + rpoTxt, { kind: 'pass', inc: true });
       gs.wpH.push(winProb(gs));
       return;
     }
@@ -1065,7 +1141,7 @@ const Engine = (() => {
           : y === 0 ? `${nm(car)} is stuffed at the line${tkTxt}.${fumNote}` : `${nm(car)} is dropped for a loss of ${-y}${tkTxt}.${fumNote}`;
       text += stkNote(det, y >= 4);
     }
-    gain(gs, y, text, {
+    gain(gs, y, text + rpoTxt, {
       kind: isPass ? 'pass' : 'run', oob: res.oob,
       onYds: v => { if (isPass) { qs.py += v; cs.rcy += v; } else cs.ry += v; },
       onTD: () => { if (isPass) { qs.ptd++; cs.rctd++; } else cs.rtd++; },
@@ -1158,7 +1234,15 @@ const Engine = (() => {
     const dc = userDef ? input.def : aiDefCall(gs);
     // the personnel on the field comes from an actual call in that family (sim games included)
     const dplay = (userDef && Playbook.defById(defId)) || Playbook.pickDef(dc, gs);
-    gs._dform = dplay.form;
+    gs._dform = dplay.form; gs._dplay = dplay;
+    // RPO: the QB reads the defense — a loaded box or a blitz says throw, a light box says give
+    gs._rpo = 0;
+    if (oc === 'rpo') {
+      const qb = who(gs, o, 'QB') || GHOST('QB'), throwRight = dc === 'runstop' || dc === 'blitz' || (dc === 'base' && U.chance(0.5));
+      const right = U.chance(rpoOdds(A(gs, o, qb, 'awr'), tierOf(qb, 'rpo')));
+      if (right) { gs._rpo = 1; sm(gs, null, qb, 'rpo'); }
+      oc = (right ? throwRight : !throwRight) ? 'quick' : 'inside';
+    }
     gs.lastSit = `${downTxt(gs)} at ${spot(gs)}`;
     const kind = OFF_CALLS.find(c => c.id === oc).kind;
     const t = gs.tend[o];
@@ -1196,6 +1280,6 @@ const Engine = (() => {
   return {
     create, step, prepare, commit, ratings, simToEnd, winProb, preWinProb, fourthInfo, needsCall, suggestOff, aiDefCall, callEdges, canKneel,
     spot, downTxt, slots, stam, OFF_CALLS, DEF_CALLS,
-    stk: { sm, sp, tierOf, clutch, redZone, shortYd, wxPass, swimOdds, truckOdds, tbChance },
+    stk: { sm, sp, tierOf, clutch, redZone, shortYd, wxPass, swimOdds, truckOdds, rpoOdds, tbChance },
   };
 })();

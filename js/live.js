@@ -492,9 +492,12 @@ const Live = (() => {
     const rp = P(c.pid), rb = rp && rp.pos === 'RB';
     const offS = (F.kind === 'run' && beyond ? stkM(c, 'wrecking', rb) : 0) + (F.caught ? stkM(c, 'yac') : 0) + (F.kind === 'run' && Engine.stk.shortYd(gs) ? stkM(c, 'hammer', rb) : 0)
       + stkM(c, 'scramble', c === F.qb && F.mode === 'scramble') + stkM(c, 'screenpro', !!(F.play && F.play.screen) && F.caught);
-    const defS = stkM(d, 'suretackle') + stkM(d, 'thumper', F.kind === 'run' && (d.pos === 'LB' || d.pos === 'S')) + stkM(d, 'sideline', F.kind === 'run' && Math.abs(c.x - CX) > 8)
+    const defS = stkM(d, 'thumper', F.kind === 'run' && (d.pos === 'LB' || d.pos === 'S')) + stkM(d, 'sideline', F.kind === 'run' && Math.abs(c.x - CX) > 8)
       + stkM(d, 'sackfinish', F.kind === 'pass');
-    z += soft(offS, 3) * 0.14 - soft(defS, 3) * 0.14;
+    // runner badges make him harder to bring down, tackler badges make the tackle stick; Sure Tackler has its own scale:
+    // an even tackle is missed ~15% of the time, ~11% with Bronze, ~10% Silver, ~9% Gold, ~8% Elite
+    const sure = stkM(d, 'suretackle'), sureZ = sure > 0 ? 0.3 + (sure / DATA.STICKERS.suretackle.base - 1) * 0.177 : 0;
+    z += -soft(offS, 3) * 0.14 + soft(defS, 3) * 0.14 + sureZ;
     // juke box: the first man at the second level grabs air
     if (beyond && !F.juked && (F.kind === 'run' || F.caught || F.mode === 'scramble')) { F.juked = true; if (stkP(c, 'jukebox', true, 0.6)) z = -9; }
     if (sacking && stkP(c, 'escape', true, 0.5)) z = -9;
@@ -905,7 +908,20 @@ const Live = (() => {
     S.focus = () => [CX, S.los + 4];
     breakHuddle(det.o, () => {
       pop(S.ag.oQB.x, S.ag.oQB.y, 'SET...', '#e2e8f0', { life: 0.6 });
-      at(S.t + 0.5, () => { S.snapT = S.t; pop(S.ag.oQB.x, S.ag.oQB.y, 'HUT!', '#ffffff', { life: 0.7 }); start(play, dplay); });
+      // Blitz Specialist: on the cadence he creeps up to the line toward his gap, timed to be there (onside) at the snap
+      let creep = 0;
+      for (const [k, asg] of Object.entries(dplay.a)) {
+        const a = S.ag['d' + k];
+        if (!a || asg[0] !== 'blitz' || !hasBadge(a, 'blitzer')) continue;
+        const tx = clampX(a.x * 0.5 + (CX + asg[1]) * 0.5), ty = det.los + 0.9;
+        a.brain = b => { seek(b, tx, ty, 1, 0.3); b.faceT = -Math.PI / 2; };
+        creep = Math.max(creep, hyp(tx - a.x, ty - a.y));
+        const t = Engine.stk.tierOf(P(a.pid), 'blitzer');
+        auraFx(a, DATA.STICKER_TIERS[t].color, DATA.STICKERS.blitzer.glyph);
+        stkM(a, 'blitzer');
+      }
+      // a deep creeper (a safety walking down) gets a slightly longer cadence to arrive
+      at(S.t + U.clamp(creep / 5.5, 0.5, 1.1), () => { S.snapT = S.t; pop(S.ag.oQB.x, S.ag.oQB.y, 'HUT!', '#ffffff', { life: 0.7 }); start(play, dplay); });
     });
   }
   // Out of the huddle and up to the marks; set() fires once all 22 are on their spots and still.
@@ -962,7 +978,7 @@ const Live = (() => {
       // second-level players key the line during their read step; deep and man-cover DBs read late
       const lb = a.pos === 'LB';
       const jd = j === 'rush' ? 0.05 : j === 'blitz' ? 0.05 : j === 'box' ? 0.15 : j === 'man' ? (lb ? 0.4 : 0.5) : a.job && a.job.kd === 'deep' ? 0.45 : 0.3;
-      a.readT = Math.min(a.readT, S.t + base + jd + Math.max(0, (85 - a.R.awr)) * 0.008 + U.rand(0, 0.12) + (extra[a.key] || 0) - stkQ(a, 'getoff') * 0.06);
+      a.readT = Math.min(a.readT, S.t + base + jd + Math.max(0, (85 - a.R.awr)) * 0.008 + U.rand(0, 0.12) + (extra[a.key] || 0) - stkQ(a, 'getoff') * 0.075);
     }
   }
   // ── defense ──
@@ -975,7 +991,11 @@ const Live = (() => {
       if (!a) continue;
       // edge rushers: the ends, plus anyone a package stands up outside the tackles (a 3-4 OLB, a goal-line end)
       if (asg === 'rush') { a.job = { type: 'rush', edge: k === 'DE1' ? -1 : k === 'DE2' ? 1 : Math.abs(a.mark[0] - CX) > 4.2 ? Math.sign(a.mark[0] - CX) : 0 }; a.rushing = true; }
-      else if (asg[0] === 'blitz') { a.job = { type: 'blitz', gap: CX + asg[1] }; a.rushing = true; a.blitz = true; }
+      else if (asg[0] === 'blitz') {
+        // Blitz Specialist jumps the snap: a burst off the line that lasts longer at higher tiers
+        const bt = Engine.stk.tierOf(P(a.pid), 'blitzer');
+        a.job = { type: 'blitz', gap: CX + asg[1], jump: bt >= 0 ? 0.3 + bt * 0.06 : 0 }; a.rushing = true; a.blitz = true;
+      }
       else if (asg[0] === 'box') a.job = { type: 'box', x: CX + asg[1] };
       else if (asg[0] === 'man') {
         const r = S.ag['o' + asg[1]];
@@ -988,7 +1008,7 @@ const Live = (() => {
       } else if (asg[0] === 'zone') {
         const kd = Playbook.ZKIND(asg[1]);
         const w = asg[1].startsWith('half') ? 13 : asg[1].startsWith('q') ? 7.5 : 9.5;
-        const tau = U.clamp(0.32 - (a.R.cover - 70) * 0.006 - (stkQ(a, 'zonehawk', dplay.id === 'c3') + stkQ(a, 'centerfield', kd === 'deep') + stkQ(a, 'robber', kd !== 'deep')) * 0.06 + U.gauss(0, 0.04), 0.08, 0.6);
+        const tau = U.clamp(0.32 - (a.R.cover - 70) * 0.006 - (stkQ(a, 'zonehawk') + stkQ(a, 'centerfield', kd === 'deep') + stkQ(a, 'robber', kd !== 'deep')) * 0.06 + U.gauss(0, 0.04), 0.08, 0.6);
         a.job = { type: 'zone', z: asg[1], L: zoneAbs(asg[1]), kd, w, tau };
       } else a.job = { type: 'rush' };
       a.ballReact = U.clamp(0.26 - (a.R.awr - 70) * 0.006 + U.gauss(0, 0.05), 0.1, 0.5);
@@ -1062,6 +1082,7 @@ const Live = (() => {
     a.rushing = true;
     // Get-Off: explodes out of his stance for the first few steps
     if (S.t - S.snapT < 0.45 && stkQ(a, 'getoff') > 0) a.boost = true;
+    if (j.type === 'blitz' && j.jump && S.t - S.snapT < j.jump) a.boost = true;
     if (j.type === 'blitz' && S.t - S.snapT < 0.5) return seek(a, j.gap, F.L0 + 0.2, 1, 0.2);
     let tx = qb.x, ty = qb.y;
     // ends keep contain: stay outside the quarterback until close
@@ -1141,7 +1162,8 @@ const Live = (() => {
     if (F.loose) return looseBrain(a);
     const pts = a.route;
     // Press Corner jams him at the line for the first steps; Release Artist slips it
-    if (a.pressBy && S.t - S.snapT < 0.7) a.vk = 1 - U.clamp(stkQ(a.pressBy, 'press') * 0.3 - stkQ(a, 'release') * 0.3, 0, 0.3);
+    // (the slowdown is capped at 30%; an Elite press corner holds the jam longer: 1.0 s instead of 0.7)
+    if (a.pressBy && S.t - S.snapT < (Engine.stk.tierOf(P(a.pressBy.pid), 'press') >= 3 ? 1.0 : 0.7)) a.vk = 1 - U.clamp(stkQ(a.pressBy, 'press') * 0.3 - stkQ(a, 'release') * 0.3, 0, 0.3);
     if (S.ball.mode === 'air' && F.target === a) return trackBall(a);
     if (F.throwT != null && F.target !== a && S.ball.mode === 'air') return seek(a, S.ball.tx, S.ball.ty, 0.6, 1);
     while (a.wp < pts.length - 1 && hyp(pts[a.wp][0] - a.x, pts[a.wp][1] - a.y) < 1.0) { a.wp++; if (a.wp === 1) a.readyT = S.t; }
@@ -1332,8 +1354,9 @@ const Live = (() => {
     // defender gets there first
     if (D && dD < reachD && dD <= dR + 0.2) {
       let pI = 0.18 + (D.R.skl - 70) * 0.006 + (dR > reachR ? 0.22 : 0) - dD * 0.12;
-      if (stkP(D, 'ballhawk', true, 0.5)) pI += 0.3;
-      pI += stkM(D, 'robber', depth < 12) * 0.4;
+      // Ballhawk fires 13/21/29/40% of the time (Bronze-Elite) for +35 points; Robber is always on, up to +30 at Elite
+      if (stkP(D, 'ballhawk', true, 0.5333)) pI += 0.35;
+      pI += stkM(D, 'robber', depth < 12) * 0.156;
       if (depth >= 15 && dR < reachR && stkP(r, 'mossd', true, 0.4)) return caught(r, D);
       if (Math.random() < pI) return intercepted(D);
       if (dR < reachR && Math.random() < 0.22 + (r.R.skl - D.R.skl) * 0.01 + rS) return caught(r, D);
@@ -1446,6 +1469,7 @@ const Live = (() => {
     F.aimW = sc === 'draw' ? 1.0 : sc === 'zone' ? 2.0 : sc === 'toss' || sc === 'stretch' || sc === 'sneak' ? 3.2 : 2.5; // read plays let the back find the crease; gap plays hit the called hole
     const under = qb.y > L0 - 2;
     const car = run.carrier === 'QB' ? qb : A('oRB');
+    const rp = play.rpo ? A('o' + play.rpo.slot) : null; // the RPO read receiver
     if (under) holdBall(qb); else throwBall(c, [qb.x, qb.y], 0.25, 0.25, () => holdBall(qb), 0.4, 1.1);
     // the back's track to the mesh point and the aiming point at the line
     const aimY = sc === 'sneak' ? L0 + 1.5 : L0 - 0.4;
@@ -1488,6 +1512,25 @@ const Live = (() => {
       setReads(0.05);
       if (runner !== qb) qb.brain = b => seek(b, clampX(CX - side * 5), L0 - 6.5, 0.55); // carry out the fake
     };
+    // RPO: at the mesh the QB reads the conflict defender. If his read receiver will be open when the ball gets there
+    // (the defender bit on the run, or nobody is there), the right call is to pull it and throw; otherwise give.
+    // Awareness (and RPO Maestro) decide how often he makes the right call.
+    const meshRead = runner => {
+      if (!rp || F.rpoDone) return startRun(runner);
+      F.rpoDone = true;
+      const throwRight = openness(rp).o >= 0.8;
+      const tier = Engine.stk.tierOf(P(qb.pid), 'rpo'), right = Math.random() < Engine.stk.rpoOdds(qb.R.awr, tier);
+      const keep = right ? throwRight : !throwRight;
+      F.res.rpo = keep ? 'throw' : 'give'; F.res.rpoOk = right;
+      if (right && tier >= 0) { stkM(qb, 'rpo'); auraFx(qb, DATA.STICKER_TIERS[tier].color, DATA.STICKERS.rpo.glyph); }
+      pop(qb.x, qb.y + 0.6, (keep ? 'PULL & THROW' : 'GIVE') + (right ? ' ✓' : ' ✗'), right ? '#86efac' : '#fdba74', { life: 1.1 });
+      if (!keep) return startRun(runner);
+      // pulled: the back carries out the fake through the hole, the QB rips it to the read
+      F.mode = 'pass'; F.kind = 'pass';
+      runner.brain = x => seek(x, clampX(holeX), L0 + 3, 0.85);
+      qb.brain = x => stop(x);
+      at(S.t + 0.12, () => { if (S.carrier === qb && !F.over && F.mode === 'pass') throwTo(rp, openness(rp), false); });
+    };
     if (car === qb) {
       const t0 = sc === 'qbdraw' ? 0.75 : 0.2;
       qb.brain = b => { if (S.carrier === b && S.t - S.snapT >= t0) return startRun(b); seek(b, CX, L0 - (sc === 'qbdraw' ? 6 : 1.6), 0.5); };
@@ -1505,7 +1548,7 @@ const Live = (() => {
         // the back takes the ball moving: in the last beat before the exchange he runs through the mesh, downhill
         if (sc !== 'toss' && ti === track.length - 1 && S.t - S.snapT >= handT - (sc === 'draw' ? 0.1 : 0.25) && S.carrier === qb) seek(b, tx + (holeX - tx) * 0.3, ty + 1.6, 0.95, 0.05);
         else seek(b, tx, ty, 0.95, 0.3);
-        if (sc !== 'toss' && S.carrier === qb && d2(b, qb) < 1.25 && S.t - S.snapT >= handT) startRun(b);
+        if (sc !== 'toss' && S.carrier === qb && d2(b, qb) < 1.25 && S.t - S.snapT >= handT) meshRead(b);
       };
       if (sc === 'toss') car.route = [[holeX - side * 2.5, L0 - 4.2], [holeX, L0 - 1]];
     }
@@ -1519,7 +1562,7 @@ const Live = (() => {
     const taken = new Set();
     const lean = sc === 'stretch' || sc === 'toss' ? 1.6 : gap ? -1.0 : 1.0;
     // on a gap scheme an attached playside tight end blocks down with the line, leaving the end man for the puller
-    const te = A('oTE'), teDown = gap && te && te !== car && te.y > L0 - 3 && Math.abs(te.x - CX) < 8 && !back(te);
+    const te = A('oTE'), teDown = gap && te && te !== car && te !== rp && te.y > L0 - 3 && Math.abs(te.x - CX) < 8 && !back(te);
     const order = OLk.concat(teDown ? [te] : []).filter(o => !pullers.includes(o)).sort((a, b) => (b.x - a.x) * side);
     for (const ol of order) {
       let best = null, bs = 99;
@@ -1542,6 +1585,13 @@ const Live = (() => {
     for (const k of ['TE', 'WR1', 'WR2', 'WR3', 'RB']) {
       const a = A('o' + k);
       if (!a || a === car || (teDown && a === te)) continue;
+      if (a === rp) {
+        // the RPO read runs his route instead of blocking
+        const sx = a.x - CX, inn = Playbook.inward(sx, play.rpo.slot);
+        a.route = fitRoute(Playbook.routePts(play.rpo.route, play.rpo.d, sx, inn).map(([x, y]) => [clampX(CX + x), L0 + y]));
+        a.wp = 0; a.readyT = null; a.brain = routeBrain; F.routers.push(a);
+        continue;
+      }
       setBlocker(a, 'run');
       a.blocking = true;
       if (k === 'TE' && a.y < L0 - 3) {

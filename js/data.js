@@ -193,6 +193,7 @@ const DATA = (() => {
     general: { name: 'Field General', pos: ['QB'], kind: 'mag', base: 0.05, glyph: 'FG', desc: 'Reads the field faster: fewer misreads, finds the open man.' },
     escape: { name: 'Escape Artist', pos: ['QB'], kind: 'proc', base: 1, glyph: 'EA', desc: 'Chance to slip a would-be sack and scramble.' },
     iceveins: { name: 'Ice in the Veins', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'IV', desc: 'Accuracy boost in the 4th quarter and OT of one-score games.' },
+    rpo: { name: 'RPO Maestro', pos: ['QB'], kind: 'mag', base: 1, glyph: 'RP', desc: 'Reads the conflict defender at the mesh: makes the right give-or-throw call on RPOs far more often.' },
     trigger: { name: 'Quick Trigger', pos: ['QB'], kind: 'mag', base: 0.12, glyph: 'QT', desc: 'Lightning release on quick game, screens and against the blitz.' },
     cannon: { name: 'Cannon Arm', pos: ['QB'], kind: 'mag', base: 0.06, glyph: 'CA', desc: 'Throws a rope: deep balls get there faster and the wind can\'t push them around.' },
     fearless: { name: 'Fearless', pos: ['QB'], kind: 'mag', base: 0.1, glyph: 'FE', desc: 'Throws into tight windows other quarterbacks pass up, and still hits them.' },
@@ -247,7 +248,7 @@ const DATA = (() => {
     // LB
     thumper: { name: 'Run Thumper', pos: ['LB', 'S'], kind: 'mag', base: 2.5, glyph: 'TH', desc: 'Fills the hole and stops runners cold at the second level.' },
     sideline: { name: 'Sideline to Sideline', pos: ['LB', 'S'], kind: 'mag', base: 2.5, glyph: 'SL', desc: 'Range to chase down outside runs and screens.' },
-    blitzer: { name: 'Blitz Specialist', pos: ['LB', 'S', 'CB'], kind: 'mag', base: 3, glyph: 'BS', desc: 'Times the snap perfectly on blitzes.' },
+    blitzer: { name: 'Blitz Specialist', pos: ['LB', 'S', 'CB'], kind: 'mag', base: 3, glyph: 'BS', desc: 'Times the snap perfectly on blitzes: creeps up to the line on the cadence, jumps the snap, and beats the blocker who picks him up.' },
     covlb: { name: 'Coverage Linebacker', pos: ['LB'], kind: 'mag', base: 0.8, glyph: 'CV', desc: 'Blankets tight ends and backs in coverage.' },
     enforcer: { name: 'Enforcer', pos: ['LB', 'S'], kind: 'proc', base: 0.25, glyph: 'EN', desc: 'Chance a big hit jars the ball loose.' },
     shedder: { name: 'Block Shedder', pos: ['LB'], kind: 'mag', base: 2, glyph: 'SH', desc: 'Sheds blockers at the second level to make the stop.' },
@@ -255,11 +256,11 @@ const DATA = (() => {
     // CB / S
     lockdown: { name: 'Lockdown', pos: ['CB'], kind: 'mag', base: 0.6, glyph: 'LD', desc: 'Smothers receivers in man coverage.' },
     ballhawk: { name: 'Ballhawk', pos: ['CB', 'S', 'LB'], kind: 'proc', base: 0.6, glyph: 'BH', desc: 'Chance to jump contested throws for interceptions.' },
-    zonehawk: { name: 'Zone Hawk', pos: ['CB', 'S', 'LB'], kind: 'mag', base: 0.6, glyph: 'ZH', desc: 'Reads the QB and closes windows in Cover 3.' },
+    zonehawk: { name: 'Zone Hawk', pos: ['CB', 'S', 'LB'], kind: 'mag', base: 0.6, glyph: 'ZH', desc: 'Reads the QB and closes windows in zone coverage.' },
     centerfield: { name: 'Center Fielder', pos: ['S', 'CB'], kind: 'mag', base: 0.7, glyph: 'CF', desc: 'Takes away the deep ball over the top.' },
     suretackle: { name: 'Sure Tackler', pos: ['CB', 'S', 'LB', 'DL'], kind: 'mag', base: 2.5, glyph: 'ST', desc: 'Wraps up — ball carriers rarely break his tackles.' },
     pick6: { name: 'Pick-Six Artist', pos: ['CB', 'S'], kind: 'mag', base: 0.03, glyph: 'P6', desc: 'Interceptions turn into long returns and touchdowns.' },
-    press: { name: 'Press Corner', pos: ['CB'], kind: 'mag', base: 0.6, glyph: 'PR', desc: 'Jams receivers at the line and throws off their timing.' },
+    press: { name: 'Press Corner', pos: ['CB'], kind: 'mag', base: 0.6, glyph: 'PR', desc: 'Jams receivers at the line and throws off their timing. An Elite press corner holds the jam longer.' },
     recovery: { name: 'Recovery Speed', pos: ['CB', 'S'], kind: 'mag', base: 0.6, glyph: 'RC', desc: 'Closes fast when beaten and makes up ground on deep routes.' },
     // K
     bigleg: { name: 'Big Leg', pos: ['K'], kind: 'mag', base: 0.03, glyph: 'BL', desc: 'Range on 45+ yard field goals and longer punts.' },
@@ -278,9 +279,9 @@ const DATA = (() => {
   // fit: weights on his attributes relative to his own average, so it reads his strengths, not his overall level.
   const ROLES = {
     QB: [
-      { id: 'qb_general', bias: -2.9, name: 'Field General', desc: 'Reads defenses and delivers on time from the pocket.', fit: { awr: 0.55, skl: 0.45 }, focus: ['awr', 'skl'], badges: ['pocket', 'general', 'dime', 'iceveins', 'trigger'] },
+      { id: 'qb_general', bias: -2.9, name: 'Field General', desc: 'Reads defenses and delivers on time from the pocket.', fit: { awr: 0.55, skl: 0.45 }, focus: ['awr', 'skl'], badges: ['pocket', 'general', 'dime', 'iceveins', 'trigger', 'rpo'] },
       { id: 'qb_gunslinger', bias: 1.1, name: 'Gunslinger', desc: 'Big arm, bigger confidence: pushes the ball downfield into any window.', fit: { str: 0.6, skl: 0.4 }, focus: ['str', 'skl'], badges: ['cannon', 'fearless', 'dime', 'playaction', 'iceveins'] },
-      { id: 'qb_dual', bias: 1.8, name: 'Dual Threat', desc: 'Extends plays with his legs and hurts you as a runner.', fit: { spd: 0.75, skl: 0.25 }, focus: ['spd', 'skl'], badges: ['escape', 'scramble', 'ontherun', 'jukebox', 'trigger'] },
+      { id: 'qb_dual', bias: 1.8, name: 'Dual Threat', desc: 'Extends plays with his legs and hurts you as a runner.', fit: { spd: 0.75, skl: 0.25 }, focus: ['spd', 'skl'], badges: ['escape', 'scramble', 'ontherun', 'jukebox', 'trigger', 'rpo'] },
     ],
     RB: [
       { id: 'rb_power', name: 'Power Back', desc: 'Runs through contact and closes out games.', fit: { str: 0.7, awr: 0.3 }, focus: ['str', 'awr'], badges: ['wrecking', 'truck', 'hammer', 'stiffarm', 'irongrip', 'bellcow'] },
