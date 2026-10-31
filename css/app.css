@@ -816,7 +816,8 @@ body[data-theme="day"] .stk-t-silver { color: #475569; } body[data-theme="day"] 
 .trade-partners::-webkit-scrollbar { display: none; }
 .trade-partners .tp { flex-shrink: 0; display: grid; justify-items: center; gap: 3px; padding: 6px 6px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font: 700 10.5px/1 var(--f-display); color: var(--muted); min-width: 50px; }
 .trade-partners .tp.on { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
-.trade-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.trade-sides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.trade-sides > div { min-width: 0; }
 .trade-sides .chips { flex-wrap: wrap; overflow: visible; padding: 0; }
 .trade-sides .chip { height: 28px; font-size: 11.5px; padding: 0 9px; }
 .trade-meter { position: relative; height: 8px; border-radius: 999px; background: var(--surface-3); overflow: visible; }
@@ -1006,3 +1007,17 @@ body[data-theme="day"] .stk-t-silver { color: #475569; } body[data-theme="day"] 
 .bp-d { font-size: 12px; color: var(--muted); line-height: 1.35; }
 .stk.stk-locked { background: var(--surface-3); color: var(--dim); border: 1px dashed var(--line-strong); box-shadow: none; flex-shrink: 0; }
 .bp-row .stk.stk-locked { width: 30px; height: 30px; font-size: 10px; }
+
+/* trade center: value tiers and the deal's mini cards */
+.val-pill { display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 6px; font-size: 10.5px; font-weight: 700; white-space: nowrap; vertical-align: 1px; }
+.val-pill.v1 { background: rgba(148, 163, 184, .16); color: #94a3b8; }
+.val-pill.v2 { background: rgba(96, 165, 250, .16); color: #93c5fd; }
+.val-pill.v3 { background: rgba(52, 211, 153, .16); color: #6ee7b7; }
+.val-pill.v4 { background: rgba(250, 204, 21, .18); color: #fde047; }
+.val-pill.v5 { background: rgba(192, 132, 252, .2); color: #d8b4fe; }
+.trade-list { display: flex; flex-direction: column; gap: 6px; }
+.trade-pill { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: 6px 8px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
+.trade-pill .tpl-1 { display: flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; }
+.trade-pill .tpl-1 i { margin-left: auto; font-style: normal; opacity: .6; font-size: 11px; }
+.trade-pill .tpl-2 { font-size: 10.5px; color: var(--muted); overflow-wrap: anywhere; }
+.trade-pill .tpl-1 { flex-wrap: wrap; min-width: 0; }

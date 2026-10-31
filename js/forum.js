@@ -32,9 +32,9 @@ const Forum = (() => {
 
   // ── reply banks ──
   const R = {
-    winFan: ['WE ARE SO BACK. {WM} football is a lifestyle.', 'Told y\'all all week. {S}. Never in doubt.', 'That second half was a clinic. Coaching staff deserves an extension.', 'Somebody check on the {LM} fans, they\'ve gone quiet', 'Defense was flying around today. This team is different.', 'Not our cleanest game but a W is a W.', 'Clear your January calendar. We are going places.', '{P} is HIM. Put some respect on that name.', 'My voice is gone. Worth it.', 'Can we play every week like that please'],
-    loseFan: ['I need a week off from this team.', 'Same old {LM}. Every. Single. Year.', 'That play-calling in the 4th was criminal.', 'Offensive line got bullied all game. Fix it.', 'Don\'t panic. Long season. ...okay maybe panic a little.', 'Refs didn\'t lose us that game but they sure didn\'t help.', 'Turnovers killed us. You can\'t give a good team extra possessions.', 'I\'m turning off the TV and going outside. Goodbye.', 'Front office needs to make a trade. We were outmanned.', 'We\'ll be back. This one stings though.'],
-    neutral: ['Watched this one from the couch and it did not disappoint.', 'Neither team looked complete honestly.', 'The talent gap was obvious from the first drive.', 'People are going to overreact to this result. It\'s one game.', 'This conference is wide open this year.', 'Good game, but both secondaries need work.', 'Has anyone noticed the {WM} quietly getting better every week?', 'Big win for {W}. That\'s a playoff-caliber win.', 'Hot take: {L} are still the better team.', 'I had {L} in my pick\'em. Pain.'],
+    winFan: ['WE ARE SO BACK. {WM} football is a lifestyle.', 'Told y\'all all week. {S}. Never in doubt.', 'That second half was a clinic. Coaching staff deserves an extension.', 'Somebody check on the {LM} fans, they\'ve gone quiet', 'Defense was flying around today. This team is different.', 'Not our cleanest game but a W is a W.', 'Clear your January calendar. We are going places.', '{P} is HIM. Put some respect on that name.', 'My voice is gone. Worth it.', 'Can we play every week like that please', 'Bandwagon is filling up fast. Get on now.', 'That\'s a complete team win. Offense, defense, special teams.', 'Every week this team finds a new way to win.', 'Coaches had a great game plan and the players executed it.', 'Somebody frame that box score.', 'The {WM} are a problem and the league knows it.'],
+    loseFan: ['I need a week off from this team.', 'Same old {LM}. Every. Single. Year.', 'That play-calling in the 4th was criminal.', 'Offensive line got bullied all game. Fix it.', 'Don\'t panic. Long season. ...okay maybe panic a little.', 'Refs didn\'t lose us that game but they sure didn\'t help.', 'Turnovers killed us. You can\'t give a good team extra possessions.', 'I\'m turning off the TV and going outside. Goodbye.', 'Front office needs to make a trade. We were outmanned.', 'We\'ll be back. This one stings though.', 'Penalties, drops, missed tackles. Death by a thousand cuts.', 'Third-down defense was a disaster all game.', 'We had chances. Didn\'t take a single one.', 'Fine. It\'s fine. Everything is fine.', 'Effort was there. Execution wasn\'t.', 'Can we run the ball more than twice a quarter please?'],
+    neutral: ['Watched this one from the couch and it did not disappoint.', 'Neither team looked complete honestly.', 'The talent gap was obvious from the first drive.', 'People are going to overreact to this result. It\'s one game.', 'This conference is wide open this year.', 'Good game, but both secondaries need work.', 'Has anyone noticed the {WM} quietly getting better every week?', 'Big win for {W}. That\'s a playoff-caliber win.', 'Hot take: {L} are still the better team.', 'I had {L} in my pick\'em. Pain.', 'Coaching made the difference in this one.', 'Neutral fan here, that was fun to watch.', 'The box score doesn\'t tell the whole story.', '{W} are trending up. Write it down.', 'Both teams left points on the field.', 'Not a great look for the {LM} defense.'],
     upsetW: ['HAHAHA WHO WAS IN THE TOP 10 AGAIN??', 'Respect the {WM}. Respect us.', 'Any given Sunday, baby.', 'They doubted us all week. Look at the scoreboard.', 'Tell the power rankings guys to wake up.'],
     upsetL: ['Unacceptable. Losing to {W} is unacceptable.', 'We were looking ahead and it cost us. Classic trap game.', 'Fire everyone. (I\'ll calm down tomorrow.)', 'Overrated and now everybody knows it.', 'That ranking was a lie and we all knew it.'],
     upsetN: ['This is why you play the games.', 'Called it. Nobody listened. Never do.', 'Sunday chaos, my favorite.', 'Nobody is safe on the road in this league.', 'Somebody\'s survivor pool just went up in flames.'],
@@ -46,7 +46,7 @@ const Forum = (() => {
     draft: ['Love this class. Front office cooked.', 'Reaching for need in round 1 is always a mistake.', 'Grades don\'t mean anything until they play.', 'The {M} got a steal and nobody\'s talking about it.', 'Ask me in three years.', 'That run on linemen in round 2 was wild.'],
     camp: ['Camp reports are always glowing. Show me on Sunday.', 'Love the commitment to the trenches.', 'Intense camp = injuries. Be careful.', 'This is the kind of offseason that wins divisions.', 'Heard the joint practices were chippy. Good.'],
     champ: ['DYNASTY TALK STARTS NOW.', 'What a run. Congrats to the champs.', 'Best team won. No arguments.', 'I\'ll never forget this season.', 'Already counting down to next year.'],
-    welcome: ['Welcome to the league! Can\'t wait to see what the {UM} bring.', 'New franchise, new rivalries. Let\'s go.', 'Give them two years and they\'ll be a problem.', 'Love the logo, not gonna lie.', 'Expansion teams usually struggle. Prove me wrong.'],
+    welcome: ['Welcome to the league! Can\'t wait to see what the {UM} bring.', 'New franchise, new rivalries. Let\'s go.', 'Give them two years and they\'ll be a problem.', 'Love the logo, not gonna lie.', 'Expansion teams usually struggle. Prove me wrong.', 'Already bought the jersey. No regrets.', 'Building through the draft is the right call.', 'Can\'t wait for the first home game.', 'The {UM}? Great name. Instant classic.', 'Watch them steal a few games this year.'],
     tradeWin: ['Front office just won the offseason. LETS GO.', 'Finally a GM who goes and gets guys.', 'That\'s a fleecing. Somebody check on the other side.', 'Instant upgrade. This changes our ceiling.', 'Love it. Win-now move.'],
     tradeLose: ['Hated that guy leaving, but I get it.', 'We better have a plan for those picks.', 'What did we just do?', 'Selling at the deadline... rebuild confirmed.', 'This trade will age badly. Mark my words.'],
     tradeN: ['Both sides can talk themselves into this one.', 'Picks are lottery tickets. Proven talent wins.', 'Winner of this trade gets decided in three years.', 'Interesting price. Didn\'t think he\'d go that cheap.', 'Contender move. I respect it.'],
@@ -60,12 +60,258 @@ const Forum = (() => {
     reel: ['Number one is not even close. Rewatched it ten times.', 'The broadcast booth lost their minds on that one.', 'How did he even get out of that?', 'Defense deserves a spot on the list too.', 'This week\'s top 3 is elite.'],
   };
 
+  // ── situational banks ──
+  // Each game is read for what actually happened — a comeback, a shutout, five sacks, a snow game, a streak, a star's
+  // big day — and most replies come from those moments: the winners' fans (w), the losers' fans (l) and everyone else (n).
+  // {vars}: W/L names, WM/LM mascots, S score, DEF fourth-quarter deficit, TOT combined points, TO giveaways, RY/PY
+  // winner's rushing/passing yards, SK sacks, STRK win streak, SKID losing streak, REC/LREC records, WX weather,
+  // QB/RB/WR/DP the stars and QBL/RBL/WRL/DPL their lines, LS the loser's score, LST the loser's best player, RIV the rival.
+  const SIT = {
+    comeback: {
+      w: ['Down {DEF} going into the fourth and we STILL win. This team has a heartbeat.', 'I turned it off at the end of the third. I am a fraud and I apologize to the {WM}.', 'Never. Out. Of. It. That fourth quarter was the most fun I\'ve had all year.', 'Whatever the coaches said between the 3rd and 4th, bottle it.', 'Comeback kids. Stop scaring me like this though.', '{QB} in the fourth quarter is a different human being.'],
+      l: ['Up {DEF} in the fourth. UP {DEF}. I need to lie down.', 'Prevent defense prevents you from winning. Every time.', 'We played not to lose and we lost. Textbook.', 'Blowing a {DEF}-point lead in one quarter should come with a fine.', 'Three quarters of good football doesn\'t count for anything apparently.', 'How do you go conservative with that lead? HOW?'],
+      n: ['{W} were dead in the water after three. What a finish.', 'That {DEF}-point fourth-quarter comeback is the story of the week.', 'This is why you never leave early.', 'Coaching malpractice on one side, guts on the other.', '{L} fans are going to see that fourth quarter in their sleep.'],
+    },
+    shutout: {
+      w: ['ZERO. Put a zero on the board and frame it.', 'Defense pitched a shutout. Give that coordinator a raise.', 'They couldn\'t find the end zone with a map. Or the field goal posts.', 'A shutout in this league is ridiculous. {WM} D is elite.', 'Shoutout to the secondary, nobody got open all day.'],
+      l: ['Zero points. ZERO. Fire the OC into the sun.', 'Did our offense even get on the bus?', 'I\'ve seen better offense at a flag football league.', 'Not one point. I don\'t even know what to say.', 'Shut out. Embarrassing doesn\'t cover it.'],
+      n: ['Getting shut out in this league takes real effort.', '{W} defense is legit. That\'s not a fluke.', 'Somebody check on the {LM} offensive coordinator.', 'Doughnut on the scoreboard for the {LM}. Brutal.'],
+    },
+    shootout: {
+      w: ['{TOT} combined points and we had the last word. My heart can\'t take it.', 'Defense optional, apparently. Still a W.', 'Fantasy owners are eating good tonight.', 'Never been so stressed during a win.'],
+      l: ['You can\'t give up {WS} and expect to win. Our defense was a turnstile.', 'Scored enough to win most weeks. Didn\'t matter.', 'If we\'d made ONE stop.', 'Offense did its job. Defense took the day off.'],
+      n: ['{TOT} points?? Nobody was tackling anybody.', 'That one was basically a track meet.', 'Every defensive coordinator who watched that is in pain.', 'Video-game scoreboard. Loved every minute.'],
+    },
+    slugfest: {
+      w: ['Ugly win. Still counts. Defense carried us.', 'Old-school football. Field position, defense, a couple of kicks.', 'Not pretty but I\'ll take a {S} win every week.', 'Winning ugly is a skill too.'],
+      l: ['Our offense could not have found the end zone with GPS.', 'Defense played well enough to win. Offense wasted it.', '{LS} points. In this league. Wow.', 'Somebody please draft a quarterback.'],
+      n: ['{TOT} total points. Both offenses should be embarrassed.', 'Defensive struggle. Some of you will call it boring. I loved it.', 'That game set offense back about 50 years.'],
+    },
+    giveaways: {
+      w: ['Defense forced {TO} turnovers. That\'s the game right there.', 'Takeaways win games. {TO} of them today.', 'Ball hawks everywhere. They were giving it away and we said thank you.'],
+      l: ['{TO} turnovers. You can\'t beat anybody turning it over {TO} times.', 'Ball security drills. Every day. Until it\'s fixed.', 'We beat ourselves. {TO} giveaways.', 'Protect the football! It\'s not complicated!'],
+      n: ['{TO} turnovers by the {LM} is the whole story.', 'Can\'t win the turnover battle that badly and expect to win.'],
+    },
+    ground: {
+      w: ['{RY} rushing yards. We just lined up and ran it down their throats.', 'O-line moved people all day. Pay the big guys.', 'When you can run it like that, the play-action is free.', 'Ground and pound is BACK.'],
+      l: ['Gave up {RY} on the ground. Did we even have linebackers out there?', 'Everybody knew the run was coming and we still couldn\'t stop it.', 'Run defense was a disaster. Somebody fill a gap.'],
+      n: ['{RY} rushing yards is a beatdown at the line of scrimmage.', '{W} owned the trenches today, simple as that.'],
+    },
+    air: {
+      w: ['{PY} through the air. Air raid is real.', 'Our QB carved them up. Defense had no answers.', 'Receivers open by a mile all day long.'],
+      l: ['{PY} passing yards allowed. Is the secondary on strike?', 'Couldn\'t get near the quarterback and couldn\'t cover anyone.', 'Zone, man, blitz, nothing worked. Cooked.'],
+      n: ['{PY} passing yards is a clinic.', 'That secondary is going to be watching a long film session.'],
+    },
+    sacks: {
+      w: ['{SK} SACKS. Their QB is going to feel that tomorrow.', 'The pass rush lived in the backfield.', 'Edge rushers ate. That\'s how you win.'],
+      l: ['{SK} sacks allowed. The O-line needs to be benched. All five.', 'Our QB is going to need a new spine.', 'Somebody block somebody. Please.'],
+      n: ['{SK} sacks is a pass rush you have to game-plan around.', 'That {WM} front four is a problem.'],
+    },
+    ot: {
+      w: ['OVERTIME WINNERS. I aged ten years.', 'Extra football, extra joy. What a game.', 'Coin flip, drive, win. Beautiful.'],
+      l: ['Lost in overtime. Nothing hurts like that.', 'So close. Overtime losses hit different.', 'We had the ball with a chance to win it and we blew it.'],
+      n: ['Overtime thriller. Football at its best.', 'Both teams deserved that one, honestly.'],
+    },
+    nail: {
+      w: ['{S}. Won by a hair and I don\'t care.', 'Close games are character builders. We have character.', 'Clutch when it mattered.'],
+      l: ['Lost by a field goal or less. Every little mistake mattered.', 'One play. One play changes that game.', 'That\'s the kind of loss that keeps you up at night.'],
+      n: ['Coin-flip game, could\'ve gone either way.', 'Nail-biter. My nails are gone.'],
+    },
+    blowout: {
+      w: ['{S}. That wasn\'t a game, that was a statement.', 'Pulled the starters in the fourth. Dominance.', 'We were up so big I started watching the other games.'],
+      l: ['{S}. I want my three hours back.', 'That wasn\'t a loss, that was an embarrassment.', 'Changed the channel at halftime. Glad I did.', 'Outcoached, outplayed, outclassed.'],
+      n: ['That margin says a lot about where both teams are.', 'Mercy rule when?'],
+    },
+    hot: {
+      w: ['{STRK} straight! Nobody wants to see us right now.', 'Win streak at {STRK}. Book the playoff tickets.', '{STRK} in a row and we haven\'t played our best game yet.', 'This team is ROLLING. {REC}.'],
+      l: ['Ran into a buzzsaw. {W} are on a {STRK}-game heater.'],
+      n: ['{W} have won {STRK} straight. Are they the best team in the league?', 'Nobody is hotter than the {WM} right now.', '{STRK}-game win streak. That\'s not luck anymore.'],
+    },
+    skid: {
+      w: [],
+      l: ['That\'s {SKID} straight losses. Something has to change.', '{SKID}-game skid. I don\'t even recognize this team.', 'Lost {SKID} in a row. Bench everyone. Start the backups. Something.', '{LREC}. How did we get here?'],
+      n: ['{L} have dropped {SKID} straight. The wheels are off.', 'Somebody throw the {LM} a life raft.'],
+    },
+    unbeatenFalls: {
+      w: ['WE BROKE THE STREAK. Undefeated no more!', 'Somebody had to hand them their first loss. Proud it was us.'],
+      l: ['Perfect season over. Okay. Still one of the best teams in the league.', 'Had to lose sometime. Better now than in January.', 'Exposed. Or just a bad day? Ask me in two weeks.'],
+      n: ['The unbeaten {LM} finally go down. {W} with the statement win.', 'So much for the perfect season.'],
+    },
+    firstWin: {
+      w: ['FIRST WIN OF THE SEASON. I\'M CRYING.', 'We did it! We actually won a football game!', 'Off the schneid! Parade on Main Street.'],
+      l: ['Losing to a winless team. Lowest point of the season.', 'Gave {W} their first win. Unforgivable.'],
+      n: ['{W} finally get in the win column. Good for them.', 'Somebody\'s survivor pool died on that one.'],
+    },
+    winless: {
+      w: [],
+      l: ['{LREC}. Tank for the top pick at this point.', 'Still winless. I\'m running out of things to say.', 'At least the draft position is looking great.'],
+      n: ['Still no wins for the {LM}. Rough year.', 'The {LM} are in the running for the top pick.'],
+    },
+    weather: {
+      w: ['Played in the {WX} and didn\'t care. Tough team.', 'Bad-weather football and we were built for it.', 'Bad weather, ground game, W. Recipe.'],
+      l: ['Can\'t blame the {WX}. Both teams played in it.', 'Our offense froze. Literally and figuratively.', 'Every ball on the ground in the {WX}. Ugh.'],
+      n: ['Love a bad-weather game. Pure football.', 'The {WX} turned it into a different sport.', 'You could barely see the field in the {WX}.'],
+    },
+    rival: {
+      w: ['BEAT {RIV}! Best day of the year.', 'Bragging rights are ours for 365 days.', 'Our record doesn\'t matter. We beat {RIV}.', 'Their fans have been quiet all day. I love it.'],
+      l: ['Losing to {RIV} ruins my whole year.', 'I can\'t go to work tomorrow. My coworker is a {RIV} fan.', 'Next year. Mark it down. Next year.'],
+      n: ['Rivalry game delivered. Best atmosphere of the week.', 'Throw the records out for this one.'],
+    },
+    playoffW: {
+      w: ['WE\'RE MOVING ON! One step closer.', 'Playoff win! This is what we waited all year for.', 'Win and advance. That\'s all that matters now.'],
+      l: [],
+      n: ['{W} survive and advance.', '{W} look like a real contender right now.'],
+    },
+    playoffL: {
+      w: [],
+      l: ['Season over. Proud of the run but this hurts.', 'One and done. Offseason starts now. Fix the roster.', 'Hard to end it like that after the year we had.', 'Thank you to the seniors. We\'ll be back.'],
+      n: ['{L} go home. Rough end to a good season.', 'That\'s the end of the road for the {LM}.'],
+    },
+    qbStar: {
+      w: ['{QB} was surgical: {QBL}.', '{QBL}. {QB} is HIM.', '{QB} made every throw. Elite day.', 'Give {QB} the keys to the city.'],
+      l: [],
+      n: ['{QB} lit them up: {QBL}.', '{QB} is putting together an MVP case.'],
+    },
+    rbStar: {
+      w: ['{RB} ran like a man possessed: {RBL}.', 'Feed {RB}. Every snap. Forever.', '{RB} broke their spirit.'],
+      l: ['Nobody could tackle {RB}. Nobody.'],
+      n: ['{RB} with {RBL}. Bell cow back.', '{RB} is the best back in the league right now.'],
+    },
+    wrStar: {
+      w: ['{WR} was open all day: {WRL}.', 'Throw it up to {WR}. He\'s always open.', '{WR} = WR1 in this league.'],
+      l: ['Who was covering {WR}? Anybody?'],
+      n: ['{WR} put up {WRL}. Matchup nightmare.'],
+    },
+    defStar: {
+      w: ['{DP} wrecked the game: {DPL}.', '{DP} was in their backfield all day.', 'Defensive Player of the Year. {DP}. Done.'],
+      l: ['Our line couldn\'t block {DP} if their lives depended on it.'],
+      n: ['{DP} with {DPL}. Game-wrecker.'],
+    },
+    wastedStar: {
+      w: [],
+      l: ['{LST} did everything he could. Rest of the team let him down.', 'Wasted a monster day from {LST}.'],
+      n: ['Tough to lose when {LST} plays like that.'],
+    },
+  };
+  // tailored banks for the other threads ({P} player, {POS}, {WK} weeks, {Y}/{TD} yards and scores, {LN} stat line)
+  const TAIL = {
+    injPos: {
+      QB: ['Losing your QB for {WK} weeks... the season might hinge on the backup now.', 'Backup quarterback time. Pray for us.', 'Without {P} under center this offense is in real trouble.', 'Every QB injury is a franchise-level injury.'],
+      RB: ['Next back up. Running backs are replaceable, right? ...right?', 'Run game takes a big hit without {P}.', 'Time to see what the backup back can do.'],
+      WR: ['Our QB just lost his favorite target.', 'Receiver depth is about to get tested.', 'Who stretches the field now without {P}?'],
+      TE: ['Losing the tight end hurts the run game and the passing game.', 'Red zone just got a lot harder without {P}.'],
+      OL: ['Losing an offensive lineman is underrated. The whole line has to shuffle.', 'Protect the QB! ...with who?', 'Next man up on the O-line. Gulp.'],
+      DL: ['Front four just got a lot thinner.', 'Pass rush takes a hit without {P}.', 'Run defense is going to feel that one.'],
+      LB: ['Losing the guy who calls the defense is brutal.', 'Linebacker depth getting tested. Not great.'],
+      CB: ['Secondary was already thin. Uh oh.', 'Opposing QBs are licking their chops.', 'Who covers the other team\'s WR1 now?'],
+      S: ['No safety net back there anymore. Literally.', 'Losing {P} leaves the deep middle wide open.'],
+      K: ['Kicker injury? Somebody check the waiver wire.'],
+    },
+    injShort: ['{WK} week{S} isn\'t too bad. He\'ll be back before you know it.', 'Could\'ve been way worse. Short stint.', 'Rest up, get healthy, come back strong.'],
+    injLong: ['{WK} weeks?! That\'s a massive chunk of the season.', 'Season-altering injury. Front office needs to make a move.', 'Out {WK} weeks... I\'m not ready to talk about it.', 'This one stings. Long road back.'],
+    injStar: ['One of the best players in the league. Huge blow for everyone.', 'League\'s worse without {P} on the field.', 'Their whole season just changed.'],
+    perf: {
+      pass: ['{Y} passing yards and {TD} touchdowns. Video game numbers.', 'Picked the defense apart all day: {LN}.', '{P} saw everything before the snap. Surgical.', 'Defenses better start blitzing {P}. Or praying.'],
+      rush: ['{Y} rushing yards. Nobody could get a hand on him.', 'Ran through, around and over people: {LN}.', 'Feed {P} the ball 30 times a game. Simple.', 'That O-line opened holes you could drive a bus through, and {P} hit every one.'],
+      rec: ['{Y} receiving yards. Simply uncoverable.', 'Every time the ball went his way, something happened: {LN}.', 'Double-team {P}? Triple-team? Doesn\'t matter.', '{P} is the most dangerous pass catcher in the league.'],
+      def: ['{LN}. He lived in the backfield.', 'Offensive coordinators are going to have to game-plan around {P}.', 'Defensive Player of the Year talk starts now.', 'A one-man wrecking crew: {LN}.'],
+    },
+    pollMove: ['Biggest riser this week: {RISER}. Deserved.', '{FALLER} dropping that far is an overreaction.', '{FALLER} fans are going to be furious about that drop.', '{RISER} climbing fast. Statement week.', 'The {RISER} jump is the right call. They\'re for real.'],
+    pollMine: ['#{UR}? Disrespect. We should be higher.', '#{UR} feels right. Earn the rest.', 'Climbing the rankings. Keep stacking wins.'],
+    pollOut: ['Outside the top 10 again. Prove them wrong.', 'Rankings don\'t matter. Wins do.'],
+    mvpNonQB: ['A {POS} leading the MVP race? Love to see it.', 'Finally a non-QB getting MVP love.', 'Voters will find a way to give it to a quarterback anyway.'],
+    tradeBlock: ['BLOCKBUSTER. Didn\'t think anyone would pull the trigger on {P}.', 'An {OVR}-overall player on the move. This changes the league.', 'Trade of the year. Easy.'],
+    tradeVet: ['{P} is {AGE}. Contender buying a vet for one more run.', 'Buying a {AGE}-year-old is risky. Win now or bust.', 'Veteran presence matters in January.'],
+    tradeYoung: ['{P} is only {AGE}. That\'s a long-term piece.', 'Buying young talent is how you build a dynasty.', 'The ceiling on {P} is sky-high.'],
+    tradePicks: ['Pick swaps are boring until those picks turn into stars.', 'Somebody is stockpiling draft capital.', 'Future picks for future picks. Ask me in three years.'],
+    faBig: ['${SAL}M a year?! That\'s a lot of money for one player.', 'Big contract, big expectations for {P}.', 'Cap space was burning a hole in their pocket.'],
+    faOld: ['{P} is {AGE}. Hope that contract doesn\'t age badly.', 'Paying for what he was, not what he is.', 'Veteran deal for a contender. I get it.'],
+    faStar: ['Best player on the market and they got him. Huge.', '{P} is a difference-maker. Great signing.'],
+    draftGood: ['{G} grade! Front office nailed it.', 'Best class in the league and it isn\'t close.', 'Scouts earned their paychecks this year.', 'Our future is bright. {G} is right.'],
+    draftBad: ['A {G}? Who was running the war room?', 'Reached on half these guys. {G} is generous.', 'I\'ll reserve judgment... no I won\'t. Bad class.', 'Grades are meaningless, but {G} still stings.'],
+  };
+  // how each storyline reads in the opening post
+  const STORY = {
+    comeback: 'Came back from {DEF} down in the fourth quarter', shutout: 'Shutout', shootout: '{TOT}-point shootout', slugfest: 'Defensive slugfest — {TOT} points total',
+    giveaways: '{L} turned it over {TO} times', ground: '{RY} rushing yards for {W}', air: '{PY} passing yards for {W}', sacks: '{SK} sacks by the {WM} defense',
+    ot: 'Decided in overtime', nail: 'Decided by {M} point{MS}', blowout: '{M}-point blowout', hot: '{W} have won {STRK} straight', skid: '{L} have lost {SKID} straight',
+    unbeatenFalls: '{L} suffer their first loss', firstWin: '{W} get their first win of the season', winless: '{L} fall to {LREC}', weather: 'Played in the {WX}',
+    rival: 'Rivalry game', playoffW: '{W} advance', playoffL: '{L} are eliminated',
+  };
+  // read a finished game for its storylines (and the names and numbers the replies need)
+  function gameCtx(r) {
+    const g = r.g, box = g.box || {}, ts = box.ts || [{}, {}], qs = box.qs || [[0], [0]];
+    const wSide = g.hs > g.as ? 0 : 1, TW = ts[wSide] || {}, TL = ts[1 - wSide] || {};
+    const sum3 = s => (qs[s] || []).slice(0, 3).reduce((a, b) => a + (b || 0), 0);
+    const def = sum3(1 - wSide) - sum3(wSide), margin = r.ws - r.ls, tot = r.ws + r.ls;
+    const wx = L.weather(g), wxWord = { snow: 'snow', rain: 'rain', storm: 'storm', wind: 'wind' }[wx.type];
+    const best = (side, kind) => r.top.find(x => x.side === side && x.kind === kind && G.players[x.pid]);
+    const qb = best(wSide, 'pass'), rb = best(wSide, 'rush'), wr = best(wSide, 'rec'), dp = best(wSide, 'def');
+    const lstar = r.top.find(x => x.side !== wSide && G.players[x.pid] && x.val >= 180);
+    const nm = x => (x ? pname(G.players[x.pid]) : '');
+    const riv = (r.W.user || r.Lo.user) && Career.rivalGame(g);
+    const v = {
+      W: r.W.name, L: r.Lo.name, WM: r.W.mascot, LM: r.Lo.mascot, S: scoreStr(r), DEF: def, TOT: tot, M: margin, MS: margin === 1 ? '' : 's', WS: r.ws, LS: r.ls,
+      TO: TL.to || 0, RY: TW.ry || 0, PY: TW.py || 0, SK: TW.sk || 0, STRK: r.W.rec.streak, SKID: -r.Lo.rec.streak, REC: L.recStr(r.W), LREC: L.recStr(r.Lo),
+      WX: wxWord || '', QB: nm(qb), QBL: qb ? qb.line : '', RB: nm(rb), RBL: rb ? rb.line : '', WR: nm(wr), WRL: wr ? wr.line : '', DP: nm(dp), DPL: dp ? dp.line : '',
+      RIV: riv ? (r.W.user ? r.Lo.name : r.W.name) : '',
+    };
+    const lsBest = lstar ? nm(lstar) : '';
+    if (lsBest) v.LST = lsBest;
+    const reg = g.wk <= SEA.REG, tags = [];
+    if (def > 0) tags.push('comeback');
+    if (r.ls === 0) tags.push('shutout');
+    else if (tot <= 24) tags.push('slugfest');
+    if (tot >= 66) tags.push('shootout');
+    if ((TL.to || 0) >= 3) tags.push('giveaways');
+    if ((TW.ry || 0) >= 190) tags.push('ground');
+    if ((TW.py || 0) >= 320) tags.push('air');
+    if ((TW.sk || 0) >= 5) tags.push('sacks');
+    if (r.ot) tags.push('ot'); else if (margin <= 3) tags.push('nail');
+    if (margin >= 28) tags.push('blowout');
+    if (r.W.rec.streak >= 4) tags.push('hot');
+    if (r.Lo.rec.streak <= -3 && r.Lo.rec.w > 0) tags.push('skid');
+    if (reg && r.Lo.rec.l === 1 && r.Lo.rec.w >= 4) tags.push('unbeatenFalls');
+    if (reg && r.W.rec.w === 1 && r.W.rec.l >= 2) tags.push('firstWin');
+    if (reg && r.Lo.rec.w === 0 && r.Lo.rec.l >= 3) tags.push('winless');
+    if (wxWord) tags.push('weather');
+    if (riv) tags.push('rival');
+    if (!reg) tags.push('playoffW', 'playoffL');
+    if (qb && (qb.y >= 300 || qb.td >= 3)) tags.push('qbStar');
+    if (rb && (rb.y >= 130 || rb.td >= 2)) tags.push('rbStar');
+    if (wr && (wr.y >= 120 || wr.td >= 2)) tags.push('wrStar');
+    if (dp && (dp.sk >= 2 || dp.int >= 2)) tags.push('defStar');
+    if (lsBest) tags.push('wastedStar');
+    return { tags, v };
+  }
+  // the storylines as bullet points for an opening post
+  const storyLines = ctx => ctx.tags.filter(t => STORY[t]).map(t => `• ${U.fill(STORY[t], ctx.v)}`).join('\n');
+  // replies for a game: mostly its storylines, with some general reactions mixed in
+  function gameReplies(n, r, ctx, opts = {}) {
+    const pools = (opts.extra || []).slice(), { W, Lo } = r, wFan = opts.wFan ?? 1, lFan = opts.lFan ?? 1;
+    for (const t of ctx.tags) {
+      const b = SIT[t];
+      if (!b) continue;
+      if (b.w.length) pools.push({ w: 3 * wFan, team: W, lines: b.w });
+      if (b.l.length) pools.push({ w: 3 * lFan, team: Lo, lines: b.l });
+      if (b.n.length) pools.push({ w: 2, lines: b.n });
+    }
+    pools.push({ w: 1.2 * wFan, team: W, lines: R.winFan }, { w: 1.2 * lFan, team: Lo, lines: R.loseFan }, { w: 1, lines: R.neutral });
+    return replies(n, pools, { ...ctx.v, P: ctx.v.QB || ctx.v.RB || ctx.v.WR || ctx.v.DP || 'our QB', N: '' });
+  }
+
   function replies(n, pools, vars) {
-    const ago = agoList(n), out = [];
+    // never more replies than there are different things to say
+    n = Math.min(n, new Set(pools.filter(p => p.w > 0).flatMap(p => p.lines)).size);
+    const ago = agoList(n), out = [], used = new Set();
     for (let i = 0; i < n; i++) {
-      const pool = U.wpick(pools, p => p.w);
+      // no reply repeats within a thread
+      let pool, line;
+      // (and none that would show a {placeholder} this thread has no value for)
+      for (let k = 0; k < 40; k++) { pool = U.wpick(pools, p => p.w); line = U.pick(pool.lines); if (!used.has(line) && !/\{[A-Z]+\}/.test(U.fill(line, vars))) break; }
+      used.add(line);
       const a = pool.team === undefined ? neutralFan() : fan(pool.team);
-      out.push({ a, text: U.fill(U.pick(pool.lines), vars), likes: Math.max(0, Math.round(U.rand(2, 260) / (1 + i * 0.25))), ago: ago[i] });
+      out.push({ a, text: U.fill(line, vars), likes: Math.max(0, Math.round(U.rand(2, 260) / (1 + i * 0.25))), ago: ago[i] });
     }
     return out;
   }
@@ -140,11 +386,13 @@ const Forum = (() => {
       const mine = r.W.id === uid || r.Lo.id === uid;
       const rW = r.rankBefore[r.W.id], rL = r.rankBefore[r.Lo.id];
       const margin = r.ws - r.ls;
+      const ctx = gameCtx(r), story = storyLines(ctx), has = t => ctx.tags.includes(t);
+      let covered = false;
 
       if (mine) {
         const won = r.W.id === uid, opp = won ? r.Lo : r.W;
-        const verb = margin >= 28 ? U.pick(['demolish', 'steamroll', 'bury']) : margin <= 3 ? U.pick(['survive', 'edge', 'escape']) : U.pick(['beat', 'take down', 'handle']);
-        const body = `FINAL: ${r.W.name} ${r.ws}, ${r.Lo.name} ${r.ls}${r.ot ? ' in overtime' : ''}.\n\nTop performers:\n` +
+        const verb = has('comeback') ? U.pick(['rally past', 'storm back to beat', 'come back on']) : margin >= 28 ? U.pick(['demolish', 'steamroll', 'bury']) : margin <= 3 ? U.pick(['survive', 'edge', 'escape']) : U.pick(['beat', 'take down', 'handle']);
+        const body = `FINAL: ${r.W.name} ${r.ws}, ${r.Lo.name} ${r.ls}${r.ot ? ' in overtime' : ''}.` + (story ? `\n\nStorylines:\n${story}` : '') + `\n\nTop performers:\n` +
           r.top.slice(0, 4).map(x => { const p = G.players[x.pid]; return p ? `• ${p.pos} ${pname(p)} (${L.team(p.teamId).abbr}): ${x.line}` : ''; }).join('\n') +
           `\n\nConditions: ${L.weatherLine(L.weather(r.g))}` +
           (wk <= SEA.REG ? `\n\n${u.name} moves to ${L.recStr(u)} on the season.` : '');
@@ -152,32 +400,48 @@ const Forum = (() => {
           tag: 'GAME THREAD', mine: true, heat: 90, a: fan(u), teams: [r.W.id, r.Lo.id],
           title: won ? `[Post-Game] ${u.name} ${u.mascot} ${verb} ${opp.name}, ${scoreStr(r)}` : `[Post-Game] ${opp.name} ${verb} ${u.name}, ${scoreStr(r)}`,
           body,
-          replies: replies(9, [{ w: 4, team: u, lines: won ? R.winFan : R.loseFan }, { w: 2, team: opp, lines: won ? R.loseFan : R.winFan }, { w: 2, lines: R.neutral }],
-            { ...v, WM: r.W.mascot, LM: r.Lo.mascot }),
+          // your fans do most of the talking in your game thread
+          replies: gameReplies(10, r, ctx, won ? { wFan: 2 } : { lFan: 2 }),
         });
       }
       // upset (by the power rankings)
       if (rL && (!rW || rW > rL + 3)) {
+        covered = true;
         thread(is, {
           tag: 'UPSET', heat: 95 - rL * 2 + (mine ? 5 : 0), teams: [r.W.id, r.Lo.id], a: fan(r.W),
           title: !rW ? `UPSET ALERT: ${r.W.name} stun the #${rL} ${r.Lo.name}, ${scoreStr(r)}` : `#${rW} ${r.W.name} knock off #${rL} ${r.Lo.name}, ${scoreStr(r)}`,
-          body: `Nobody saw this coming. The ${r.W.name} ${r.W.mascot} (${L.recStr(r.W)}) took down ${r.Lo.name} (${L.recStr(r.Lo)}) ${scoreStr(r)}.${sp ? ` ${pname(sp)} led the way with ${star.line}.` : ''}\n\nWhere do the ${r.Lo.mascot} go from here?`,
-          replies: replies(7, [{ w: 2, team: r.W, lines: R.upsetW }, { w: 2, team: r.Lo, lines: R.upsetL }, { w: 2, lines: R.upsetN }], v),
+          body: `Nobody saw this coming. The ${r.W.name} ${r.W.mascot} (${L.recStr(r.W)}) took down ${r.Lo.name} (${L.recStr(r.Lo)}) ${scoreStr(r)}.${sp ? ` ${pname(sp)} led the way with ${star.line}.` : ''}` + (story ? `\n\n${story}` : '') + `\n\nWhere do the ${r.Lo.mascot} go from here?`,
+          replies: gameReplies(8, r, ctx, { extra: [{ w: 5, team: r.W, lines: R.upsetW }, { w: 5, team: r.Lo, lines: R.upsetL }, { w: 4, lines: R.upsetN }] }),
         });
       } else if (r.ot || (margin <= 3 && r.ws + r.ls >= 55) || (margin <= 3 && rW && rL)) {
+        covered = true;
         thread(is, {
           tag: 'INSTANT CLASSIC', heat: 70 + (rW && rL ? 10 : 0), teams: [r.W.id, r.Lo.id],
           title: `INSTANT CLASSIC: ${r.W.name} outlast ${r.Lo.name} ${scoreStr(r)}`,
-          body: `What a game. ${r.ws + r.ls} combined points${r.ot ? `, ${r.ot > 1 ? r.ot + ' overtime periods' : 'overtime'}` : ''} and a finish nobody will forget.`,
-          replies: replies(6, [{ w: 2, team: r.W, lines: R.winFan }, { w: 1, team: r.Lo, lines: R.loseFan }, { w: 2, lines: R.neutral }], v),
+          body: `What a game. ${r.ws + r.ls} combined points${r.ot ? `, ${r.ot > 1 ? r.ot + ' overtime periods' : 'overtime'}` : ''} and a finish nobody will forget.` + (story ? `\n\n${story}` : ''),
+          replies: gameReplies(7, r, ctx),
         });
       } else if (margin >= 35) {
+        covered = true;
         thread(is, {
           tag: 'BLOWOUT', heat: 55 + (rW ? 8 : 0), teams: [r.W.id, r.Lo.id],
           title: `${r.W.name} hang ${r.ws} on ${r.Lo.name} in a ${r.ws}-${r.ls} rout`,
-          body: `Total domination. ${r.W.name} led wire to wire.`,
-          replies: replies(5, [{ w: 2, team: r.W, lines: R.winFan }, { w: 1, team: r.Lo, lines: R.loseFan }, { w: 2, lines: R.neutral }], v),
+          body: `Total domination. ${r.W.name} led wire to wire.` + (story ? `\n\n${story}` : ''),
+          replies: gameReplies(6, r, ctx),
         });
+      }
+      // the week's other big storylines get their own threads (one per game, the biggest first)
+      if (!mine && !covered) {
+        const pick = has('comeback') && ctx.v.DEF >= 10 ? 'comeback' : has('unbeatenFalls') ? 'unbeatenFalls' : has('shutout') ? 'shutout' : has('hot') && r.W.rec.streak >= 6 ? 'hot' : has('skid') && r.Lo.rec.streak <= -5 ? 'skid' : has('firstWin') ? 'firstWin' : null;
+        const S2 = {
+          comeback: ['COMEBACK', 74, `${r.W.name} erase a ${ctx.v.DEF}-point fourth-quarter deficit to stun ${r.Lo.name}, ${scoreStr(r)}`],
+          unbeatenFalls: ['UNBEATEN NO MORE', 80, `The perfect season is over: ${r.W.name} hand ${r.Lo.name} their first loss, ${scoreStr(r)}`],
+          shutout: ['SHUTOUT', 62, `${r.W.name} blank ${r.Lo.name} ${r.ws}-0`],
+          hot: ['STREAK', 60, `${r.W.name} make it ${r.W.rec.streak} straight wins (${L.recStr(r.W)})`],
+          skid: ['STREAK', 56, `The ${r.Lo.name} skid reaches ${-r.Lo.rec.streak} games after a ${scoreStr(r)} loss to ${r.W.name}`],
+          firstWin: ['DISCUSSION', 54, `Finally! ${r.W.name} pick up their first win of the season, ${scoreStr(r)}`],
+        }[pick];
+        if (S2) thread(is, { tag: S2[0], heat: S2[1] + (rW || rL ? 8 : 0), teams: [r.W.id, r.Lo.id], a: fan(pick === 'skid' ? r.Lo : r.W), title: S2[2], body: story || '', replies: gameReplies(6, r, ctx) });
       }
     }
 
@@ -191,7 +455,7 @@ const Forum = (() => {
         tag: 'PERFORMANCE', heat: 72 + (t.user ? 10 : 0), mine: false, teams: [t.id], a: fan(t),
         title: `${p.pos} ${pname(p)} (${t.abbr}) was UNSTOPPABLE: ${x.line}`,
         body: `${pname(p)} put the ${t.mascot} on his back this week. #${p.num}, ${p.age} years old, ${DATA.expLabel(p).toLowerCase()} in the league out of ${p.college}.\n\nSeason so far: ${L.seasonLine(p)}.`,
-        replies: replies(6, [{ w: 2, team: t, lines: R.perf }, { w: 3, lines: R.perf }], { P: pname(p), N: p.num }),
+        replies: replies(6, [{ w: 3, team: t, lines: TAIL.perf[x.kind] }, { w: 2, lines: TAIL.perf[x.kind] }, { w: 1, team: t, lines: R.perf }, { w: 1, lines: R.perf }], { P: pname(p), N: p.num, Y: x.y || 0, TD: x.td || 0, LN: x.line }),
       });
     }
 
@@ -200,11 +464,16 @@ const Forum = (() => {
     if (wk <= SEA.REG) {
       const newOne = pollBefore[0] !== G.poll[0];
       const uR = L.ranked(uid);
+      // the week's biggest climber and faller (in or out of the top 10)
+      const was = id => { const i = pollBefore.indexOf(id); return i < 0 ? 26 : i + 1; }, now = id => { const i = G.poll.indexOf(id); return i < 0 ? 26 : i + 1; };
+      const moves = G.teams.map(t => ({ t, d: was(t.id) - now(t.id) })).filter(m => now(m.t.id) <= 10 || was(m.t.id) <= 10);
+      const riser = moves.slice().sort((a, b) => b.d - a.d)[0], faller = moves.slice().sort((a, b) => a.d - b.d)[0];
+      const pv = { T1: t1.name, T2: t2.name, M3: t3.mascot, RISER: riser && riser.d > 0 ? riser.t.name : t2.name, FALLER: faller && faller.d < 0 ? faller.t.name : t3.name, UR: uR || '' };
       thread(is, {
         tag: 'POWER RANKINGS', heat: newOne ? 85 : 62, a: MOD,
         title: newOne ? `NEW #1: ${t1.name} take over the top spot in the BlitzBoard Power Rankings` : `BlitzBoard Power Rankings after ${label}: ${t1.name} stay on top`,
-        body: top10Body(pollBefore) + (uR ? `\n\n${u.name} check in at #${uR}.` : `\n\n${u.name} are outside the top 10 this week.`),
-        replies: replies(6, [{ w: 1, lines: R.poll }], { T1: t1.name, T2: t2.name, M3: t3.mascot }),
+        body: top10Body(pollBefore) + (riser && riser.d >= 3 ? `\n\nBiggest riser: ${riser.t.name} (▲${riser.d})` : '') + (faller && faller.d <= -3 ? `\nBiggest fall: ${faller.t.name} (▼${-faller.d})` : '') + (uR ? `\n\n${u.name} check in at #${uR}.` : `\n\n${u.name} are outside the top 10 this week.`),
+        replies: replies(7, [{ w: 2, lines: R.poll }, { w: (riser && riser.d >= 3) || (faller && faller.d <= -3) ? 3 : 0.5, lines: TAIL.pollMove }, { w: 2, team: u, lines: uR ? TAIL.pollMine : TAIL.pollOut }], pv),
       });
     }
 
@@ -217,7 +486,13 @@ const Forum = (() => {
         tag: 'INJURY', heat: 58 + (t.user ? 15 : 0) + (i.p.ovr >= 80 ? 8 : 0), a: insider(), teams: [t.id], mine: false,
         title: `Report: ${t.abbr} ${i.p.pos} ${pname(i.p)} expected to miss ${i.weeks} week${i.weeks > 1 ? 's' : ''}`,
         body: `Sources tell BlitzBoard that ${pname(i.p)} (${i.p.ovr} OVR) suffered an injury during ${label} action and will be sidelined for roughly ${i.weeks} week${i.weeks > 1 ? 's' : ''}.`,
-        replies: replies(4, [{ w: 2, team: t, lines: R.injury }, { w: 1, lines: R.injury }], { M: t.mascot }),
+        // reactions to who it is, how long he's out, and whether he's one of the league's best
+        replies: replies(5, [
+          { w: 3, team: t, lines: TAIL.injPos[i.p.pos] || R.injury },
+          { w: 2, team: t, lines: i.weeks >= 5 ? TAIL.injLong : TAIL.injShort },
+          { w: i.p.ovr >= 80 ? 2 : 0, lines: TAIL.injStar },
+          { w: 1, team: t, lines: R.injury }, { w: 1, lines: R.injury },
+        ], { M: t.mascot, P: pname(i.p), POS: i.p.pos, WK: i.weeks, S: i.weeks > 1 ? 's' : '' }),
       });
     }
 
@@ -228,8 +503,8 @@ const Forum = (() => {
         thread(is, {
           tag: 'HOT SEAT', heat: 50 + (cold.user ? 25 : 0), teams: [cold.id], a: fan(cold),
           title: cold.user ? `Real talk: is the ${cold.name} head coach on the hot seat?` : `Hot seat watch: how much longer does the ${cold.name} staff have?`,
-          body: `The ${cold.name} sit at ${L.recStr(cold)} and the fanbase is restless. Is it the coaching or the roster?`,
-          replies: replies(5, [{ w: 2, team: cold, lines: R.hotseat }, { w: 2, lines: R.hotseat }], {}),
+          body: `The ${cold.name} sit at ${L.recStr(cold)}${cold.rec.streak <= -2 ? `, losers of ${-cold.rec.streak} straight,` : ''} and the fanbase is restless. Is it the coaching or the roster?`,
+          replies: replies(5, [{ w: 2, team: cold, lines: R.hotseat }, { w: 2, lines: R.hotseat }, { w: cold.rec.streak <= -3 ? 2 : 0, team: cold, lines: SIT.skid.l }], { REC: L.recStr(cold), LREC: L.recStr(cold), SKID: -cold.rec.streak, L: cold.name, LM: cold.mascot }),
         });
       }
     }
@@ -256,7 +531,7 @@ const Forum = (() => {
           tag: 'MVP RACE', heat: 68, a: neutralFan(),
           title: `MVP Ladder: ${pname(lead)} (${L.team(lead.teamId).abbr}) leads the race after ${label}`,
           body: hl.map((x, i) => `${i + 1}. ${x.p.pos} ${pname(x.p)}, ${L.team(x.p.teamId).name} — ${L.seasonLine(x.p)}`).join('\n'),
-          replies: replies(5, [{ w: 1, lines: R.mvp }], { P: pname(lead) }),
+          replies: replies(5, [{ w: 2, lines: R.mvp }, { w: lead.pos !== 'QB' ? 2 : 0, lines: TAIL.mvpNonQB }], { P: pname(lead), POS: lead.pos }),
         });
       }
     }
@@ -384,7 +659,8 @@ const Forum = (() => {
       tag: 'DRAFT GRADE', heat: 90, mine: true, a: fan(u), teams: [u.id],
       title: `${u.name} draft class reaction thread — BlitzBoard grade: ${g[u.id] ? g[u.id].grade : 'B'}`,
       body: mine.length ? mine.map(x => `R${x.e.round} #${x.e.overall}: ${x.p.pos} ${pname(x.p)}, ${x.p.college} (${x.p.ovr})`).join('\n') : 'No picks this year — the front office traded them all away.',
-      replies: replies(7, [{ w: 3, team: u, lines: R.draft }, { w: 1, lines: R.draft }], { M: u.mascot }),
+      replies: (() => { const gr = g[u.id] ? g[u.id].grade : 'B', good = /^[AB]/.test(gr), bad = /^[DF]/.test(gr);
+        return replies(7, [{ w: 2, team: u, lines: R.draft }, { w: 1, lines: R.draft }, { w: good ? 3 : 0, team: u, lines: TAIL.draftGood }, { w: bad ? 3 : 0, team: u, lines: TAIL.draftBad }], { M: u.mascot, G: gr }); })(),
     });
     thread(is, {
       tag: 'DRAFT GRADE', heat: 70, a: insider(),
@@ -491,7 +767,12 @@ const Forum = (() => {
       tag: 'FREE AGENCY', heat: 70 + Math.max(0, big.ovr - 70) + (signed.some(x => x.team === u.id) ? 15 : 0), a: insider(), teams: [...new Set(signed.map(x => x.team))],
       title: `Free agency Day ${day}: ${big.pos} ${big.name} signs with ${bt.name} (${big.yrs} yr${big.yrs > 1 ? 's' : ''}, $${big.sal}M/yr)`,
       body: top.slice(0, 12).map(x => `• ${L.team(x.team).abbr}: ${x.pos} ${x.name} (${x.ovr}, age ${x.age}) — ${x.yrs} yr${x.yrs > 1 ? 's' : ''}, $${x.sal}M/yr`).join('\n'),
-      replies: replies(5, [{ w: 2, team: bt, lines: R.fa }, { w: 2, lines: R.fa }], {}),
+      replies: replies(6, [
+        { w: 2, team: bt, lines: R.fa }, { w: 2, lines: R.fa },
+        { w: big.sal >= 20 ? 2.5 : 0, lines: TAIL.faBig },
+        { w: big.age >= 31 ? 2.5 : 0, lines: TAIL.faOld },
+        { w: big.ovr >= 80 ? 2 : 0, team: bt, lines: TAIL.faStar },
+      ], { P: big.name, AGE: big.age, SAL: big.sal }),
     });
     sortIssue(is);
   }
@@ -508,7 +789,14 @@ const Forum = (() => {
       tag: 'TRADE', heat: (star ? 60 + Math.max(0, star.ovr - 70) : 55) + (mine ? 25 : 0), a: insider(), teams: [A.id, B.id], mine,
       title: star ? `TRADE: ${star.pos} ${star.name} is headed to ${rec.bP.some(p => p.pid === star.pid) ? A.name : B.name}` : `TRADE: ${A.name} and ${B.name} swap picks`,
       body: `${A.name} ${A.mascot} receive:\n${aGets.map(x => `• ${x}`).join('\n') || '• —'}\n\n${B.name} ${B.mascot} receive:\n${bGets.map(x => `• ${x}`).join('\n') || '• —'}`,
-      replies: replies(6, [{ w: 2, team: A, lines: R.tradeWin }, { w: 2, team: B, lines: R.tradeLose.concat(R.tradeWin) }, { w: 2, lines: R.tradeN }], {}),
+      // the reaction depends on who moved: a blockbuster, an aging vet, a young riser, or nothing but picks
+      replies: replies(7, [
+        { w: 2, team: A, lines: R.tradeWin }, { w: 2, team: B, lines: R.tradeLose.concat(R.tradeWin) }, { w: 1.5, lines: R.tradeN },
+        { w: star && star.ovr >= 82 ? 3 : 0, lines: TAIL.tradeBlock },
+        { w: star && star.age >= 30 ? 2.5 : 0, lines: TAIL.tradeVet },
+        { w: star && star.age <= 24 ? 2.5 : 0, lines: TAIL.tradeYoung },
+        { w: !star ? 3 : 0, lines: TAIL.tradePicks },
+      ], star ? { P: star.name, AGE: star.age, OVR: star.ovr } : {}),
     });
     sortIssue(is);
   }

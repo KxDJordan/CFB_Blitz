@@ -1219,7 +1219,7 @@ const UI = (() => {
   function runSnap(input) {
     const st = S.game, gs = st.gs;
     gs._togoAtSnap = gs.togo;
-    const before = gs.log.length;
+    const before = gs.log.length, inj0 = gs.injuries.length;
     // the engine only sets the play up; the live sim plays it out and the result is booked after
     const det = Engine.prepare(gs, input);
     const tag = document.getElementById('livetag');
@@ -1234,8 +1234,25 @@ const UI = (() => {
       // keep the recording of anything that could make the weekly highlight reel
       const clip = Live.takeClip(), fresh = gs.log.slice(before);
       if (clip && fresh.some(e => e.kind === 'td' || e.kind === 'big' || e.kind === 'to' || e.kind === 'fg')) (gs.clips = gs.clips || []).push({ ns: fresh.map(e => e.n), clip });
+      // someone got hurt on the play: he stays down on the field first, then play moves on
+      const hurt = gs.injuries.slice(inj0);
+      if (hurt.length) return Live.injured(hurt.map(h => h.pid), () => { if (S.game !== st || st.done) return; injuryNotice(hurt); afterPlay(before); });
       afterPlay(before);
     });
+  }
+  // your player is hurt: flash the scorebug and say who's stepping in — how long he's out is only known after the game
+  function injuryNotice(hurt) {
+    const gs = S.game.gs, u = L.user();
+    for (const h of hurt) {
+      const p = G.players[h.pid];
+      if (!p || p.teamId !== u.id) continue;
+      const lu = gs.lu[h.side][p.pos] || [], i = lu.indexOf(p.id);
+      const next = G.players[lu.slice(i + 1).find(id => !gs.out[id]) ?? lu.find(id => id !== p.id && !gs.out[id])];
+      toast(`${p.pos} ${pname(p)} is hurt and done for the day${next ? ` — ${pname(next)} steps in` : ''}. Diagnosis after the game.`);
+      const el = document.getElementById('sbflash');
+      if (el) { el.textContent = 'INJURY'; el.style.background = 'linear-gradient(90deg, #b91c1c, #7f1d1d)'; el.style.color = '#ffffff'; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
+      U.vibrate([20, 40, 20]);
+    }
   }
   function afterPlay(before) {
     const st = S.game;
@@ -1551,6 +1568,12 @@ const UI = (() => {
     Sfx.play(won ? (st.g.type === 'final' ? 'champ' : 'win') : 'lose');
   }
 
+  // after the game the diagnosis is in: how long each of your injured players will miss
+  function injuryReport(res, u) {
+    const mine = (res.injuries || []).map(i => ({ ...i, p: G.players[i.pid] })).filter(i => i.p && i.p.teamId === u.id);
+    if (!mine.length) return '';
+    return `<div class="section-title"><h3>Injury report</h3></div><div class="card flush"><div class="list">${mine.map(i => `<button class="row tap" style="width:100%;text-align:left" data-a="player" data-v="${i.p.id}">${jersey(i.p, 36)}<div class="grow"><div class="r1">${pname(i.p)}</div><div class="r2">${i.p.pos} · diagnosis: out ${i.weeks} week${i.weeks > 1 ? 's' : ''}</div></div><span class="tag t-bad">✚ ${i.weeks}W</span></button>`).join('')}</div></div>`;
+  }
   SCREENS.final = () => {
     const { g, res } = S.final, u = L.user();
     const won = res.W.user, H = L.team(g.h), A = L.team(g.a);
@@ -1562,6 +1585,7 @@ const UI = (() => {
         <div class="card final-hero" style="${won ? `background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 18%,var(--surface)),var(--surface))` : ''}"><div class="fh-k">FINAL${g.ot ? ' / OT' : ''}</div><div class="fh-r ${won ? '' : 'muted'}">${label}</div>
           <div class="final-score"><div class="fs-t">${logo(H, 60)}${tname(H)}</div><div class="flex" style="gap:14px"><span class="fs-s ${g.hs < g.as ? 'lose' : ''}">${g.hs}</span><span class="dim">–</span><span class="fs-s ${g.as < g.hs ? 'lose' : ''}">${g.as}</span></div><div class="fs-t">${logo(A, 60)}${tname(A)}</div></div>
           <div class="small muted">${g.wk > SEA.REG ? (won ? `${tname(u)} advance` : `${tname(u)} are eliminated`) : `${tname(u)} ${won ? 'improve' : 'fall'} to ${L.recStr(u)}`}</div></div>
+        ${injuryReport(res, u)}
         ${boxHTML(g)}
         ${others.length ? `<div class="section-title"><h3>Around the league</h3><button class="link" data-a="finalForum">BlitzBoard</button></div><div class="card flush"><div class="list">${others.map(x => { const W = L.team(L.winnerOf(x)), Lo = L.team(L.winnerOf(x) === x.h ? x.a : x.h); return `<button class="row tap" style="width:100%;text-align:left" data-a="box" data-v="${x.id}">${logo(W, 26)}<div class="grow"><div class="r1">${tname(W)} <b class="num">${Math.max(x.hs, x.as)}</b>, ${tname(Lo)} <span class="num muted">${Math.min(x.hs, x.as)}</span></div></div>${x.ot ? '<span class="tag">OT</span>' : ''}</button>`; }).join('')}</div></div>` : ''}
       </div>
@@ -1646,13 +1670,27 @@ const UI = (() => {
     const u = L.user(), T = S.trade, B = L.team(T.b), open = L.tradeOpen();
     const ev = L.evalTrade(offerOf(T));
     const partners = G.teams.filter(t => !t.user);
-    const assetRow = (p, set, side) => `<button class="row tap ${set.has(p.id) ? 'me' : ''}" style="width:100%;text-align:left" data-a="tradeToggle" data-v="${side}|p|${p.id}">${jersey(p, 34)}<div class="grow"><div class="r1">${pname(p)} ${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${stkRow(p)}</div><div class="r2">${p.pos} · ${ageExp(p)} · ${contractStr(p)} · value ${L.tradeValue(p).toFixed(1)}</div></div>${ovr(p.ovr)}<span class="trade-check">${set.has(p.id) ? '✓' : '+'}</span></button>`;
-    const pickRow = (k, i, set, side) => `<button class="row tap ${set.has(i) ? 'me' : ''}" style="width:100%;text-align:left" data-a="tradeToggle" data-v="${side}|k|${i}"><span class="tag t-accent" style="width:34px;text-align:center">R${k.r}</span><div class="grow"><div class="r1">${esc(L.pickLabel(k))}</div><div class="r2">${k.y === L.nextDraftYear() ? `Projected #${L.pickOverall(k)}` : 'Future pick'} · value ${L.pickValue(k).toFixed(1)}</div></div><span class="trade-check">${set.has(i) ? '✓' : '+'}</span></button>`;
+    // what a trade value number means: depth piece up to franchise player (the scale doubles every ~6 rating points)
+    const valTier = v => (v >= 20 ? ['Franchise', 'v5'] : v >= 10 ? ['Star', 'v4'] : v >= 5 ? ['Quality', 'v3'] : v >= 2 ? ['Starter', 'v2'] : ['Depth', 'v1']);
+    const valPill = v => { const [l, c] = valTier(v); return `<span class="val-pill ${c}">${l} · ${v.toFixed(1)}</span>`; };
+    // where he's headed: young with room to grow, or past 30 and sliding
+    const trend = p => (p.age <= 25 && p.pot - p.ovr >= 6 ? ' <b class="good" title="Still developing">↑</b>' : p.age >= 31 ? ' <b class="bad" title="Aging">↓</b>' : '');
+    const dlTag = p => (p.dl === 'steal' ? '<span class="tag t-good">Steal</span>' : p.dl === 'bust' ? '<span class="tag t-bad">Bust</span>' : '');
+    const assetRow = (p, set, side) => `<button class="row tap ${set.has(p.id) ? 'me' : ''}" style="width:100%;text-align:left" data-a="tradeToggle" data-v="${side}|p|${p.id}">${jersey(p, 34)}<div class="grow"><div class="r1">${pname(p)} ${p.inj > 0 ? `<span class="tag t-bad">Out ${p.inj}w</span>` : ''}${dlTag(p)}${stkRow(p)}</div><div class="r2">${p.pos}${DATA.roleOf(p) ? ` · ${esc(DATA.roleOf(p).name)}` : ''} · age ${p.age} · POT <b>${U.potGrade(p.pot)}</b>${trend(p)}</div><div class="r2">${contractStr(p)} ${valPill(L.tradeValue(p))}</div></div>${ovr(p.ovr)}<span class="trade-check">${set.has(p.id) ? '✓' : '+'}</span></button>`;
+    const pickRow = (k, i, set, side) => `<button class="row tap ${set.has(i) ? 'me' : ''}" style="width:100%;text-align:left" data-a="tradeToggle" data-v="${side}|k|${i}"><span class="tag t-accent" style="width:34px;text-align:center">R${k.r}</span><div class="grow"><div class="r1">${esc(L.pickLabel(k))}</div><div class="r2">${k.y === L.nextDraftYear() ? `Projected #${L.pickOverall(k)}` : 'Future pick'} ${valPill(L.pickValue(k))}</div></div><span class="trade-check">${set.has(i) ? '✓' : '+'}</span></button>`;
+    // each side of the deal as mini cards with the numbers that matter, plus the side's total value
     const chips = (side) => {
       const P = side === 'a' ? T.aP : T.bP, K = side === 'a' ? T.aK : T.bK;
-      const items = [...P].map(id => { const p = G.players[id]; return p ? `<button class="chip on" data-a="tradeToggle" data-v="${side}|p|${id}">${p.pos} ${esc(p.last)} ${p.ovr} ✕</button>` : ''; })
-        .concat([...K].map(i => `<button class="chip on" data-a="tradeToggle" data-v="${side}|k|${i}">${G.picks[i].y} R${G.picks[i].r} ✕</button>`));
-      return items.length ? items.join('') : '<span class="tiny muted">Nothing yet</span>';
+      let total = 0;
+      const items = [...P].map(id => {
+        const p = G.players[id]; if (!p) return '';
+        const v = L.tradeValue(p); total += v;
+        return `<button class="trade-pill" data-a="tradeToggle" data-v="${side}|p|${id}"><span class="tpl-1">${p.pos} ${esc(p.last)} <b>${p.ovr}</b> · POT ${U.potGrade(p.pot)}${trend(p)}<i>✕</i></span><span class="tpl-2">${p.age}y · ${contractStr(p)} · ${valTier(v)[0]} ${v.toFixed(1)}</span></button>`;
+      }).concat([...K].map(i => {
+        const k = G.picks[i], v = L.pickValue(k); total += v;
+        return `<button class="trade-pill" data-a="tradeToggle" data-v="${side}|k|${i}"><span class="tpl-1">${k.y} Round ${k.r}<i>✕</i></span><span class="tpl-2">${k.y === L.nextDraftYear() ? `proj. #${L.pickOverall(k)}` : 'future'} · ${valTier(v)[0]} ${v.toFixed(1)}</span></button>`;
+      }));
+      return items.length ? items.join('') + `<div class="tiny muted" style="margin-top:4px">Total value <b>${total.toFixed(1)}</b></div>` : '<span class="tiny muted">Nothing yet</span>';
     };
     const pct = U.clamp(ev.fair * 100, 0, 140);
     const meterCol = ev.ok ? 'var(--good, #22c55e)' : ev.fair > 0.85 ? '#f59e0b' : '#ef4444';
@@ -1673,8 +1711,9 @@ const UI = (() => {
       <div class="scroll no-tabs">
         <div class="logo-strip trade-partners">${partners.map(t => `<button class="tp ${t.id === T.b ? 'on' : ''}" data-a="tradePartner" data-v="${t.id}">${logo(t, 34)}<span>${esc(t.abbr)}</span></button>`).join('')}</div>
         <div class="card"><div class="flex between mb8"><div class="flex">${logo(B, 30)}<div><div style="font-weight:700">${tfull(B)}</div><div class="tiny muted">${L.recStr(B)} · ${esc(L.divName(B))} · needs ${L.needs(B).slice(0, 3).map(n => n.pos).join(', ')}</div></div></div><button class="link" data-a="team" data-v="${B.id}">Team</button></div>
-          <div class="trade-sides"><div><div class="kicker mb8">You send</div><div class="chips" style="margin:0">${chips('a')}</div></div><div><div class="kicker mb8">You receive</div><div class="chips" style="margin:0">${chips('b')}</div></div></div>
+          <div class="trade-sides"><div><div class="kicker mb8">You send</div><div class="trade-list">${chips('a')}</div></div><div><div class="kicker mb8">You receive</div><div class="trade-list">${chips('b')}</div></div></div>
           <div class="trade-meter mt12"><i style="width:${(pct / 1.4).toFixed(1)}%;background:${meterCol}"></i><b style="left:${(100 / 1.4).toFixed(1)}%"></b></div>
+          ${T.aP.size || T.bP.size || T.aK.size || T.bK.size ? `<div class="tiny muted mt8">${esc(B.abbr)}'s view (with their needs): your side ${ev.bGets.toFixed(1)} vs theirs ${ev.bGives.toFixed(1)} — they want about ${ev.need.toFixed(1)}</div>` : ''}
           <div class="tiny muted mt8">Your payroll after: ${money(ev.aPay)} of ${money(DATA.CAP)}</div>
           <div class="small mt8 ${ev.ok ? 'good' : 'muted'}">${ev.ok ? `${tname(B)} would accept this deal.` : esc(ev.why)}</div>
           ${ev.thin.length && (T.aP.size || T.bP.size) ? `<div class="tiny muted mt8">You'd be short at ${ev.thin.join(', ')} — an undrafted free agent fills in.</div>` : ''}

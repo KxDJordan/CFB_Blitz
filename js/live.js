@@ -361,6 +361,11 @@ const Live = (() => {
   }
   // after the whistle: slow down, drift toward the ball, get up
   function postBrain(a) {
+    // a man is down hurt: his teammates come over and stand around him
+    if (S.hurt && a.side === S.hurt.side && !a.hurt) {
+      const dx = a.x - S.hurt.x, dy = a.y - S.hurt.y, d = hyp(dx, dy);
+      if (d < 18) { seek(a, S.hurt.x + dx / (d || 1) * 2.4, S.hurt.y + dy / (d || 1) * 2.4, 0.4, 0.8); a.faceT = ang(-dx, -dy); return; }
+    }
     const b = ballPos();
     if (a.celebrate) { seek(a, a.x + Math.cos(S.t * 3 + a.phase) * 0.8, a.y + Math.sin(S.t * 3) * 0.4, 0.35); return; }
     const d = hyp(a.x - b.x, a.y - b.y);
@@ -609,6 +614,8 @@ const Live = (() => {
     setTimeout(() => { if (S !== sc) return; c.stayDown = false; c.down = 1.0; d.stayDown = false; d.down = 0.7; }, 900 / speed);
     if (!F) return dead(S.onTackle);
     F.tackler = d;
+    // brought down with the ball across the goal line: it's a touchdown (no fumble after the score)
+    if (scoreTD(c)) return;
     // ball security
     if (!F.noFumble) {
       const grip = U.clamp(1 - stkM(c, 'irongrip'), 0.25, 1);
@@ -817,6 +824,15 @@ const Live = (() => {
     }
     return e;
   }
+  // the ball carrier has the ball across the goal line: score it now, with the full celebration
+  function scoreTD(c) {
+    const F = S.fp;
+    if (!F || F.goal == null || S.dead || F.td || (F.mode === 'pass' && c === F.qb)) return false;
+    if ((spotOf(c) - F.goal) * F.cdir < 0) return false;
+    F.td = true; F.over = true; F.spotY = F.goal;
+    dead(() => touchdownFx(c));
+    return true;
+  }
   function touchdownFx(a) {
     a.celebrate = true;
     const team = L.team(gs.t[a.side]);
@@ -840,17 +856,14 @@ const Live = (() => {
     if (F.loose) return looseBallStep();
     const c = S.ball.mode === 'held' ? S.carrier : null;
     if (!c || c.down > 0) return;
+    // touchdown: the ball breaks the plane (checked before out of bounds — crossing first and stepping out is still six)
+    if (scoreTD(c)) return;
     // out of bounds
     if (c.x < 0 || c.x > FW) {
       F.oob = true; F.over = true; F.spotY = spotOf(c);
       pop(clampX(c.x), c.y, 'OUT OF BOUNDS', '#cbd5e1');
       for (const d of S.list) if (d.side !== c.side) d.brain = b => seek(b, clampX(c.x), c.y, 0.4);
       return dead();
-    }
-    // touchdown
-    if (F.goal != null && (c.y - F.goal) * F.cdir >= 0.3 && !(F.mode === 'pass' && c === F.qb)) {
-      F.td = true; F.over = true; F.spotY = F.goal;
-      return dead(() => touchdownFx(c));
     }
     // safety / touchback for the team running back into its own end zone is spotted at the 0
     // a QB who crosses the line can no longer throw
@@ -1430,6 +1443,8 @@ const Live = (() => {
       if (a.side === r.side) { if (!a.eng) setBlocker(a, 'run'); }
       else a.readT = S.t;
     }
+    // a catch in the end zone is a touchdown the moment he has it — even with a defender draped all over him
+    scoreTD(r);
   }
   function intercepted(pk) {
     const F = S.fp;
@@ -2018,6 +2033,7 @@ const Live = (() => {
       for (const a of S.list) if (!(a.down > 0)) drawPlayer(a);
       drawBall(ballPos());
       drawRings(); drawDebris(); drawAuras();
+      for (const a of S.list) if (a.hurt) drawHurt(a);
     }
     drawRockets();
     for (const p of parts) {
@@ -2473,6 +2489,7 @@ const Live = (() => {
       ctx.fillStyle = k.helmet; ell(r * 0.85, 0, hr, hr); ctx.fill();
       ctx.restore(); ctx.globalAlpha = 1;
       return;
+
     }
     // shadow (direction depends on the time of day)
     const so2 = wx ? { day: [2.6, 3], dusk: [5.5, 2.4], night: [0.6, 1.8] }[wx.time] : [1.5, 2];
@@ -2655,7 +2672,17 @@ const Live = (() => {
     }
     ctx.globalAlpha = 1;
   }
-  function drawRings() {
+  // pulsing medical marker over a player down hurt (drawn above everyone gathered around him)
+  function drawHurt(a) {
+    const x = SX(a.x), y = SY(a.y), r = Math.max(9, sc * 0.84);
+    const pu = 0.5 + 0.5 * Math.sin(performance.now() / 200), mr = Math.max(8, r * 0.75) * (1 + pu * 0.12), my = y - r * 2.4;
+    ctx.fillStyle = `rgba(239,68,68,${0.16 + pu * 0.16})`; ell(x, y, r * 2.4, r * 2.4); ctx.fill();
+    ctx.strokeStyle = `rgba(248,113,113,${0.5 + pu * 0.4})`; ctx.lineWidth = 2; ell(x, y, r * 1.6, r * 1.6); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ell(x, my, mr, mr); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#dc2626'; const w = mr * 0.36, l = mr * 0.62;
+    ctx.fillRect(x - w / 2, my - l, w, l * 2); ctx.fillRect(x - l, my - w / 2, l * 2, w);
+  }  function drawRings() {
     ctx.lineCap = 'round';
     for (const r of rings) {
       const u = r.age / r.life, R = (0.35 + u * 1.6) * r.size * sc, x = SX(r.x), y = SY(r.y);
@@ -2863,10 +2890,28 @@ const Live = (() => {
   // how much of the canvas the play-call panel covers (px); the field shifts up to keep the line visible
   function setInset(px) { inset = Math.max(0, Math.min(px, H * 0.55)); }
 
+  // A player was hurt on the play: he stays down, a medical marker pulses over him, his teammates gather and the
+  // camera holds on him for a moment (game time, so pause and speed apply) before play moves on. No diagnosis here —
+  // how long he's out is only known after the game.
+  function injured(pids, done) {
+    const hurt = S ? pids.map(id => S.list.find(a => a.pid === id)).filter(Boolean) : [];
+    if (!hurt.length) return done();
+    for (const a of hurt) {
+      if (a.eng) release(a.eng);
+      a.hurt = true; a.down = 9; a.stayDown = true; a.vx = a.vy = a.kvx = a.kvy = 0; a.spin = 0; a.celebrate = false;
+      const p = P(a.pid);
+      pop(a.x, a.y + 1.2, `INJURY${p ? ' · ' + p.last.toUpperCase() : ''}`, '#fca5a5', { big: true, life: 2.2 });
+    }
+    const a0 = hurt[0];
+    S.hurt = { x: a0.x, y: a0.y, side: a0.side };
+    S.focus = () => [a0.x, a0.y + 2];
+    Sfx.play('whistle', 0.35);
+    at(S.t + 2.0, done);
+  }
   function setSpeed(s) { speed = s; }
   function setPaused(p) { paused = p; }
   function skip() { if (S) { S.onDone = null; if (!S.dead) dead(); } }
   function debug() { return { S, cut, bodies: S ? Object.fromEntries(S.list.map(a => [a.key, a])) : {} }; }
 
-  return { mount, unmount, resize, play, lineup, ready, setSpeed, setPaused, skip, bigText, setInset, debug, takeClip };
+  return { mount, unmount, resize, play, lineup, ready, setSpeed, setPaused, skip, bigText, setInset, debug, takeClip, injured };
 })();
