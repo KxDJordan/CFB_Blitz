@@ -82,8 +82,82 @@ const UI = (() => {
   const scoutBadge = p => { const v = L.scoutView(p); return `<span class="ovr ovr-scout ${U.ovrClass(v.mid)}">${v.exact ? '' : '~'}${v.mid}</span>`; };
   const scoutDots = p => `<span class="sc-dots" title="Scouting level">${[1, 2, 3].map(i => `<i class="${(p.sc || 0) >= i ? 'on' : ''}"></i>`).join('')}</span>`;
   function capCard(t) {
-    const pay = L.payroll(t), room = L.capRoom(t), pct = U.clamp(pay / DATA.CAP * 100, 0, 100);
-    return `<div class="cap-card"><div class="flex between"><span class="kicker">Salary cap</span><span class="small"><b class="${room < 0 ? 'bad' : room < 5 ? 'warn' : 'good'}">${money(room)}</b> <span class="muted">room</span></span></div><div class="cap-bar"><i style="width:${pct}%;${room < 0 ? 'background:var(--bad)' : ''}"></i></div><div class="tiny muted">${money(pay)} of ${money(DATA.CAP)}${t.dead ? ` · ${money(t.dead)} dead money` : ''}</div></div>`;
+    const cap = L.capOf(t), pay = L.payroll(t), room = L.capRoom(t), pct = U.clamp(pay / cap * 100, 0, 100);
+    const proj = t.fin && (G.phase === 'season' || G.phase === 'recap') ? Fin.projectedCap(t) : null;
+    return `<div class="cap-card"><div class="flex between"><span class="kicker">Salary cap</span><span class="small"><b class="${room < 0 ? 'bad' : room < 5 ? 'warn' : 'good'}">${money(room)}</b> <span class="muted">room</span></span></div><div class="cap-bar"><i style="width:${pct}%;${room < 0 ? 'background:var(--bad)' : ''}"></i></div><div class="tiny muted">${money(pay)} of ${money(cap)}${t.dead ? ` · ${money(t.dead)} dead money` : ''}${proj != null ? ` · next year ≈ <b class="${proj >= cap ? 'good' : 'bad'}">${money(proj)}</b>` : ''}</div></div>`;
+  }
+
+  // ════════════════ FRONT OFFICE: fans, crowds, sponsors, the stadium and the books ════════════════
+  const num = n => Math.round(n).toLocaleString();
+  const signed = x => `${x >= 0 ? '+' : '−'}${money(Math.abs(x))}`;
+  const fanColor = f => (f >= 70 ? 'var(--good)' : f >= 45 ? 'var(--accent)' : f >= 25 ? 'var(--warn)' : 'var(--bad)');
+  const fanMeter = f => `<div class="sec-meter"><i style="width:${U.clamp(f, 0, 100)}%;background:${fanColor(f)}"></i></div>`;
+  const oddsLabel = p => (p >= 0.6 ? 'likely' : p >= 0.4 ? 'even odds' : p >= 0.25 ? 'risky' : 'long shot');
+  function bizCard(u = L.user()) {
+    if (!u.fin) return '';
+    const f = u.fin, pend = Fin.pendingOffers(), h = f.hist[f.hist.length - 1];
+    // in season: this year's projection; in the offseason: last season's final books (nothing yet before the first)
+    const rev = G.phase === 'season' ? Fin.ledger(u).rev : h ? h.rev : null;
+    const last = f.yr.games.filter(x => x.home).slice(-1)[0] || (f.hist[f.hist.length - 1] ? { n: f.hist[f.hist.length - 1].att } : null);
+    return `<div class="section-title"><h3>Front office</h3><span class="tiny muted">${esc(Fin.stadiumName(u))}</span></div>
+      <div class="card"><div class="flex between"><div style="font-weight:700">Fan base · ${Fin.fanLabel(f.fans)}</div><span class="tag" style="color:${fanColor(f.fans)}">${Math.round(f.fans)}/100</span></div>${fanMeter(f.fans)}
+        <div class="stat-trio mt12"><div><b>${last && last.n ? num(last.n / 1000) + 'k' : '—'}</b><span>Last crowd</span></div><div><b>${rev != null ? money(rev) : '—'}</b><span>${G.phase === 'season' ? 'Revenue (proj.)' : h ? `${h.year} revenue` : 'Revenue'}</span></div><div><b>${money(f.funds)}</b><span>Funds</span></div></div>
+        ${pend ? `<div class="small mt8"><b class="warn">${pend} sponsor slot${pend > 1 ? 's' : ''} with offers waiting.</b> <span class="muted">Unsigned slots take the best guaranteed offer at Week 1.</span></div>` : ''}
+        <div class="btn-row mt12"><button class="btn btn-sm ${pend ? 'btn-primary' : ''}" data-a="sponsorSheet">Sponsors${pend ? ` (${pend})` : ''}</button><button class="btn btn-sm" data-a="stadiumSheet">Stadium & tickets</button><button class="btn btn-sm" data-a="booksSheet">The books</button></div></div>`;
+  }
+  function booksSheet() {
+    const u = L.user(), f = u.fin, live = G.phase === 'season', h = f.hist[f.hist.length - 1];
+    const lg = live || !h ? Fin.ledger(u) : h, cap = L.capOf(u);
+    const next = live ? Fin.projectedCap(u) : G.phase === 'recap' ? f.nextCap : null;
+    const line = (l, v, cls = '') => `<div class="flex between small mt8"><span class="${cls ? '' : 'muted'}">${l}</span><b class="${cls}">${v}</b></div>`;
+    const rank = G.teams.slice().sort((a, b) => L.capOf(b) - L.capOf(a));
+    const homes = f.yr.games.slice().reverse();
+    sheet(`<div class="h-lg">The books</div><div class="small muted mb12" style="margin-top:4px">${live ? `${G.year} so far, projected to the end of the regular season.` : h ? `${h.year} season, final.` : 'No games played yet: these are the starting numbers.'} Revenue sets next year's salary cap: every $1M above or below a league-average $250M moves it about $0.55M, between ${money(Fin.CAP_MIN)} and ${money(Fin.CAP_MAX)}, and a third of this year's cap carries over.</div>
+      <div class="card"><div class="kicker">Revenue</div>
+        ${line(`Gate · ${lg.homes || 0} home game${lg.homes === 1 ? '' : 's'}${lg.sellouts ? `, ${lg.sellouts} sellout${lg.sellouts > 1 ? 's' : ''}` : ''}`, money(lg.gate))}${line('League TV share', money(lg.tv))}${line('Merchandise (fans & stars)', money(lg.merch))}${line('Sponsorships', money(lg.spons))}${lg.bonus ? line('Sponsor bonuses', money(lg.bonus)) : ''}
+        <div class="divider"></div>${line('Total revenue', money(lg.rev), 'good')}</div>
+      <div class="card"><div class="kicker">Spending</div>${line('Payroll', money(lg.payroll))}${line('Stadium & operations', money(lg.ops))}<div class="divider"></div>${line('Profit', signed(lg.profit), lg.profit >= 0 ? 'good' : 'bad')}${line('Franchise funds (for stadium projects)', money(f.funds))}</div>
+      <div class="card"><div class="kicker">Salary cap</div>${line(`${G.year} cap`, money(cap))}${next != null ? line(`${G.year + 1} cap ${live ? '(projected)' : ''}`, `${money(next)} (${signed(next - cap)})`, next >= cap ? 'good' : 'bad') : ''}${L.capOf(rank[0]) > L.capOf(rank[rank.length - 1]) ? `${line('League rank', `#${rank.indexOf(u) + 1} of ${rank.length}`)}
+        <div class="tiny muted mt8">Highest: ${esc(rank[0].abbr)} ${money(L.capOf(rank[0]))} · Lowest: ${esc(rank[rank.length - 1].abbr)} ${money(L.capOf(rank[rank.length - 1]))}</div>` : '<div class="tiny muted mt8">Every franchise starts level. Caps split apart after the first season, by revenue.</div>'}</div>
+      ${homes.length ? `<div class="kicker mb8">Crowds this season</div><div class="card flush"><div class="list">${homes.map(x => `<div class="row"><span class="tag ${x.full ? 't-good' : ''}">${x.wk > SEA.REG ? 'PO' : 'W' + x.wk}</span><div class="grow"><div class="r1">${x.home ? 'vs' : 'Blitz Bowl ·'} ${esc(L.team(x.opp).abbr)}</div><div class="r2">${num(x.n)} of ${num(x.seats)}${x.full ? ' · sellout' : ''}</div></div><b class="small">${money(x.gate)}</b></div>`).join('')}</div></div>` : ''}
+      ${f.hist.length ? `<div class="kicker mb8 mt12">History</div><div class="card flush"><table class="tbl"><thead><tr><th>Year</th><th>Revenue</th><th>Profit</th><th>Crowd</th><th>Fans</th><th>Cap</th></tr></thead><tbody>${f.hist.slice().reverse().map(x => `<tr><td><b>${x.year}</b></td><td>${money(x.rev)}</td><td class="${x.profit >= 0 ? 'good' : 'bad'}">${signed(x.profit)}</td><td>${x.att ? num(x.att / 1000) + 'k' : '—'}</td><td>${x.fans}</td><td>${money(x.cap)}</td></tr>`).join('')}</tbody></table></div>` : ''}`);
+  }
+  function stadiumSheet() {
+    const u = L.user(), f = u.fin, open = Fin.offseasonOpen(), cur = Fin.priceOf(u);
+    const last = f.yr.games.filter(x => x.home).slice(-1)[0];
+    sheet(`<div class="h-lg">${esc(Fin.stadiumName(u))}</div><div class="small muted mb12" style="margin-top:4px">${num(f.seats)} seats · amenities level ${f.amen}/5${last ? ` · last crowd ${num(last.n)}${last.full ? ' (sellout)' : ''}` : ''}</div>
+      <div class="kicker mb8">Ticket prices</div>
+      <div class="plan-chips c2 mb8">${Fin.PRICES.map(p => `<button class="plan-chip ${p.id === cur.id ? 'on' : ''}" data-a="setPrice" data-v="${p.id}">${p.label} · $${p.price}</button>`).join('')}</div>
+      <div class="small muted mb12">${esc(cur.desc)} Fans spend about <b>$${Fin.perHead(u)}</b> a head with concessions. ${cur.fans > 0 ? 'Fan base grows a little every home game.' : cur.fans < 0 ? 'Fan base shrinks a little every home game.' : ''} Winning, rivalry games and the playoffs pack the stands; bad weather thins them.</div>
+      <div class="kicker mb8">Stadium projects</div>
+      <div class="card flush"><div class="list">${Fin.upgrades(u).map(up => `<div class="row"><div class="grow"><div class="r1">${up.label}</div><div class="r2">${up.maxed ? 'Fully built.' : esc(up.desc)}</div></div>${up.maxed ? '<span class="tag t-good">Max</span>' : `<button class="btn btn-sm btn-primary" data-a="buyUpgrade" data-v="${up.id}" ${open && f.funds >= up.cost ? '' : 'disabled'}>${money(up.cost)}</button>`}</div>`).join('')}</div></div>
+      <div class="tiny muted">Franchise funds: <b>${money(f.funds)}</b>. Each season's profit (revenue minus payroll and operations) goes into the funds. ${open ? 'Projects are finished before Week 1.' : 'Construction can only start in the offseason.'} Bigger stadiums and amenities cost more to run.</div>`);
+  }
+  function dealRow(d, extra = '') {
+    const g = d.bonus && d.bonus.amt ? Fin.GOALS[d.bonus.k] : null;
+    return `<div class="row"><div class="grow"><div class="r1">${esc(d.brand)}${d.variant ? ` <span class="tiny muted">${d.variant === 'safe' ? 'Guaranteed' : d.variant === 'incentive' ? 'Incentive-heavy' : 'Balanced'}</span>` : ''}</div><div class="r2"><b>${money(d.sal)}</b>/yr × ${d.left != null ? `${d.left} of ${yrsTxt(d.yrs)} left` : yrsTxt(d.yrs)}${g ? ` · +${money(d.bonus.amt)} if they ${esc(Fin.goalPhrase(d.bonus.k))}` : ''}${d.countered ? ' · countered' : ''}</div></div>${extra}</div>`;
+  }
+  function sponsorSheet() {
+    const u = L.user(), f = u.fin, odds = Fin.counterOdds(u);
+    sheet(`<div class="h-lg">Sponsors</div><div class="small muted mb12" style="margin-top:4px">Sponsors pay more to franchises with a big fan base and prestige (yours draw <b>${Math.round(Fin.appeal(u) * 100)}%</b> of the base rate). Each offer trades guaranteed money against a bonus paid in every season you hit its goal. Countering asks for 15% more guaranteed money: success is <b>${oddsLabel(odds)}</b> (${Math.round(odds * 100)}%), and if it fails the sponsor walks.</div>
+      ${Fin.SLOTS.map(s => { const d = f.spons[s.id], offers = (f.offers && f.offers[s.id]) || [];
+        return `<div class="kicker mb8">${s.label}</div><div class="card flush"><div class="list">${d ? dealRow(d, '<span class="tag t-good">Signed</span>') : offers.length ? offers.map(o => dealRow(o, `<div class="flex" style="gap:6px;flex-direction:column"><button class="btn btn-sm btn-primary" data-a="sponsAccept" data-v="${s.id}|${o.id}">Sign</button>${o.countered ? '' : `<button class="btn btn-sm" data-a="sponsCounter" data-v="${s.id}|${o.id}">Counter</button>`}</div>`)).join('') : `<div class="row"><div class="small muted">${Fin.offseasonOpen() ? 'Every bidder walked away. New offers come next offseason.' : 'No deal. New offers arrive in the offseason.'}</div></div>`}</div></div>`; }).join('')}
+      <div class="tiny muted">Deals tick down each offseason; when one ends, that slot gets new offers. Any slot still open at Week 1 takes its best guaranteed offer automatically.</div>`);
+  }
+  // after a game: the crowd, for the box score
+  function crowdLine(g) {
+    if (!g.att) return '';
+    const H = L.team(g.h);
+    return `<div class="tiny muted mt8">Attendance ${num(g.att.n)}${g.neutral ? ' · neutral site' : ` at ${esc(Fin.stadiumName(H))}`}${g.att.full ? ' · <b class="good">sellout</b>' : ` · ${Math.round(g.att.rate * 100)}% full`}</div>`;
+  }
+  function finRecapCard() {
+    const u = L.user(), h = u.fin && u.fin.hist[u.fin.hist.length - 1];
+    if (!h || h.year !== G.year) return '';
+    return `<div class="card"><div class="card-h"><span class="kicker">Business review</span><span class="tag ${h.nextCap >= h.cap ? 't-good' : 't-bad'}">${G.year + 1} cap ${money(h.nextCap)}</span></div>
+      <div class="stat-trio" style="margin:0"><div><b>${money(h.rev)}</b><span>Revenue</span></div><div><b class="${h.profit >= 0 ? 'good' : 'bad'}">${signed(h.profit)}</b><span>Profit</span></div><div><b>${h.fans}</b><span>Fans</span></div></div>
+      ${(h.earned || []).map(e => goalRow('met', `${e.brand}: ${e.label}`, `+${money(e.amt)} bonus`)).join('')}
+      <div class="tiny muted mt8">Average crowd ${h.att ? num(h.att) : '—'} · ${h.sellouts} sellout${h.sellouts === 1 ? '' : 's'} · cap ${money(h.cap)} → ${money(h.nextCap)} (${signed(h.nextCap - h.cap)})</div>
+      <button class="btn btn-block btn-sm mt12" data-a="booksSheet">Open the books</button></div>`;
   }
   const posCls = pos => (pos === 'K' ? 'pos-st' : DATA.OFFENSE.includes(pos) ? 'pos-off' : 'pos-def');
   const posBadge = pos => `<span class="pos-badge ${posCls(pos)}">${pos}</span>`;
@@ -939,7 +1013,7 @@ const UI = (() => {
     return `<div class="hero-card" style="${teamVars(u)}"><div class="hero-stripe"></div><div class="hero-in">${logo(u, 84, 'hero-logo')}<div class="grow"><div class="kicker" style="color:rgba(255,255,255,.75)">Est. ${G.history.length ? G.history[0].year : G.year} · ${esc(u.abbr)}</div><div class="hero-name">${tfull(u)}</div><div class="hero-sub">Season ${G.season} · ${esc(L.divName(u))}</div></div></div>
       <div class="hero-stats"><div class="hero-stat"><b>${titles}</b><span>Titles</span></div><div class="hero-stat"><b>${ccs}</b><span>Conf</span></div><div class="hero-stat"><b>${mvps}</b><span>MVPs</span></div><div class="hero-stat"><b>${best ? `${best.w}-${best.l}` : '—'}</b><span>Best</span></div></div></div>
       <button class="btn btn-block mb12" data-a="brandSheet">${I.shield} Edit logo & colors</button>
-      ${jobCard()}${staffCard()}${rivalsCard()}${achCard()}${draftClassCard()}
+      ${jobCard()}${bizCard(u)}${staffCard()}${rivalsCard()}${achCard()}${draftClassCard()}
       <div class="section-title"><h3>Franchise history</h3></div>
       ${u.hist.length ? `<div class="card flush"><table class="tbl"><thead><tr><th>Season</th><th>Record</th><th>Div</th><th>Seed</th><th>Result</th></tr></thead><tbody>${u.hist.slice().reverse().map(h => `<tr><td><b>${h.year}</b></td><td>${h.w}-${h.l}</td><td>${h.dw ?? '-'}-${h.dl ?? '-'}${h.divWin ? ' <span class="tag t-accent">DIV</span>' : ''}</td><td>${h.seed ? '#' + h.seed : '—'}</td><td>${h.champ ? '<span class="tag t-gold">Champions</span>' : h.po ? `<span class="tag">${RES[h.po]}</span>` : '<span class="dim">Missed</span>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="card"><div class="small muted">Your first season is underway. History is written in January.</div></div>'}
       ${G.history.length ? `<div class="section-title"><h3>League champions</h3></div><div class="card flush"><div class="list">${G.history.slice().reverse().map(h => { const c = L.team(h.champ); return `<div class="row">${logo(c, 30)}<div class="grow"><div class="r1">${h.year} · ${tfull(c)}</div><div class="r2">MVP: ${h.mvp ? `${esc(h.mvp.name)} (${esc(h.mvp.teamName)})` : '—'}</div></div></div>`; }).join('')}</div></div>` : ''}
@@ -1108,7 +1182,7 @@ const UI = (() => {
     } else if (done) {
       body = `<div class="card result-hero">${TROPHY.replace('trophy-svg', 'trophy-svg" style="color:var(--accent)')}<div class="h-lg">Camp is in the books</div><div class="small muted mt8">Your team is ready for the ${G.year} season.</div></div>
         <div class="card flush"><div class="list">${c.log.map(e => `<div class="row"><span class="tag t-good">${DATA.CAMP_SESSIONS[e.session].name.split(' ')[0]}</span><div class="grow"><div class="r1">${DATA.groupById(e.groupId).label}</div><div class="r2">${DATA.INTENSITY.find(i => i.id === e.intensityId).label} · ${e.inj} injur${e.inj === 1 ? 'y' : 'ies'}</div></div><span class="delta">+${e.avg.toFixed(1)} avg</span></div>`).join('')}</div></div>
-        <div class="card"><div class="rings">${(() => { const rt = L.ratings(u); return ring(rt.off, 'OFF', '#60a5fa') + ring(rt.ovr, 'OVR', 'var(--accent)') + ring(rt.def, 'DEF', '#f87171'); })()}</div></div>${capCard(u)}${cutCard(u)}`;
+        <div class="card"><div class="rings">${(() => { const rt = L.ratings(u); return ring(rt.off, 'OFF', '#60a5fa') + ring(rt.ovr, 'OVR', 'var(--accent)') + ring(rt.def, 'DEF', '#f87171'); })()}</div></div>${capCard(u)}${cutCard(u)}${bizCard(u)}`;
       cta = `<button class="btn btn-primary btn-lg" data-a="startSeason">${I.play} Kick Off the ${G.year} Season</button>`;
     } else {
       const sess = DATA.CAMP_SESSIONS[c.session];
@@ -1325,6 +1399,8 @@ const UI = (() => {
     const st = S.game;
     if (!st.need) return;
     const input = st.need === 'off' ? { off: v, flip: !!st.flip } : { def: v };
+    // the next call starts from the formation list again
+    if (st.pbSub) st.pbSub.ogrp = st.pbSub.dgrp = '';
     snap(input);
   }
   function edgeTag(v) {
@@ -1343,7 +1419,10 @@ const UI = (() => {
     // second row: grouped chips (formations under their family, or play types) — tap to switch without losing your place
     const chip = (key, id, label, n) => `<button class="pb-chip ${sub[key] === id ? 'on' : ''}" data-a="gpbSub" data-v="${key}|${id}">${esc(label)}${n != null ? `<i>${n}</i>` : ''}</button>`;
     const famLbl = l => `<span class="pb-fam">${esc(l)}</span>`;
-    let subRow = '';
+    // formation list rows: thumbnail on the left, the set and its variations on the right
+    const formRow = (side, name, subs, n, picked, svg) => `<button class="form-row ${picked ? 'sugg' : ''}" data-a="gpbSet" data-v="${side}|${esc(name)}"><span class="fr-thumb">${svg}</span><span class="fr-info"><span class="fr-name">${esc(name)}${picked ? `<span class="cc-pick">${side === 'o' ? 'OC' : 'DC'} PICK</span>` : ''}</span><span class="fr-subs">${subs.map(esc).join(' · ')}</span><span class="fr-n">${n} play${n === 1 ? '' : 's'}</span></span><span class="fr-chev">›</span></button>`;
+    const backChip = side => `<button class="pb-chip pb-back" data-a="gpbSet" data-v="${side}|">‹ Formations</button>`;
+    let subRow = '', formList = '';
     const CAT = { inside: 'Inside run', outside: 'Outside run', rpo: 'RPO', quick: 'Quick pass', pa: 'Play action', deep: 'Downfield', screen: 'Screen', base: 'Base', blitz: 'Blitz', cover: 'Coverage', runstop: 'Run stop' };
     if (need === 'off') {
       const raw = Engine.callEdges(gs, us), t = gs.tend[1 - us];
@@ -1364,9 +1443,17 @@ const UI = (() => {
       let list;
       if (tab === 'st' && special.length) list = null;
       else if (tab === 'form') {
-        if (!forms.includes(sub.oform)) sub.oform = sp && forms.includes(sp.form) ? sp.form : forms[0];
-        subRow = Playbook.OFF_FAMS.map(fm => { const ids = Object.keys(Playbook.FORMS).filter(id => forms.includes(id) && Playbook.FORMS[id].fam === fm); return ids.length ? famLbl(fm) + ids.map(id => chip('oform', id, Playbook.FORMS[id].short, Playbook.OFF.filter(p => p.form === id).length)).join('') : ''; }).join('');
-        list = Playbook.OFF.filter(p => p.form === sub.oform);
+        // step 1: the formation list; step 2: the chosen set's plays, its variations across the top
+        const sets = Object.entries(Playbook.OFF_SETS).map(([name, ids]) => [name, ids.filter(id => forms.includes(id))]).filter(([, ids]) => ids.length);
+        const set = sets.find(([name]) => name === sub.ogrp);
+        if (!set) {
+          list = [];
+          formList = sets.map(([name, ids]) => { const has = !!sp && ids.includes(sp.form); return formRow('o', name, ids.map(id => Playbook.FORMS[id].short), Playbook.OFF.filter(p => ids.includes(p.form)).length, has, Playbook.svgForm(has ? sp.form : ids[0], !!st.flip)); }).join('');
+        } else {
+          if (!set[1].includes(sub.oform)) sub.oform = sp && set[1].includes(sp.form) ? sp.form : set[1][0];
+          subRow = backChip('o') + famLbl(set[0]) + set[1].map(id => chip('oform', id, Playbook.FORMS[id].short, Playbook.OFF.filter(p => p.form === id).length)).join('');
+          list = Playbook.OFF.filter(p => p.form === sub.oform);
+        }
       } else if (tab === 'type') {
         const TY = ['inside', 'outside', 'rpo', 'quick', 'pa', 'deep', 'screen'].filter(c => inBk.some(p => p.cat === c));
         if (!TY.includes(sub.otype)) sub.otype = sp && TY.includes(sp.cat) ? sp.cat : TY[0];
@@ -1399,10 +1486,16 @@ const UI = (() => {
       tabs = tabBtn('picks', 'DC Picks') + tabBtn('form', 'Formation') + tabBtn('type', 'Play Type');
       let list;
       if (tab === 'form') {
-        if (!DF[sub.dform]) sub.dform = sp ? sp.form : '43';
-        subRow = Object.entries(Playbook.DEF_FAMS).map(([fm, ids]) => famLbl(fm) + ids.map(id => chip('dform', id, DF[id].short, Playbook.DEF.filter(p => p.form === id).length)).join('')).join('');
-        list = Playbook.DEF.filter(p => p.form === sub.dform);
-        intel = `${esc(DF[sub.dform].name)} personnel: ${DF[sub.dform].desc}`;
+        const sets = Object.entries(Playbook.DEF_FAMS), set = sets.find(([name]) => name === sub.dgrp);
+        if (!set) {
+          list = [];
+          formList = sets.map(([name, ids]) => { const has = !!sp && ids.includes(sp.form); return formRow('d', name, ids.map(id => DF[id].short), Playbook.DEF.filter(p => ids.includes(p.form)).length, has, Playbook.svgDefForm(has ? sp.form : ids[0])); }).join('');
+        } else {
+          if (!set[1].includes(sub.dform)) sub.dform = sp && set[1].includes(sp.form) ? sp.form : set[1][0];
+          subRow = backChip('d') + famLbl(set[0]) + set[1].map(id => chip('dform', id, DF[id].short, Playbook.DEF.filter(p => p.form === id).length)).join('');
+          list = Playbook.DEF.filter(p => p.form === sub.dform);
+          intel = `${esc(DF[sub.dform].name)} personnel: ${DF[sub.dform].desc}`;
+        }
       } else if (tab === 'type') {
         if (!TYPES[sub.dtype]) sub.dtype = sp ? Playbook.defType(sp) : 'zone';
         subRow = Object.entries(TYPES).map(([id, l]) => chip('dtype', id, l, Playbook.DEF.filter(p => Playbook.defType(p) === id).length)).join('');
@@ -1413,7 +1506,7 @@ const UI = (() => {
     const help = need === 'off' && !st.panelMin ? '<button class="pb-help" data-a="tutHelp" data-v="edge" aria-label="What do the Edge numbers mean?">?</button>' : '';
     const head = `<div class="call-head"><div class="grow"><div class="kicker" style="color:var(--accent)">Your call · ${need === 'off' ? 'Offense' : 'Defense'}${help}</div><div class="call-sit">${sit}</div></div>${st.panelMin ? '' : extra}${clock}${minBtn}</div>`;
     if (st.panelMin) return head + `<div class="call-quick"><button class="btn btn-primary btn-block" data-a="gcall" data-v="${st.sugg}">${need === 'off' ? 'OC' : 'DC'} pick: ${esc(callName(st.sugg))} ${I.chev}</button></div>`;
-    return head + `<div class="call-intel">${intel}</div><div class="pb-tabs">${tabs}</div>${subRow ? `<div class="pb-sub">${subRow}</div>` : ''}<div class="call-scroll">${cards}</div>`;
+    return head + `<div class="call-intel">${intel}</div><div class="pb-tabs">${tabs}</div>${subRow ? `<div class="pb-sub">${subRow}</div>` : ''}${formList ? `<div class="form-list">${formList}</div>` : `<div class="call-scroll">${cards}</div>`}`;
   }
   function fatiguePanel() {
     const st = S.game, gs = st.gs, us = gs.userSide;
@@ -1435,7 +1528,7 @@ const UI = (() => {
       const tabsL = at('.pb-tabs'), subL = at('.pb-sub'), cardsL = at('.call-scroll');
       el.innerHTML = callPanel(); el.classList.add('show');
       const set = (sel, v) => { const x = el.querySelector(sel); if (x) x.scrollLeft = v; };
-      const listKey = `${st.need}|${st.pbTab}|${JSON.stringify(st.pbSub || {})}`, subKey = `${st.need}|${st.pbTab}`;
+      const listKey = `${st.need}|${st.pbTab}|${JSON.stringify(st.pbSub || {})}`, subKey = `${st.need}|${st.pbTab}|${(st.pbSub || {}).ogrp || ''}|${(st.pbSub || {}).dgrp || ''}`;
       set('.pb-tabs', tabsL);
       const sub = el.querySelector('.pb-sub');
       if (sub) {
@@ -1584,7 +1677,7 @@ const UI = (() => {
       <div class="scroll no-tabs">
         <div class="card final-hero" style="${won ? `background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 18%,var(--surface)),var(--surface))` : ''}"><div class="fh-k">FINAL${g.ot ? ' / OT' : ''}</div><div class="fh-r ${won ? '' : 'muted'}">${label}</div>
           <div class="final-score"><div class="fs-t">${logo(H, 60)}${tname(H)}</div><div class="flex" style="gap:14px"><span class="fs-s ${g.hs < g.as ? 'lose' : ''}">${g.hs}</span><span class="dim">–</span><span class="fs-s ${g.as < g.hs ? 'lose' : ''}">${g.as}</span></div><div class="fs-t">${logo(A, 60)}${tname(A)}</div></div>
-          <div class="small muted">${g.wk > SEA.REG ? (won ? `${tname(u)} advance` : `${tname(u)} are eliminated`) : `${tname(u)} ${won ? 'improve' : 'fall'} to ${L.recStr(u)}`}</div></div>
+          <div class="small muted">${g.wk > SEA.REG ? (won ? `${tname(u)} advance` : `${tname(u)} are eliminated`) : `${tname(u)} ${won ? 'improve' : 'fall'} to ${L.recStr(u)}`}</div>${crowdLine(g)}</div>
         ${injuryReport(res, u)}
         ${boxHTML(g)}
         ${others.length ? `<div class="section-title"><h3>Around the league</h3><button class="link" data-a="finalForum">BlitzBoard</button></div><div class="card flush"><div class="list">${others.map(x => { const W = L.team(L.winnerOf(x)), Lo = L.team(L.winnerOf(x) === x.h ? x.a : x.h); return `<button class="row tap" style="width:100%;text-align:left" data-a="box" data-v="${x.id}">${logo(W, 26)}<div class="grow"><div class="r1">${tname(W)} <b class="num">${Math.max(x.hs, x.as)}</b>, ${tname(Lo)} <span class="num muted">${Math.min(x.hs, x.as)}</span></div></div>${x.ot ? '<span class="tag">OT</span>' : ''}</button>`; }).join('')}</div></div>` : ''}
@@ -1603,7 +1696,7 @@ const UI = (() => {
       <div class="scroll no-tabs">
         <div class="trophy-hero">${confetti}${TROPHY}<div class="kicker" style="color:var(--gold)">${G.year} Blitz Bowl Champions</div><div style="margin:12px auto 8px;width:max-content">${logo(c, 80)}</div><div class="h-lg">${tfull(c)}</div><div class="small muted mt8">${L.recStr(c)} · ${DATA.CONFS[c.conf].long} champions</div></div>
         <div class="card"><div class="kicker mb8">Your season</div><div class="flex">${logo(u, 54)}<div class="grow"><div class="h-md">${finish}</div><div class="small muted">${uh.w}-${uh.l} (${uh.dw}-${uh.dl} division)${uh.seed ? ` · ${DATA.CONFS[u.conf].short} #${uh.seed} seed` : ''} · #${uh.rank} in final power rankings</div></div></div></div>
-        ${firedCard()}${verdictCard()}
+        ${firedCard()}${verdictCard()}${finRecapCard()}
         ${awardCard(G.awards && G.awards.mvp, 'Most Valuable Player')}${awardCard(G.awards && G.awards.roy, 'Rookie of the Year')}
         <div class="section-title"><h3>Final Power Rankings</h3></div>
         <div class="card flush"><div class="list">${G.poll.slice(0, 10).map((id, i) => { const t = L.team(id); return `<div class="row ${t.user ? 'me' : ''}"><span style="width:24px;font:700 17px/1 var(--f-display)">${i + 1}</span>${logo(t, 30)}<div class="grow"><div class="r1">${tfull(t)}</div><div class="r2">${L.recStr(t)}</div></div>${t.id === G.champion ? '<span class="tag t-gold">Champs</span>' : ''}</div>`; }).join('')}</div></div>
@@ -1620,7 +1713,7 @@ const UI = (() => {
         <div class="card"><div class="stat-trio" style="margin:0"><div><b>${o.retired.length}</b><span>Retired</span></div><div><b>${picks.length}</b><span>Draft picks</span></div><div><b>${L.roster(u).length}</b><span>Under contract</span></div></div>
           ${capCard(u)}
           <div class="btn-row mt12"><button class="btn" data-a="openTrade">${I.refresh} Trades</button><button class="btn" data-a="openScout">${I.eye} Scout (${G.scoutPts || 0})</button></div></div>
-        ${staffNewsCard()}
+        ${staffNewsCard()}${bizCard(u)}
         <div class="section-title"><h3>Biggest risers</h3><span class="tiny muted">OVR gained over the season</span></div>
         ${o.risers.length ? devList(o.risers) : '<div class="card"><div class="small muted">No major jumps this year.</div></div>'}
         ${(o.decliners || []).length ? `<div class="section-title"><h3>Slowing down</h3><span class="tiny muted">Father Time is undefeated</span></div>${devList(o.decliners)}` : ''}
@@ -1714,7 +1807,7 @@ const UI = (() => {
           <div class="trade-sides"><div><div class="kicker mb8">You send</div><div class="trade-list">${chips('a')}</div></div><div><div class="kicker mb8">You receive</div><div class="trade-list">${chips('b')}</div></div></div>
           <div class="trade-meter mt12"><i style="width:${(pct / 1.4).toFixed(1)}%;background:${meterCol}"></i><b style="left:${(100 / 1.4).toFixed(1)}%"></b></div>
           ${T.aP.size || T.bP.size || T.aK.size || T.bK.size ? `<div class="tiny muted mt8">${esc(B.abbr)}'s view (with their needs): your side ${ev.bGets.toFixed(1)} vs theirs ${ev.bGives.toFixed(1)} — they want about ${ev.need.toFixed(1)}</div>` : ''}
-          <div class="tiny muted mt8">Your payroll after: ${money(ev.aPay)} of ${money(DATA.CAP)}</div>
+          <div class="tiny muted mt8">Your payroll after: ${money(ev.aPay)} of ${money(L.capOf(u))}</div>
           <div class="small mt8 ${ev.ok ? 'good' : 'muted'}">${ev.ok ? `${tname(B)} would accept this deal.` : esc(ev.why)}</div>
           ${ev.thin.length && (T.aP.size || T.bP.size) ? `<div class="tiny muted mt8">You'd be short at ${ev.thin.join(', ')} — an undrafted free agent fills in.</div>` : ''}
           ${sw ? `<button class="btn btn-sm mt8" data-a="tradeSweeten" data-v="${sw.list.map(c => c.kind + ':' + c.id).join(',')}">They'd take it if you add ${sw.label}</button>` : ''}
@@ -1836,6 +1929,25 @@ const UI = (() => {
   };
   // career: staff, achievements, draft classes, weekly reel
   A.staffSheet = () => staffSheet();
+  A.booksSheet = () => booksSheet();
+  A.stadiumSheet = () => stadiumSheet();
+  A.sponsorSheet = () => sponsorSheet();
+  A.setPrice = v => { Fin.setPrice(v); render(); stadiumSheet(); };
+  A.buyUpgrade = v => {
+    const r = Fin.buy(v);
+    if (!r.ok) return toast(r.why);
+    render(); stadiumSheet(); toast(v === 'seats' ? 'Construction crews are adding seats.' : 'New amenities are on the way.'); Sfx.play('deal'); U.vibrate(20);
+  };
+  A.sponsAccept = v => {
+    const [slot, id] = v.split('|'), r = Fin.accept(slot, id);
+    if (!r.ok) return toast(r.why);
+    render(); sponsorSheet(); toast(`Signed ${r.o.brand}: ${money(r.o.sal)}/yr × ${yrsTxt(r.o.yrs)}`); Sfx.play('deal'); U.vibrate(25);
+  };
+  A.sponsCounter = v => {
+    const [slot, id] = v.split('|'), r = Fin.counter(slot, id);
+    render(); sponsorSheet();
+    toast(r.ok ? `${r.o.brand} agreed: now ${money(r.o.sal)}/yr` : r.why);
+  };
   A.staffRole = v => { S.staffRole = v; staffSheet(); };
   A.hireCoach = v => {
     const r = Career.hire(+v);
@@ -2041,7 +2153,10 @@ const UI = (() => {
   };
   A.gcall = v => makeCall(v);
   A.gpanelMin = () => { S.game.panelMin = !S.game.panelMin; renderPanel(); };
-  A.gpbTab = v => { const st = S.game; st.pbTab = v; renderPanel(); };
+  // tapping Formation again goes back to the formation list
+  A.gpbTab = v => { const st = S.game, sub = st.pbSub || (st.pbSub = {}); if (v === 'form' && st.pbTab === 'form') sub.ogrp = sub.dgrp = ''; st.pbTab = v; renderPanel(); };
+  // pick a formation set from the list ("o|Shotgun"), or go back to the list ("o|")
+  A.gpbSet = v => { const st = S.game, [side, name] = v.split('|'); (st.pbSub = st.pbSub || {})[side + 'grp'] = name; renderPanel(); };
   A.gflip = () => { const st = S.game; st.flip = !st.flip; renderPanel(); };
   A.gpbSub = v => { const st = S.game, [k, id] = v.split('|'); (st.pbSub = st.pbSub || {})[k] = id; renderPanel(); };
   A.gfourth = () => { G.settings.askFourth = !G.settings.askFourth; S.game.gs.askFourth = G.settings.askFourth; L.save(); const tg = document.querySelector('.sheet [data-a="gfourth"]'); if (tg) tg.classList.toggle('on', G.settings.askFourth); };

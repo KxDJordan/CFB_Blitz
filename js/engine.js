@@ -263,7 +263,7 @@ const Engine = (() => {
       phase: 'kickoff', kicker: U.ri(0, 1), recv1: 0,
       ot: 0, otPoss: 0, otFirst: 0, otSide: 0, over: false, n: 0, lastPlay: null, tos: [3, 3],
       drive: { side: 0, start: 25, plays: 0, yds: 0, clk: QLEN, q: 1 }, wpH: [],
-      cb: [Career.coachBonus(home), Career.coachBonus(away)], rival: !!opts.rival,
+      cb: [Career.coachBonus(home), Career.coachBonus(away)], rival: !!opts.rival, fill: opts.fill ?? 0.9,
     };
     gs.recv1 = 1 - gs.kicker;
     gs.wxm = DATA.WEATHER[gs.wx.type] || DATA.WEATHER.clear;

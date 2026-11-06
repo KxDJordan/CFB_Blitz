@@ -2093,7 +2093,7 @@ const Live = (() => {
       g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(0, y + PX - 2, c.width, 2);          // step riser
       g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(0, y, c.width, 1);
       for (let x = 5; x < c.width; x += 0.8 * PX) {
-        if (Math.random() < 0.1) continue;                                          // empty seat
+        if (Math.random() < Math.max(0.02, 1 - (gs.fill ?? 0.9))) continue;         // empty seat (real attendance)
         const cx = x + U.rand(-1.2, 1.2), cy = y + PX * 0.5 + U.rand(-0.8, 0.8);
         g.fillStyle = U.pick(shirts); g.beginPath(); g.ellipse(cx, cy + 1.6, 3.7, 2.7, 0, 0, Math.PI * 2); g.fill();
         g.fillStyle = U.pick(skin); g.beginPath(); g.arc(cx, cy - 0.6, 2, 0, Math.PI * 2); g.fill();

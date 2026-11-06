@@ -800,6 +800,20 @@ body[data-theme="day"] .stk-t-silver { color: #475569; } body[data-theme="day"] 
 .pb-flip.on { color: var(--on-accent); background: var(--accent); }
 .call-scroll .call-card.pb-card { flex: 0 0 164px; padding: 6px 6px 8px 8px; gap: 3px; }
 .pa-svg { display: block; width: 100%; height: auto; border-radius: 8px; margin-bottom: 3px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+/* formation list: step one of calling by formation (thumbnail left, set + variations right) */
+.form-list { display: flex; flex-direction: column; gap: 6px; max-height: 232px; overflow-y: auto; padding: 2px 12px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.form-list::-webkit-scrollbar { display: none; }
+.form-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 10px 5px 5px; text-align: left; border-radius: 12px; background: #121b2e; border: 1.5px solid rgba(255, 255, 255, .08); color: #e2e8f0; transition: transform .12s, border-color .15s; }
+.form-row:active { transform: scale(.98); }
+.form-row.sugg { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.fr-thumb { flex: 0 0 112px; height: 52px; border-radius: 8px; overflow: hidden; background: #0f2a1c; }
+.form-list .fr-thumb .pa-svg { margin: 0; width: 112px; height: 52px; aspect-ratio: auto; border-radius: 0; }
+.fr-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fr-name { display: flex; align-items: center; gap: 6px; font: 700 15px/1.1 var(--f-display); letter-spacing: .03em; text-transform: uppercase; }
+.fr-subs { font-size: 11px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-n { font-size: 10px; font-weight: 700; color: #64748b; }
+.fr-chev { flex-shrink: 0; font-size: 22px; color: #64748b; }
+.pb-chip.pb-back { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .cc-form { font-size: 10.5px; color: #8391a7; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
 /* ── player faces (sprite cut from src/img/face sheets: 12 x 10, ring drawn in team colours) ── */

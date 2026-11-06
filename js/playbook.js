@@ -427,5 +427,35 @@ const Playbook = (() => {
   // call-sheet groups: formations in display order with their family headers
   const OFF_FAMS = ['Shotgun', 'Pistol', 'Under Center'];
   const DEF_FAMS = { '4-Man Front': ['43', 'nickel', 'dime'], '3-Man Front': ['34', '335'], 'Short Yardage': ['goal'] };
-  return { FORMS, BOOKS, OFF_FAMS, DEF_FAMS, inBook, OFF, DEF, DFORMS, DFORM_ORDER, ZONES, ZKIND, OL, formPos, playPos, routePts, inward, hole, offById, defById, pickOff, pickDef, defType, svgOff, svgDef, defAlign };
+  // the formation list on the call sheet: each set opens to its variations (defense uses DEF_FAMS)
+  const OFF_SETS = {
+    Shotgun: ['gun_doubles', 'gun_trips', 'gun_spread', 'gun_bunch', 'gun_wing', 'empty'],
+    Pistol: ['pistol', 'pistol_trips'],
+    Singleback: ['single', 'single_tight'],
+    'I-Form': ['iform'],
+    Heavy: ['heavy'],
+  };
+  // formation thumbnails: just the alignment, no assignments
+  // thumbnails zoom in on the players: the backfield and line for offense, the whole front for defense
+  const thumb = (svg, box) => svg.replace('viewBox="0 0 120 80"', `viewBox="${box}"`);
+  function svgForm(fid, flip) {
+    let g = '';
+    for (const [k, [x, y]] of Object.entries(formPos(fid, flip))) {
+      const isOL = k in OL;
+      g += `<circle cx="${VX(x)}" cy="${VY(y)}" r="${isOL ? 3 : 3.8}" fill="${isOL ? '#64748b' : (RC[k] || '#e2e8f0')}" stroke="#0b1220" stroke-width="0.9"/>`;
+    }
+    return thumb(frame(g), '7 50 106 33');
+  }
+  function svgDefForm(dform) {
+    const O = formPos('gun_doubles', false), play = DEF.find(p => p.form === dform && p.cat !== 'blitz') || DEF.find(p => p.form === dform);
+    const pos = (DFORMS[dform] || DFORMS['43']).pos, PCOL = { DL: '#fca5a5', LB: '#fde047', CB: '#93c5fd', S: '#93c5fd' };
+    let g = '';
+    for (const [x, y] of Object.values(O)) g += `<circle cx="${VX(x)}" cy="${VY(y)}" r="2" fill="#475569"/>`;
+    for (const [k, [x, y]] of Object.entries(defAlign(play, O))) {
+      const X = VX(x), Y = VY(Math.min(y, 19));
+      g += `<path d="M${X - 2.8},${Y - 2.8}L${X + 2.8},${Y + 2.8}M${X + 2.8},${Y - 2.8}L${X - 2.8},${Y + 2.8}" stroke="${PCOL[pos[k]] || '#f8fafc'}" stroke-width="2" stroke-linecap="round"/>`;
+    }
+    return thumb(frame(g), '7 22 106 60');
+  }
+  return { FORMS, BOOKS, OFF_FAMS, DEF_FAMS, OFF_SETS, svgForm, svgDefForm, inBook, OFF, DEF, DFORMS, DFORM_ORDER, ZONES, ZKIND, OL, formPos, playPos, routePts, inward, hole, offById, defById, pickOff, pickDef, defType, svgOff, svgDef, defAlign };
 })();
